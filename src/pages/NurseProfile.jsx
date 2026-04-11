@@ -59,6 +59,14 @@ const TABS = [
   { key: 'documents',  label: 'Documents',           icon: <FiFileText size={14} /> },
 ];
 
+const DOCUMENT_TYPE_MAP = {
+  profilePhoto: 'Profile Photo',
+  idCard: 'National ID Card',
+  passport: 'Passport',
+  nursingLicense: 'Nursing License',
+  dbsCertificate: 'Certificate',
+};
+
 /* ── Main Component ── */
 export default function NurseProfile() {
   const { nurseId } = useParams();
@@ -75,12 +83,158 @@ export default function NurseProfile() {
 
   // ── Avatar upload ──
   const [avatarUrl, setAvatarUrl] = useState(null);
+  const [uploadingKey, setUploadingKey] = useState('');
   const avatarInputRef = useRef(null);
-  const handleAvatarChange = (e) => {
+  const uploadNurseDocument = useCallback(async (file, key) => {
+    const resolvedNurseId = nurse?._id || nurse?.id || nurseId;
+
+    if (!resolvedNurseId) {
+      throw new Error('Nurse ID is missing for upload.');
+    }
+
+    const fileName = file.name || 'document';
+    const fileType = (fileName.includes('.') ? fileName.split('.').pop() : file.type.split('/').pop() || 'bin').toLowerCase();
+
+    let presignResponse;
+    try {
+      presignResponse = await apiFetch('/media/b2/upload/presign', {
+        method: 'POST',
+        body: JSON.stringify({
+          subfolder: 'nurses',
+          fileName,
+          fileType,
+          contentType: file.type || fileType,
+        }),
+      });
+    } catch (requestError) {
+      if (requestError instanceof TypeError) {
+        throw new Error('Could not reach presign endpoint. Check backend URL, CORS, and network connectivity.');
+      }
+      throw requestError;
+    }
+
+    const presignResult = await presignResponse.json().catch(() => ({}));
+    if (!presignResponse.ok) {
+      throw new Error(presignResult.error || presignResult.message || `Presign failed (HTTP ${presignResponse.status})`);
+    }
+
+    const uploadConfig = presignResult.upload || presignResult.data?.upload || presignResult.result?.upload || presignResult;
+    const mediaConfig = presignResult.media || presignResult.data?.media || presignResult.result?.media || {};
+
+    const uploadUrl = uploadConfig.url || uploadConfig.uploadUrl || uploadConfig.presignedUrl;
+    const uploadMethod = (uploadConfig.method || (uploadConfig.fields ? 'POST' : 'PUT')).toUpperCase();
+    const uploadFields = uploadConfig.fields || null;
+    const uploadHeaders = uploadConfig.headers || {};
+    const objectKey = uploadConfig.objectKey || uploadConfig.key;
+    const mediaId = mediaConfig.id || uploadConfig.mediaId || uploadConfig.id;
+
+    if (!uploadUrl) {
+      throw new Error('Presign response missing upload URL.');
+    }
+    if (!objectKey || !mediaId) {
+      throw new Error('Presign response missing objectKey or mediaId.');
+    }
+
+    if (uploadMethod === 'POST' && uploadFields) {
+      const uploadForm = new FormData();
+      Object.entries(uploadFields).forEach(([field, value]) => uploadForm.append(field, value));
+      uploadForm.append('file', file);
+
+      let s3Response;
+      try {
+        s3Response = await fetch(uploadUrl, {
+          method: 'POST',
+          body: uploadForm,
+        });
+      } catch (uploadError) {
+        if (uploadError instanceof TypeError) {
+          throw new Error('Upload request to Backblaze failed. Verify bucket CORS allows your app origin for PUT/POST/OPTIONS.');
+        }
+        throw uploadError;
+      }
+
+      if (!s3Response.ok) {
+        throw new Error(`File upload failed (HTTP ${s3Response.status})`);
+      }
+    } else {
+      const normalizedHeaders = Object.entries(uploadHeaders).reduce((acc, [headerKey, headerValue]) => {
+        acc[headerKey] = headerValue;
+        return acc;
+      }, {});
+
+      if (!normalizedHeaders['Content-Type'] && !normalizedHeaders['content-type']) {
+        normalizedHeaders['Content-Type'] = file.type || 'application/octet-stream';
+      }
+
+      let s3Response;
+      try {
+        s3Response = await fetch(uploadUrl, {
+          method: uploadMethod,
+          headers: normalizedHeaders,
+          body: file,
+        });
+      } catch (uploadError) {
+        if (uploadError instanceof TypeError) {
+          throw new Error('Upload request to Backblaze failed. Verify bucket CORS allows your app origin for PUT/POST/OPTIONS.');
+        }
+        throw uploadError;
+      }
+
+      if (!s3Response.ok) {
+        throw new Error(`File upload failed (HTTP ${s3Response.status})`);
+      }
+    }
+
+    let registerResponse;
+    try {
+      registerResponse = await apiFetch('/nurses/add/documents', {
+        method: 'POST',
+        body: JSON.stringify({
+          nurseId: resolvedNurseId,
+          documentType: DOCUMENT_TYPE_MAP[key] || 'Certificate',
+          objectKey,
+          mediaId,
+        }),
+      });
+    } catch (registerError) {
+      if (registerError instanceof TypeError) {
+        throw new Error('File uploaded but document registration failed due to network/CORS issue reaching backend.');
+      }
+      throw registerError;
+    }
+
+    const result = await registerResponse.json().catch(() => ({}));
+    if (!registerResponse.ok) {
+      throw new Error(result.error || result.message || `Upload failed (HTTP ${registerResponse.status})`);
+    }
+
+    return result;
+  }, [nurse, nurseId]);
+
+  const handleAvatarChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const url = URL.createObjectURL(file);
-    setAvatarUrl(url);
+
+    setUploadingKey('profilePhoto');
+    try {
+      await uploadNurseDocument(file, 'profilePhoto');
+      const url = URL.createObjectURL(file);
+      setAvatarUrl(url);
+      setKycDocs(prev => ({
+        ...prev,
+        profilePhoto: {
+          url,
+          fileName: file.name,
+          fileType: file.type,
+          uploadedAt: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+        },
+      }));
+    } catch (uploadError) {
+      alert(uploadError.message || 'Failed to upload profile photo.');
+    } finally {
+      setUploadingKey('');
+      e.target.value = '';
+    }
   };
 
   // ── KYC document uploads ──
@@ -98,19 +252,34 @@ export default function NurseProfile() {
     nursingLicense: useRef(null),
     dbsCertificate: useRef(null),
   };
-  const handleKycUpload = (key) => (e) => {
+  const handleKycUpload = (key) => async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const isImage = file.type.startsWith('image/');
-    setKycDocs(prev => ({
-      ...prev,
-      [key]: {
-        url: isImage ? URL.createObjectURL(file) : null,
-        fileName: file.name,
-        fileType: file.type,
-        uploadedAt: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-      },
-    }));
+
+    setUploadingKey(key);
+    try {
+      await uploadNurseDocument(file, key);
+      const isImage = file.type.startsWith('image/');
+      const url = isImage ? URL.createObjectURL(file) : null;
+      setKycDocs(prev => ({
+        ...prev,
+        [key]: {
+          url,
+          fileName: file.name,
+          fileType: file.type,
+          uploadedAt: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+        },
+      }));
+
+      if (key === 'profilePhoto' && url) {
+        setAvatarUrl(url);
+      }
+    } catch (uploadError) {
+      alert(uploadError.message || 'Failed to upload document.');
+    } finally {
+      setUploadingKey('');
+      e.target.value = '';
+    }
   };
 
   // ── Fetch all profile sections ──
@@ -661,6 +830,11 @@ export default function NurseProfile() {
 
             return (
               <div>
+                {uploadingKey && (
+                  <div style={{ marginBottom: 12, padding: '8px 12px', borderRadius: 6, background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1d4ed8', fontSize: 12, fontWeight: 600 }}>
+                    Uploading {DOCUMENT_TYPE_MAP[uploadingKey] || uploadingKey}...
+                  </div>
+                )}
                 {/* ── KYC Status Banner ── */}
                 <div style={{
                   background: allVerified ? '#ecfdf5' : uploadedCount > 0 ? '#fffbeb' : '#fef2f2',
@@ -733,9 +907,10 @@ export default function NurseProfile() {
                         <input ref={kycInputRefs.profilePhoto} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleKycUpload('profilePhoto')} />
                         <button
                           onClick={() => kycInputRefs.profilePhoto.current?.click()}
+                          disabled={uploadingKey === 'profilePhoto'}
                           style={{ background: 'var(--kh-primary)', border: 'none', borderRadius: 7, padding: '6px 14px', fontSize: 12, fontWeight: 700, color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
                         >
-                          <FiCamera size={13} /> {photoSrc ? 'Replace Photo' : 'Upload Photo'}
+                          <FiCamera size={13} /> {uploadingKey === 'profilePhoto' ? 'Uploading...' : (photoSrc ? 'Replace Photo' : 'Upload Photo')}
                         </button>
                       </div>
 
@@ -875,8 +1050,8 @@ export default function NurseProfile() {
                                       <FiEye size={12} /> View
                                     </button>
                                     <input ref={kycInputRefs[slot.key]} type="file" accept="image/*,.pdf" style={{ display: 'none' }} onChange={handleKycUpload(slot.key)} />
-                                    <button onClick={() => kycInputRefs[slot.key].current?.click()} style={{ flex: 1, background: slot.accent, border: 'none', borderRadius: 6, padding: '5px 0', fontSize: 11.5, fontWeight: 700, color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-                                      <FiUpload size={12} /> Replace
+                                    <button onClick={() => kycInputRefs[slot.key].current?.click()} disabled={uploadingKey === slot.key} style={{ flex: 1, background: slot.accent, border: 'none', borderRadius: 6, padding: '5px 0', fontSize: 11.5, fontWeight: 700, color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, opacity: uploadingKey === slot.key ? 0.75 : 1 }}>
+                                      <FiUpload size={12} /> {uploadingKey === slot.key ? 'Uploading...' : 'Replace'}
                                     </button>
                                   </div>
                                 </>
@@ -889,9 +1064,10 @@ export default function NurseProfile() {
                                     <input ref={kycInputRefs[slot.key]} type="file" accept="image/*,.pdf" style={{ display: 'none' }} onChange={handleKycUpload(slot.key)} />
                                     <button
                                       onClick={() => kycInputRefs[slot.key].current?.click()}
-                                      style={{ background: slot.accent, border: 'none', borderRadius: 6, padding: '7px 18px', fontSize: 12, fontWeight: 700, color: '#fff', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5 }}
+                                      disabled={uploadingKey === slot.key}
+                                      style={{ background: slot.accent, border: 'none', borderRadius: 6, padding: '7px 18px', fontSize: 12, fontWeight: 700, color: '#fff', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5, opacity: uploadingKey === slot.key ? 0.75 : 1 }}
                                     >
-                                      <FiUpload size={12} /> Upload {slot.label}
+                                      <FiUpload size={12} /> {uploadingKey === slot.key ? 'Uploading...' : `Upload ${slot.label}`}
                                     </button>
                                   </div>
                                 </>

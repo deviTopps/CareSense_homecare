@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiPlus, FiSearch, FiChevronRight, FiChevronLeft, FiChevronsLeft, FiChevronsRight, FiArrowUp, FiArrowDown, FiCamera, FiUpload, FiX, FiCheck, FiSave, FiArrowRight, FiAlertCircle, FiClock, FiEdit } from 'react-icons/fi';
+import { FiPlus, FiSearch, FiChevronRight, FiChevronLeft, FiChevronsLeft, FiChevronsRight, FiArrowUp, FiArrowDown, FiCamera, FiUpload, FiX, FiCheck, FiSave, FiArrowRight, FiAlertCircle, FiClock, FiEdit, FiEye } from 'react-icons/fi';
 import { apiFetch } from '../api';
 
 const ROLE_LABELS = { head_nurse: 'Head Nurse', supervising_nurse: 'Supervising Nurse', Office_nurse: 'Office Nurse', field_nurse: 'Field Nurse' };
@@ -69,7 +69,6 @@ export default function Workforce() {
           phone: n.phone || '—',
           email: n.email || '—',
           gender: n.gender || '—',
-          status: n.status || 'active',
           joined: n.createdAt ? new Date(n.createdAt).toISOString().split('T')[0] : '—',
           address: n.address || '—',
           completedStep,
@@ -99,7 +98,7 @@ export default function Workforce() {
   const incompleteNurses = nurses.filter(n => !n.isComplete);
   const filtered = nurses.filter(n => {
     const sm = !search || n.name.toLowerCase().includes(search.toLowerCase()) || n.license.toLowerCase().includes(search.toLowerCase()) || n.email.toLowerCase().includes(search.toLowerCase());
-    const fm = filter === 'All' || (filter === 'Incomplete' ? !n.isComplete : n.status === filter.toLowerCase().replace(' ', '-'));
+    const fm = filter === 'All' || (filter === 'Incomplete' ? !n.isComplete : true);
     return sm && fm;
   });
   const handleSort = col => { if (sortField === col) { setSortDir(d => d === 'asc' ? 'desc' : 'asc'); } else { setSortField(col); setSortDir('asc'); } };
@@ -143,12 +142,12 @@ export default function Workforce() {
 
   const continueRegistration = (nurse, e) => {
     e.stopPropagation();
-    // Personal info (step 0) is always saved when a nurse exists in the system.
-    // Mark it complete and open at step 1. The "already exists" guard in saveStep
-    // will auto-advance through any other already-completed steps transparently.
+    const completedCount = Math.min(Math.max(nurse.completedStep || 1, 1), STEPS.length);
+    const doneSteps = Array.from({ length: completedCount }, (_, index) => index);
+    const nextStep = Math.min(completedCount, STEPS.length - 1);
     setNurseId(nurse.id);
-    setCompletedSteps([0]);
-    setStep(1);
+    setCompletedSteps(doneSteps);
+    setStep(nextStep);
     setShowModal(true);
   };
 
@@ -523,7 +522,7 @@ export default function Workforce() {
                 onChange={e => { setSearch(e.target.value); setPage(1); }} style={{ paddingLeft: 34, width: 240, fontSize: 13, background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.25)', color: '#fff' }} />
             </div>
             <div className="d-flex gap-1">
-              {['All', 'Active', 'Incomplete', 'On Leave'].map(f => (
+              {['All', 'Incomplete'].map(f => (
                 <button key={f} onClick={() => { setFilter(f); setPage(1); }} style={{ padding: '6px 16px', borderRadius: 2, fontSize: 12, fontWeight: 700, border: 'none', cursor: 'pointer', background: filter === f ? '#fff' : 'rgba(255,255,255,0.15)', color: filter === f ? '#45B6FE' : '#fff', transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: 5 }}>
                   {f}
                   {f === 'Incomplete' && incompleteNurses.length > 0 && (
@@ -541,25 +540,6 @@ export default function Workforce() {
           </div>
         </div>
 
-        {!loading && incompleteNurses.length > 0 && filter !== 'Incomplete' && (
-          <div style={{ padding: '12px 20px', background: 'linear-gradient(135deg, #fffbeb, #fef3c7)', borderBottom: '1px solid #fde68a', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#fef3c7', border: '2px solid #f59e0b', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <FiClock size={15} color="#d97706" />
-              </div>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: '#92400e' }}>
-                  {incompleteNurses.length} nurse{incompleteNurses.length !== 1 ? 's have' : ' has'} incomplete registration{incompleteNurses.length !== 1 ? 's' : ''}
-                </div>
-                <div style={{ fontSize: 12, color: '#a16207' }}>These nurses started registration but haven't completed all steps.</div>
-              </div>
-            </div>
-            <button onClick={() => { setFilter('Incomplete'); setPage(1); }} style={{ padding: '6px 14px', fontSize: 12, fontWeight: 700, borderRadius: 6, border: '1px solid #f59e0b', background: '#fff', color: '#d97706', cursor: 'pointer', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 5 }}>
-              <FiEdit size={12} /> View Incomplete
-            </button>
-          </div>
-        )}
-
         <div className="table-responsive">
           <table className="table kh-table" style={{ marginBottom: 0 }}>
             <thead><tr>
@@ -570,19 +550,18 @@ export default function Workforce() {
               <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('gender')}>Gender <SortIcon col="gender" /></th>
               <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('phone')}>Phone <SortIcon col="phone" /></th>
               <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('joined')}>Joined <SortIcon col="joined" /></th>
-              <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('status')}>Status <SortIcon col="status" /></th>
               <th style={{ width: 40 }}></th>
             </tr></thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={9} className="text-center py-5">
+                <tr><td colSpan={8} className="text-center py-5">
                   <div className="d-flex align-items-center justify-content-center gap-2" style={{ color: 'var(--kh-text-muted)', fontSize: 13 }}>
                     <div className="spinner-border spinner-border-sm" role="status" style={{ color: '#45B6FE' }} />
                     <span>Loading nurses…</span>
                   </div>
                 </td></tr>
               ) : paged.length === 0 ? (
-                <tr><td colSpan={9} className="text-center py-4" style={{ color: 'var(--kh-text-muted)', fontSize: 13 }}>
+                <tr><td colSpan={8} className="text-center py-4" style={{ color: 'var(--kh-text-muted)', fontSize: 13 }}>
                   {nurses.length === 0 ? 'No nurses registered yet. Click "Register Nurse" to add one.' : 'No nurses match your search.'}
                 </td></tr>
               ) : paged.map((n, i) => (
@@ -599,19 +578,10 @@ export default function Workforce() {
                   <td style={{ fontSize: 13 }}>{n.gender}</td>
                   <td style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>{n.phone}</td>
                   <td style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>{n.joined}</td>
-                  <td>
-                    {!n.isComplete ? (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 12, fontSize: 11.5, fontWeight: 700, background: '#fef3c7', color: '#d97706', border: '1px solid #fde68a' }}>
-                        <FiClock size={11} /> Step {n.completedStep}/4
-                      </span>
-                    ) : (
-                      <span className={`badge-kh ${n.status === 'active' ? 'completed' : 'scheduled'}`}>{n.status === 'active' ? 'Active' : n.status === 'on-leave' ? 'On Leave' : n.status.charAt(0).toUpperCase() + n.status.slice(1)}</span>
-                    )}
-                  </td>
                   <td style={{ textAlign: 'center' }}>
                     {!n.isComplete ? (
-                      <button onClick={(e) => continueRegistration(n, e)} title="Continue registration" style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 10px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', boxShadow: '0 1px 4px rgba(217,119,6,0.25)' }}>
-                        <FiEdit size={11} /> Continue
+                      <button onClick={(e) => continueRegistration(n, e)} title="View remaining details" style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 10px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', boxShadow: '0 1px 4px rgba(217,119,6,0.25)' }}>
+                        <FiEye size={11} /> View
                       </button>
                     ) : (
                       <FiChevronRight size={14} style={{ color: '#45B6FE' }} />
@@ -648,40 +618,13 @@ export default function Workforce() {
       {showModal && (
         <div className="modal d-block" style={{ background: 'rgba(0,0,0,0.25)', backdropFilter: 'blur(4px)' }} onClick={closeModal}>
           <div className="modal-dialog modal-dialog-centered modal-dialog-scrollable" style={{ maxWidth: 1060 }} onClick={e => e.stopPropagation()}>
-            <div className="modal-content" style={{ borderRadius: 16, border: 'none', boxShadow: '0 20px 60px rgba(0,0,0,0.12)' }}>
+            <div className="modal-content" style={{ borderRadius: 3, border: 'none', boxShadow: '0 20px 60px rgba(0,0,0,0.12)' }}>
 
               {/* Header */}
               <div className="modal-header" style={{ borderBottom: '1px solid var(--kh-border-light)', padding: '20px 24px', background: '#F0F7FE' }}>
                 <div style={{ flex: 1 }}>
                   <h6 className="modal-title" style={{ fontWeight: 700, fontSize: 16, marginBottom: 10 }}>Register Nurse</h6>
-                  {/* Step indicator */}
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    {STEPS.map((s, i) => {
-                      const done = completedSteps.includes(i);
-                      const active = i === step;
-                      return (
-                        <div key={s.key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <button
-                            onClick={() => { if (done || i === 0 || completedSteps.includes(i - 1)) setStep(i); }}
-                            disabled={i > 0 && !done && !completedSteps.includes(i - 1)}
-                            style={{
-                              display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 20,
-                              border: active ? '2px solid #45B6FE' : '1px solid var(--kh-border-light)',
-                              background: done ? '#45B6FE' : active ? '#F0F7FE' : '#fff',
-                              color: done ? '#fff' : active ? '#2E7DB8' : 'var(--kh-text-muted)',
-                              cursor: (done || i === 0 || completedSteps.includes(i - 1)) ? 'pointer' : 'default',
-                              fontSize: 11.5, fontWeight: 700, transition: 'all 0.2s',
-                              opacity: (i > 0 && !done && !completedSteps.includes(i - 1)) ? 0.5 : 1,
-                            }}
-                          >
-                            {done ? <FiCheck size={12} /> : <span style={{ width: 16, height: 16, borderRadius: '50%', background: active ? '#45B6FE' : '#d1d5db', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800 }}>{i + 1}</span>}
-                            <span className="d-none d-md-inline">{s.label}</span>
-                          </button>
-                          {i < STEPS.length - 1 && <div style={{ width: 20, height: 2, background: done ? '#45B6FE' : '#e5e7eb' }} />}
-                        </div>
-                      );
-                    })}
-                  </div>
+                  <div style={{ fontSize: 12.5, color: '#2E7DB8', fontWeight: 600 }}>View and update the remaining nurse registration details.</div>
                 </div>
                 <button className="btn-close" onClick={closeModal} />
               </div>
