@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "CareSense",
+    "slug": "CareSenseApp",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/main.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#45B6FE"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.caresense.nurseapp"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#45B6FE"
+      },
+      "package": "com.caresense.nurseapp"
+    },
+    "web": {
+      "favicon": "./assets/icon.png"
+    },
+    "plugins": [
+      "expo-font"
+    ]
+  }
+}
