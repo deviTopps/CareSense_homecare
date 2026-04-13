@@ -18,6 +18,7 @@ import NurseScheduling from './pages/NurseScheduling';
 import Account from './pages/Account';
 import Billing from './pages/Billing';
 import Auth from './pages/Auth';
+import LandingPage from './pages/LandingPage';
 
 /* ── Protected Route wrapper ── */
 function ProtectedRoute({ isAuthenticated, children }) {
@@ -44,7 +45,7 @@ function App() {
 
   const handleLogin = useCallback(() => {
     setIsAuthenticated(true);
-    navigate('/', { replace: true });
+    navigate('/dashboard', { replace: true });
   }, [navigate]);
 
   const handleLogout = useCallback(() => {
@@ -71,11 +72,13 @@ function App() {
     <Routes>
       {/* Public route */}
       <Route path="/login" element={
-        isAuthenticated ? <Navigate to="/" replace /> : <Auth onLogin={handleLogin} />
+        isAuthenticated ? <Navigate to="/dashboard" replace /> : <Auth onLogin={handleLogin} />
       } />
 
+      <Route path="/" element={<LandingPage />} />
+
       {/* Protected routes */}
-      <Route path="/" element={
+      <Route path="/dashboard" element={
         <ProtectedRoute isAuthenticated={isAuthenticated}>
           <AuthLayout><Dashboard /></AuthLayout>
         </ProtectedRoute>
@@ -142,7 +145,7 @@ function App() {
       } />
 
       {/* 404 catch-all — redirect to dashboard if logged in, else login */}
-      <Route path="*" element={<Navigate to={isAuthenticated ? '/' : '/login'} replace />} />
+      <Route path="*" element={<Navigate to={isAuthenticated ? '/dashboard' : '/'} replace />} />
     </Routes>
   );
 }

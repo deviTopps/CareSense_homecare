@@ -7,6 +7,7 @@ import {
   FiPrinter, FiMoreHorizontal, FiClock, FiCamera, FiPlus, FiX, FiSend,
   FiSearch, FiBell, FiChevronDown, FiChevronRight, FiBarChart2
 } from 'react-icons/fi';
+import compressImage from '../utils/compressImage';
 
 /* ── Patient data ── */
 const patientsData = [
@@ -584,12 +585,13 @@ export default function PatientProfile() {
     return { day: days[d.getDay()], date: d.getDate(), month: months[d.getMonth()] };
   };
 
-  const handlePhoto = (e) => {
+  const handlePhoto = async (e) => {
     const file = e.target.files?.[0];
     if (file) {
+      const compressed = await compressImage(file, { maxWidth: 400, maxHeight: 400, quality: 0.75 });
       const reader = new FileReader();
       reader.onloadend = () => setPhoto(reader.result);
-      reader.readAsDataURL(file);
+      reader.readAsDataURL(compressed);
     }
   };
 
@@ -643,7 +645,7 @@ export default function PatientProfile() {
             onMouseLeave={e => e.currentTarget.style.borderColor = '#d1d5db'}
           >
             {photo
-              ? <img src={photo} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
+              ? <img src={photo} alt={p.name} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
               : <FiCamera size={18} style={{ color: '#9ca3af' }} />
             }
           </div>

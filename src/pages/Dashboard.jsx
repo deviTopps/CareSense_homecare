@@ -121,6 +121,9 @@ export default function Dashboard() {
           <h5 style={{ fontSize: 24, fontWeight: 900, letterSpacing: '-0.03em', marginBottom: 4, color: 'var(--kh-text)' }}>
             Good morning, Ama 👋
           </h5>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#F0F7FE', border: '1px solid #bfe0fd', borderRadius: 10, padding: '3px 12px', marginBottom: 6 }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: '#1565A0' }}>Kulobal Homecare Agency</span>
+          </div>
           <p style={{ fontSize: 13.5, color: 'var(--kh-text-muted)', margin: 0 }}>
             Here's what's happening across your homecare operations today.
           </p>

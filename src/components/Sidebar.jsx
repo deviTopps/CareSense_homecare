@@ -8,7 +8,7 @@ import {
 
 const navItems = [
   { label: 'OVERVIEW', type: 'section' },
-  { to: '/',           icon: <FiGrid />,     label: 'Dashboard' },
+  { to: '/dashboard',  icon: <FiGrid />,     label: 'Dashboard' },
   { to: '/patients',   icon: <FiActivity />, label: 'Patients' },
   { to: '/workforce',  icon: <FiUsers />,    label: 'Nurses' },
   { label: 'OPERATIONS', type: 'section' },

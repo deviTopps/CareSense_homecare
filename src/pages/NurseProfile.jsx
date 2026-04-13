@@ -6,9 +6,10 @@ import {
   FiCheckCircle, FiClock, FiPrinter, FiMoreHorizontal,
   FiShield, FiAward, FiClipboard, FiUpload, FiAlertCircle,
   FiChevronLeft, FiChevronRight, FiChevronsLeft, FiChevronsRight,
-  FiRefreshCw, FiCheck, FiCamera,
+  FiRefreshCw, FiCheck, FiCamera, FiX, FiSave, FiPlus, FiTrash2, FiUsers,
 } from 'react-icons/fi';
-import { apiFetch } from '../api';
+import { apiFetch, API_BASE } from '../api';
+import compressImage, { createThumbnailURL } from '../utils/compressImage';
 
 const ROLE_LABELS = {
   head_nurse: 'Head Nurse',
@@ -16,6 +17,25 @@ const ROLE_LABELS = {
   Office_nurse: 'Office Nurse',
   field_nurse: 'Field Nurse',
 };
+
+/* ── Mock patients data (mirrors Patients.jsx) ── */
+const ALL_PATIENTS = [
+  { id: 'P-1001', name: 'Kwame Boateng', age: 72, gender: 'Male', diagnosis: 'Hypertension, Type 2 Diabetes', region: 'Accra', nurses: ['Efua Mensah'], status: 'active', enrolled: '2024-06-01' },
+  { id: 'P-1002', name: 'Abena Osei', age: 65, gender: 'Female', diagnosis: 'Post-surgical wound care', region: 'Kumasi', nurses: ['Yaa Asantewaa', 'Ama Darko'], status: 'active', enrolled: '2024-08-15' },
+  { id: 'P-1003', name: 'Kofi Ankrah', age: 58, gender: 'Male', diagnosis: 'Diabetes, Peripheral Neuropathy', region: 'Tamale', nurses: ['Ama Darko'], status: 'active', enrolled: '2024-09-20' },
+  { id: 'P-1004', name: 'Akosua Mensah', age: 80, gender: 'Female', diagnosis: 'GERD, Osteoarthritis', region: 'Accra', nurses: [], status: 'active', enrolled: '2025-01-10' },
+  { id: 'P-1005', name: 'Yaw Frimpong', age: 45, gender: 'Male', diagnosis: 'Stroke rehabilitation', region: 'Takoradi', nurses: [], status: 'active', enrolled: '2025-03-01' },
+  { id: 'P-1006', name: 'Esi Appiah', age: 68, gender: 'Female', diagnosis: 'COPD, Asthma', region: 'Accra', nurses: ['Yaa Asantewaa'], status: 'active', enrolled: '2025-06-15' },
+  { id: 'P-1007', name: 'Nana Agyemang', age: 77, gender: 'Male', diagnosis: 'Heart failure, Chronic kidney disease', region: 'Accra', nurses: ['Efua Mensah'], status: 'discharged', enrolled: '2024-04-01' },
+  { id: 'P-1008', name: 'Afia Kumah', age: 55, gender: 'Female', diagnosis: 'Rheumatoid Arthritis', region: 'Cape Coast', nurses: [], status: 'active', enrolled: '2025-11-01' },
+  { id: 'P-1009', name: 'Kwesi Mensah', age: 63, gender: 'Male', diagnosis: 'Chronic Kidney Disease Stage 3', region: 'Accra', nurses: ['Efua Mensah'], status: 'active', enrolled: '2025-02-10' },
+  { id: 'P-1010', name: 'Adwoa Darko', age: 70, gender: 'Female', diagnosis: 'Parkinson Disease', region: 'Kumasi', nurses: ['Yaa Asantewaa'], status: 'active', enrolled: '2025-04-20' },
+  { id: 'P-1011', name: 'Kojo Asante', age: 82, gender: 'Male', diagnosis: 'Dementia, Hypertension', region: 'Accra', nurses: [], status: 'active', enrolled: '2025-07-01' },
+  { id: 'P-1012', name: 'Efua Aidoo', age: 48, gender: 'Female', diagnosis: 'Multiple Sclerosis', region: 'Takoradi', nurses: ['Adwoa Badu'], status: 'active', enrolled: '2025-09-15' },
+  { id: 'P-1013', name: 'Yaa Ofosu', age: 74, gender: 'Female', diagnosis: 'Congestive Heart Failure', region: 'Sunyani', nurses: ['Yaa Asantewaa'], status: 'active', enrolled: '2025-08-01' },
+  { id: 'P-1014', name: 'Ama Boahen', age: 60, gender: 'Female', diagnosis: 'Breast cancer post-mastectomy', region: 'Ho', nurses: ['Ama Darko'], status: 'active', enrolled: '2025-10-05' },
+  { id: 'P-1015', name: 'Kwaku Mensah', age: 69, gender: 'Male', diagnosis: 'COPD, Emphysema', region: 'Bolgatanga', nurses: ['Adwoa Badu'], status: 'discharged', enrolled: '2024-11-20' },
+];
 
 /* ── Tiny shared components ── */
 const DataRow = ({ label, children, missing }) => (
@@ -60,11 +80,21 @@ const TABS = [
 ];
 
 const DOCUMENT_TYPE_MAP = {
-  profilePhoto: 'Profile Photo',
-  idCard: 'National ID Card',
-  passport: 'Passport',
-  nursingLicense: 'Nursing License',
+  profilePhoto: 'Other',
+  idCard: 'ID',
+  passport: 'ID',
+  nursingLicense: 'License',
   dbsCertificate: 'Certificate',
+};
+
+/* Reverse-map: try to match an API document to a kycDocs slot by documentType.
+   Since multiple slots share the same type (e.g. idCard & passport → 'ID'),
+   we fill the first unoccupied slot that matches. */
+const DOC_TYPE_TO_SLOTS = {
+  Other: ['profilePhoto'],
+  ID: ['idCard', 'passport'],
+  License: ['nursingLicense'],
+  Certificate: ['dbsCertificate'],
 };
 
 /* ── Main Component ── */
@@ -84,141 +114,211 @@ export default function NurseProfile() {
   // ── Avatar upload ──
   const [avatarUrl, setAvatarUrl] = useState(null);
   const [uploadingKey, setUploadingKey] = useState('');
+  const [previewDoc, setPreviewDoc] = useState(null); // { url, fileName, fileType, label }
+  const [editingSection, setEditingSection] = useState(null); // 'personal' | 'diversity' | 'education' | 'supporting'
+  const [editForm, setEditForm] = useState({});
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState('');
+
+  const ef = (field) => editForm[field] ?? '';
+  const uf = (field, value) => setEditForm(prev => ({ ...prev, [field]: value }));
+
+  const SECTION_ENDPOINTS = {
+    personal:       '/nurses/update/personal-info',
+    professional:   '/nurses/update/personal-info',
+    diversity:      '/nurses/update/diversity-info',
+    education:      '/nurses/update/education-info',
+    qualifications: '/nurses/update/education-info',
+    training:       '/nurses/update/education-info',
+    employment:     '/nurses/update/education-info',
+    supporting:     '/nurses/update/supporting-info',
+  };
+
+  const startEditing = (section, data) => {
+    setEditingSection(section);
+    setEditForm(data || {});
+    setEditError('');
+  };
+
+  const cancelEditing = () => {
+    setEditingSection(null);
+    setEditForm({});
+    setEditError('');
+  };
+
+  const handleSaveSection = async () => {
+    const endpoint = SECTION_ENDPOINTS[editingSection];
+    if (!endpoint) return;
+    const resolvedId = nurse?._id || nurse?.id || nurseId;
+    setSavingEdit(true);
+    setEditError('');
+    try {
+      const res = await apiFetch(endpoint, {
+        method: 'PATCH',
+        body: JSON.stringify({ nurseId: resolvedId, ...editForm }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error || d.message || `Update failed (HTTP ${res.status})`);
+      }
+      // Refresh profile data from server
+      await fetchProfile();
+      setEditingSection(null);
+      setEditForm({});
+    } catch (err) {
+      setEditError(err.message || 'Failed to save changes.');
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const editInputStyle = { width: '100%', padding: '7px 10px', fontSize: 12.5, border: '1px solid #d1d5db', borderRadius: 4, background: '#fff', color: 'var(--kh-text)', outline: 'none' };
+  const editSelectStyle = { ...editInputStyle, appearance: 'auto' };
+  const EditRow = ({ label, field, type = 'text', options, children }) => (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #f3f4f6', fontSize: 12.5, gap: 12 }}>
+      <span style={{ flexShrink: 0, color: 'var(--kh-text-muted)', fontWeight: 500, minWidth: 110 }}>{label}</span>
+      {children || (
+        options ? (
+          <select style={editSelectStyle} value={ef(field)} onChange={e => uf(field, e.target.value)}>
+            <option value="">Select...</option>
+            {options.map(o => <option key={o} value={o}>{o}</option>)}
+          </select>
+        ) : (
+          <input type={type} style={editInputStyle} value={ef(field)} onChange={e => uf(field, e.target.value)} />
+        )
+      )}
+    </div>
+  );
+
+  const EditActions = () => (
+    <div style={{ display: 'flex', gap: 8, marginTop: 14, justifyContent: 'flex-end' }}>
+      {editError && <div style={{ flex: 1, fontSize: 12, color: '#dc2626', display: 'flex', alignItems: 'center', gap: 4 }}><FiAlertCircle size={12} />{editError}</div>}
+      <button onClick={cancelEditing} disabled={savingEdit} style={{ padding: '7px 16px', fontSize: 12, fontWeight: 600, border: '1px solid #d1d5db', borderRadius: 6, background: '#fff', color: '#374151', cursor: 'pointer' }}>
+        Cancel
+      </button>
+      <button onClick={handleSaveSection} disabled={savingEdit} style={{ padding: '7px 16px', fontSize: 12, fontWeight: 700, border: 'none', borderRadius: 6, background: '#45B6FE', color: '#fff', cursor: savingEdit ? 'not-allowed' : 'pointer', opacity: savingEdit ? 0.7 : 1, display: 'flex', alignItems: 'center', gap: 5 }}>
+        <FiSave size={12} /> {savingEdit ? 'Saving…' : 'Save Changes'}
+      </button>
+    </div>
+  );
   const avatarInputRef = useRef(null);
-  const uploadNurseDocument = useCallback(async (file, key) => {
+  const uploadNurseDocument = useCallback(async (file, key, { registerEndpoint } = {}) => {
     const resolvedNurseId = nurse?._id || nurse?.id || nurseId;
 
     if (!resolvedNurseId) {
       throw new Error('Nurse ID is missing for upload.');
     }
 
-    const fileName = file.name || 'document';
-    const fileType = (fileName.includes('.') ? fileName.split('.').pop() : file.type.split('/').pop() || 'bin').toLowerCase();
+    /* ── Step 1: Upload file to storage via server ── */
+    const formData = new FormData();
+    formData.append('file', file);
 
-    let presignResponse;
+    let uploadResponse;
     try {
-      presignResponse = await apiFetch('/media/b2/upload/presign', {
-        method: 'POST',
-        body: JSON.stringify({
-          subfolder: 'nurses',
-          fileName,
-          fileType,
-          contentType: file.type || fileType,
-        }),
-      });
+      const token = localStorage.getItem('token');
+      uploadResponse = await fetch(
+        `${API_BASE}/media/b2/upload/direct`,
+        {
+          method: 'POST',
+          headers: {
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: formData,
+        },
+      );
     } catch (requestError) {
       if (requestError instanceof TypeError) {
-        throw new Error('Could not reach presign endpoint. Check backend URL, CORS, and network connectivity.');
+        throw new Error('Could not reach upload endpoint. Check backend URL, CORS, and network connectivity.');
       }
       throw requestError;
     }
 
-    const presignResult = await presignResponse.json().catch(() => ({}));
-    if (!presignResponse.ok) {
-      throw new Error(presignResult.error || presignResult.message || `Presign failed (HTTP ${presignResponse.status})`);
+    const uploadResult = await uploadResponse.json().catch(() => ({}));
+    if (!uploadResponse.ok) {
+      throw new Error(uploadResult.error || uploadResult.message || `Upload failed (HTTP ${uploadResponse.status})`);
     }
 
-    const uploadConfig = presignResult.upload || presignResult.data?.upload || presignResult.result?.upload || presignResult;
-    const mediaConfig = presignResult.media || presignResult.data?.media || presignResult.result?.media || {};
+    const objectKey = uploadResult.upload?.objectKey;
+    const mediaId = uploadResult.media?.id;
 
-    const uploadUrl = uploadConfig.url || uploadConfig.uploadUrl || uploadConfig.presignedUrl;
-    const uploadMethod = (uploadConfig.method || (uploadConfig.fields ? 'POST' : 'PUT')).toUpperCase();
-    const uploadFields = uploadConfig.fields || null;
-    const uploadHeaders = uploadConfig.headers || {};
-    const objectKey = uploadConfig.objectKey || uploadConfig.key;
-    const mediaId = mediaConfig.id || uploadConfig.mediaId || uploadConfig.id;
-
-    if (!uploadUrl) {
-      throw new Error('Presign response missing upload URL.');
-    }
     if (!objectKey || !mediaId) {
-      throw new Error('Presign response missing objectKey or mediaId.');
+      throw new Error('Upload response missing objectKey or mediaId.');
     }
 
-    if (uploadMethod === 'POST' && uploadFields) {
-      const uploadForm = new FormData();
-      Object.entries(uploadFields).forEach(([field, value]) => uploadForm.append(field, value));
-      uploadForm.append('file', file);
-
-      let s3Response;
-      try {
-        s3Response = await fetch(uploadUrl, {
-          method: 'POST',
-          body: uploadForm,
-        });
-      } catch (uploadError) {
-        if (uploadError instanceof TypeError) {
-          throw new Error('Upload request to Backblaze failed. Verify bucket CORS allows your app origin for PUT/POST/OPTIONS.');
-        }
-        throw uploadError;
-      }
-
-      if (!s3Response.ok) {
-        throw new Error(`File upload failed (HTTP ${s3Response.status})`);
-      }
+    /* ── Step 2: Register the document/profile picture ── */
+    let endpoint, body, method;
+    if (registerEndpoint) {
+      // Profile picture — try multiple common route patterns
+      endpoint = registerEndpoint.replace(':nurseId', resolvedNurseId);
+      body = { nurseId: resolvedNurseId, objectKey, mediaId };
+      method = 'PUT';
     } else {
-      const normalizedHeaders = Object.entries(uploadHeaders).reduce((acc, [headerKey, headerValue]) => {
-        acc[headerKey] = headerValue;
-        return acc;
-      }, {});
-
-      if (!normalizedHeaders['Content-Type'] && !normalizedHeaders['content-type']) {
-        normalizedHeaders['Content-Type'] = file.type || 'application/octet-stream';
-      }
-
-      let s3Response;
-      try {
-        s3Response = await fetch(uploadUrl, {
-          method: uploadMethod,
-          headers: normalizedHeaders,
-          body: file,
-        });
-      } catch (uploadError) {
-        if (uploadError instanceof TypeError) {
-          throw new Error('Upload request to Backblaze failed. Verify bucket CORS allows your app origin for PUT/POST/OPTIONS.');
-        }
-        throw uploadError;
-      }
-
-      if (!s3Response.ok) {
-        throw new Error(`File upload failed (HTTP ${s3Response.status})`);
-      }
+      endpoint = '/nurses/add/documents';
+      body = { nurseId: resolvedNurseId, documentType: DOCUMENT_TYPE_MAP[key] || 'Certificate', objectKey, mediaId };
+      method = 'POST';
     }
 
     let registerResponse;
     try {
-      registerResponse = await apiFetch('/nurses/add/documents', {
-        method: 'POST',
-        body: JSON.stringify({
-          nurseId: resolvedNurseId,
-          documentType: DOCUMENT_TYPE_MAP[key] || 'Certificate',
-          objectKey,
-          mediaId,
-        }),
+      registerResponse = await apiFetch(endpoint, {
+        method,
+        body: JSON.stringify(body),
       });
+
+      // If PUT returns 404, retry with PATCH
+      if (registerEndpoint && registerResponse.status === 404) {
+        registerResponse = await apiFetch(endpoint, {
+          method: 'PATCH',
+          body: JSON.stringify(body),
+        });
+      }
+      // If still 404, retry with POST
+      if (registerEndpoint && registerResponse.status === 404) {
+        registerResponse = await apiFetch(endpoint, {
+          method: 'POST',
+          body: JSON.stringify(body),
+        });
+      }
+
+
     } catch (registerError) {
       if (registerError instanceof TypeError) {
-        throw new Error('File uploaded but document registration failed due to network/CORS issue reaching backend.');
+        throw new Error('File uploaded but registration failed due to network/CORS issue reaching backend.');
       }
       throw registerError;
     }
 
     const result = await registerResponse.json().catch(() => ({}));
     if (!registerResponse.ok) {
-      throw new Error(result.error || result.message || `Upload failed (HTTP ${registerResponse.status})`);
+      throw new Error(result.error || result.message || `Registration failed (HTTP ${registerResponse.status})`);
     }
 
     return result;
   }, [nurse, nurseId]);
 
+  const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
+  const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+  const ALLOWED_DOC_TYPES   = [...ALLOWED_IMAGE_TYPES, 'application/pdf'];
+
   const handleAvatarChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      alert('Only JPG, PNG, or WebP images are allowed.'); e.target.value = ''; return;
+    }
+    if (file.size > MAX_FILE_SIZE) {
+      alert('File must be under 5 MB.'); e.target.value = ''; return;
+    }
+
     setUploadingKey('profilePhoto');
     try {
-      await uploadNurseDocument(file, 'profilePhoto');
-      const url = URL.createObjectURL(file);
+      // Compress image before uploading (faster upload + less bandwidth)
+      const compressed = await compressImage(file, { maxWidth: 800, maxHeight: 800, quality: 0.75 });
+      await uploadNurseDocument(compressed, 'profilePhoto', { registerEndpoint: '/nurses/update/profile-picture' });
+      // Use a small thumbnail for the avatar preview
+      const thumbUrl = await createThumbnailURL(compressed, 200);
+      const url = thumbUrl || URL.createObjectURL(compressed);
       setAvatarUrl(url);
       setKycDocs(prev => ({
         ...prev,
@@ -230,7 +330,7 @@ export default function NurseProfile() {
         },
       }));
     } catch (uploadError) {
-      alert(uploadError.message || 'Failed to upload profile photo.');
+      alert('Failed to upload profile photo. Please try again.');
     } finally {
       setUploadingKey('');
       e.target.value = '';
@@ -256,26 +356,41 @@ export default function NurseProfile() {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    const allowed = key === 'profilePhoto' ? ALLOWED_IMAGE_TYPES : ALLOWED_DOC_TYPES;
+    if (!allowed.includes(file.type)) {
+      alert(key === 'profilePhoto' ? 'Only JPG, PNG, or WebP images are allowed.' : 'Only JPG, PNG, WebP, or PDF files are allowed.');
+      e.target.value = ''; return;
+    }
+    if (file.size > MAX_FILE_SIZE) {
+      alert('File must be under 5 MB.'); e.target.value = ''; return;
+    }
+
     setUploadingKey(key);
     try {
-      await uploadNurseDocument(file, key);
-      const isImage = file.type.startsWith('image/');
-      const url = isImage ? URL.createObjectURL(file) : null;
+      // Compress images before upload (smaller payload = faster upload)
+      const compressed = await compressImage(file, { maxWidth: 1200, maxHeight: 1200, quality: 0.8 });
+      const opts = key === 'profilePhoto' ? { registerEndpoint: '/nurses/update/profile-picture' } : undefined;
+      await uploadNurseDocument(compressed, key, opts);
+
+      const isImage = compressed.type.startsWith('image/');
+      // Use small thumbnail for card grid (loads instantly), keep original URL for full preview
+      const thumbUrl = isImage ? await createThumbnailURL(compressed, 300) : null;
       setKycDocs(prev => ({
         ...prev,
         [key]: {
-          url,
+          url: thumbUrl,
+          fullUrl: isImage ? URL.createObjectURL(compressed) : null,
           fileName: file.name,
           fileType: file.type,
           uploadedAt: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
         },
       }));
 
-      if (key === 'profilePhoto' && url) {
-        setAvatarUrl(url);
+      if (key === 'profilePhoto' && thumbUrl) {
+        setAvatarUrl(thumbUrl);
       }
     } catch (uploadError) {
-      alert(uploadError.message || 'Failed to upload document.');
+      alert('Failed to upload document. Please try again.');
     } finally {
       setUploadingKey('');
       e.target.value = '';
@@ -295,11 +410,50 @@ export default function NurseProfile() {
         throw new Error(`HTTP ${res.status}`);
       }
       const data = await res.json();
-      // API returns { personal, diversity, education, supportingInfo }
+      // API returns { personal, diversity, education, supportingInfo, documents }
       setNurse(data.personal || data.nurse || data);
       setDiversity(data.diversity || null);
       setEducation(data.education || null);
       setSupporting(data.supportingInfo || null);
+
+      // ── Hydrate kycDocs from persisted documents ──
+      if (Array.isArray(data.documents) && data.documents.length > 0) {
+        const filled = {}; // track which slots are already filled
+        const newKyc = {
+          profilePhoto: null,
+          idCard: null,
+          passport: null,
+          nursingLicense: null,
+          dbsCertificate: null,
+        };
+
+        for (const doc of data.documents) {
+          const possibleSlots = DOC_TYPE_TO_SLOTS[doc.documentType] || [];
+          const targetSlot = possibleSlots.find(s => !filled[s]);
+          if (!targetSlot) continue; // no matching unfilled slot
+          filled[targetSlot] = true;
+
+          const url = doc.link?.url || null;
+          newKyc[targetSlot] = {
+            url,
+            fileName: doc.objectKey?.split('/').pop() || doc.documentType,
+            fileType: doc.documentType,
+            uploadedAt: doc.createdAt
+              ? new Date(doc.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+              : '—',
+            mediaId: doc.mediaId,
+            objectKey: doc.objectKey,
+            docId: doc.id,
+          };
+
+          // If profile photo, also set the avatar
+          if (targetSlot === 'profilePhoto' && url) {
+            setAvatarUrl(url);
+          }
+        }
+
+        setKycDocs(newKyc);
+      }
     } catch (e) {
       setError(e.message || 'Failed to load');
     } finally {
@@ -350,6 +504,11 @@ export default function NurseProfile() {
   const hasSupporting = !!supporting;
   const stepsComplete = [true, hasDiversity, hasEducation, hasSupporting].filter(Boolean).length;
   const isFullyComplete = stepsComplete === 4;
+
+  // ── Patients assigned to this nurse ──
+  const assignedPatients = ALL_PATIENTS.filter(p => p.nurses.some(nm => fullName.toLowerCase().includes(nm.toLowerCase()) || nm.toLowerCase().includes(fullName.toLowerCase())));
+  const currentPatients = assignedPatients.filter(p => p.status === 'active');
+  const pastPatients = assignedPatients.filter(p => p.status !== 'active');
 
   /* ── RENDER ── */
   return (
@@ -403,7 +562,7 @@ export default function NurseProfile() {
             }}
           >
             {avatarUrl
-              ? <img src={avatarUrl} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+              ? <img src={avatarUrl} alt="Profile" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
               : <span style={{ color: '#fff', fontSize: 16, fontWeight: 800 }}>{initials}</span>
             }
             {/* Hover overlay */}
@@ -459,7 +618,7 @@ export default function NurseProfile() {
           <div style={{ width: 1, height: 36, background: '#e5e7eb' }} />
           <div className="d-flex gap-1">
             <button title="Print" style={{ background: 'none', border: '1px solid #e5e7eb', borderRadius: 2, padding: '7px 9px', cursor: 'pointer', color: 'var(--kh-text-muted)', display: 'flex' }}><FiPrinter size={14} /></button>
-            <button title="Edit" style={{ background: 'none', border: '1px solid #e5e7eb', borderRadius: 2, padding: '7px 9px', cursor: 'pointer', color: 'var(--kh-text-muted)', display: 'flex' }}><FiEdit2 size={14} /></button>
+            <button title="Edit" onClick={() => { setTab('overview'); startEditing('personal', { firstName: n.firstName || '', lastName: n.lastName || '', email: n.email || '', phone: n.phone || '', homeTelephone: n.homeTelephone || '', gender: n.gender || '', address: n.address || '', citizenship: n.citizenship || '', title: n.title || '' }); }} style={{ background: 'none', border: '1px solid #e5e7eb', borderRadius: 2, padding: '7px 9px', cursor: 'pointer', color: 'var(--kh-text-muted)', display: 'flex' }}><FiEdit2 size={14} /></button>
             <button title="Refresh" onClick={fetchProfile} style={{ background: 'none', border: '1px solid #e5e7eb', borderRadius: 2, padding: '7px 9px', cursor: 'pointer', color: 'var(--kh-text-muted)', display: 'flex' }}><FiRefreshCw size={14} /></button>
           </div>
         </div>
@@ -505,35 +664,68 @@ export default function NurseProfile() {
           {tab === 'overview' && (
             <div className="row g-3 align-items-stretch">
               <div className="col-lg-4 d-flex flex-column">
-                <Panel title="Personal Information" icon={<FiUser size={14} />} style={{ flex: 1, marginBottom: 0 }}>
-                  <DataRow label="Full Name">{fullName}</DataRow>
-                  <DataRow label="Email" missing={!n.email}>{n.email}</DataRow>
-                  <DataRow label="Phone" missing={!n.phone}>{n.phone}</DataRow>
-                  <DataRow label="Home Telephone">{n.homeTelephone}</DataRow>
-                  <DataRow label="Gender" missing={!n.gender}>{n.gender}</DataRow>
-                  <DataRow label="Address" missing={!n.address}>{n.address}</DataRow>
-                  <DataRow label="Citizenship">{n.citizenship}</DataRow>
-                  <DataRow label="Title">{n.title}</DataRow>
+                <Panel title="Personal Information" icon={<FiUser size={14} />} style={{ flex: 1, marginBottom: 0 }}
+                  action={editingSection !== 'personal' && <button onClick={() => startEditing('personal', { firstName: n.firstName || '', lastName: n.lastName || '', email: n.email || '', phone: n.phone || '', homeTelephone: n.homeTelephone || '', gender: n.gender || '', address: n.address || '', citizenship: n.citizenship || '', title: n.title || '' })} style={{ background: 'none', border: '1px solid #e5e7eb', borderRadius: 4, padding: '4px 10px', cursor: 'pointer', fontSize: 11, fontWeight: 600, color: '#45B6FE', display: 'flex', alignItems: 'center', gap: 4 }}><FiEdit2 size={11} /> Edit</button>}
+                >
+                  {editingSection === 'personal' ? (
+                    <>
+                      <EditRow label="First Name" field="firstName" />
+                      <EditRow label="Last Name" field="lastName" />
+                      <EditRow label="Email" field="email" type="email" />
+                      <EditRow label="Phone" field="phone" />
+                      <EditRow label="Home Telephone" field="homeTelephone" />
+                      <EditRow label="Gender" field="gender" options={['Male', 'Female']} />
+                      <EditRow label="Address" field="address" />
+                      <EditRow label="Citizenship" field="citizenship" />
+                      <EditRow label="Title" field="title" />
+                      <EditActions />
+                    </>
+                  ) : (
+                    <>
+                      <DataRow label="Full Name">{fullName}</DataRow>
+                      <DataRow label="Email" missing={!n.email}>{n.email}</DataRow>
+                      <DataRow label="Phone" missing={!n.phone}>{n.phone}</DataRow>
+                      <DataRow label="Home Telephone">{n.homeTelephone}</DataRow>
+                      <DataRow label="Gender" missing={!n.gender}>{n.gender}</DataRow>
+                      <DataRow label="Address" missing={!n.address}>{n.address}</DataRow>
+                      <DataRow label="Citizenship">{n.citizenship}</DataRow>
+                      <DataRow label="Title">{n.title}</DataRow>
+                    </>
+                  )}
                 </Panel>
               </div>
 
               <div className="col-lg-4 d-flex flex-column">
-                <Panel title="Professional Details" icon={<FiAward size={14} />} accent="#3b82f6" style={{ flex: 1, marginBottom: 0 }}>
-                  <DataRow label="Nurse ID">{n._id || n.id}</DataRow>
-                  <DataRow label="Job Reference">{n.jobReference}</DataRow>
-                  <DataRow label="Job Title" missing={!n.jobTitle}>{n.jobTitle}</DataRow>
-                  <DataRow label="Role">{roleLabel}</DataRow>
-                  <DataRow label="MMC Pin No." missing={!n.mmcPinNo}>{n.mmcPinNo}</DataRow>
-                  <DataRow label="Date Joined">{joinedDate}</DataRow>
-                  <DataRow label="Status">
-                    <span style={{
-                      fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 2,
-                      background: status === 'active' ? '#F0F7FE' : '#fef3c7',
-                      color: status === 'active' ? '#1565A0' : '#92400e',
-                    }}>
-                      {status === 'active' ? 'Active' : status === 'on-leave' ? 'On Leave' : status}
-                    </span>
-                  </DataRow>
+                <Panel title="Professional Details" icon={<FiAward size={14} />} accent="#3b82f6" style={{ flex: 1, marginBottom: 0 }}
+                  action={editingSection !== 'professional' && <button onClick={() => startEditing('professional', { jobReference: n.jobReference || '', jobTitle: n.jobTitle || '', role: n.role || '', mmcPinNo: n.mmcPinNo || '' })} style={{ background: 'none', border: '1px solid #e5e7eb', borderRadius: 4, padding: '4px 10px', cursor: 'pointer', fontSize: 11, fontWeight: 600, color: '#3b82f6', display: 'flex', alignItems: 'center', gap: 4 }}><FiEdit2 size={11} /> Edit</button>}
+                >
+                  {editingSection === 'professional' ? (
+                    <>
+                      <EditRow label="Job Reference" field="jobReference" />
+                      <EditRow label="Job Title" field="jobTitle" />
+                      <EditRow label="Role" field="role" options={['head_nurse', 'supervising_nurse', 'Office_nurse', 'field_nurse']} />
+                      <EditRow label="MMC Pin No." field="mmcPinNo" />
+                      <EditActions />
+                    </>
+                  ) : (
+                    <>
+                      <DataRow label="Nurse ID">{n._id || n.id}</DataRow>
+                      <DataRow label="Job Reference">{n.jobReference}</DataRow>
+                      <DataRow label="Job Title" missing={!n.jobTitle}>{n.jobTitle}</DataRow>
+                      <DataRow label="Role">{roleLabel}</DataRow>
+                      <DataRow label="MMC Pin No." missing={!n.mmcPinNo}>{n.mmcPinNo}</DataRow>
+                      <DataRow label="Date Joined">{joinedDate}</DataRow>
+                      <DataRow label="Status">
+                        <span style={{
+                          fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 2,
+                          background: status === 'active' ? '#F0F7FE' : '#fef3c7',
+                          color: status === 'active' ? '#1565A0' : '#92400e',
+                        }}>
+                          {status === 'active' ? 'Active' : status === 'on-leave' ? 'On Leave' : status}
+                        </span>
+                      </DataRow>
+                    </>
+                  )}
                 </Panel>
               </div>
 
@@ -570,6 +762,105 @@ export default function NurseProfile() {
                   )}
                 </Panel>
               </div>
+
+              {/* ── Assigned Patients ── */}
+              <div className="col-12" style={{ marginTop: 4 }}>
+                <Panel title="Assigned Patients" icon={<FiUsers size={14} />} accent="#10b981"
+                  action={
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: '#10b981', background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 10, padding: '2px 10px' }}>
+                        {currentPatients.length} current
+                      </span>
+                      {pastPatients.length > 0 && (
+                        <span style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 10, padding: '2px 10px' }}>
+                          {pastPatients.length} past
+                        </span>
+                      )}
+                    </div>
+                  }
+                >
+                  {assignedPatients.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--kh-text-muted)', fontSize: 13 }}>
+                      <FiUsers size={28} style={{ color: '#d1d5db', marginBottom: 10 }} />
+                      <div>No patients assigned to this nurse</div>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Current Patients */}
+                      {currentPatients.length > 0 && (
+                        <>
+                          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#10b981', marginBottom: 8 }}>Current Patients</div>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 10, marginBottom: pastPatients.length > 0 ? 20 : 0 }}>
+                            {currentPatients.map(p => (
+                              <div key={p.id} onClick={() => navigate(`/patients/${p.id}`)} style={{
+                                border: '1px solid #e5e7eb', borderRadius: 2, padding: '12px 14px', cursor: 'pointer',
+                                background: '#fff', transition: 'border-color 0.15s',
+                              }} onMouseEnter={e => e.currentTarget.style.borderColor = '#10b981'} onMouseLeave={e => e.currentTarget.style.borderColor = '#e5e7eb'}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                                  <div style={{
+                                    width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
+                                    background: 'linear-gradient(135deg, #10b981, #059669)',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    color: '#fff', fontSize: 12, fontWeight: 800,
+                                  }}>{p.name.split(' ').map(w => w[0]).join('').slice(0, 2)}</div>
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--kh-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</div>
+                                    <div style={{ fontSize: 11, color: 'var(--kh-text-muted)' }}>{p.id} · {p.gender}, {p.age}yrs</div>
+                                  </div>
+                                  <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: '#ecfdf5', color: '#059669', flexShrink: 0 }}>Active</span>
+                                </div>
+                                <div style={{ fontSize: 12, color: 'var(--kh-text-muted)', lineHeight: 1.4 }}>
+                                  <span style={{ fontWeight: 600, color: 'var(--kh-text)' }}>Dx:</span> {p.diagnosis}
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, fontSize: 11, color: '#9ca3af' }}>
+                                  <FiMapPin size={10} /> {p.region}
+                                  <span style={{ marginLeft: 'auto' }}><FiCalendar size={10} style={{ marginRight: 3 }} />{new Date(p.enrolled).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      )}
+
+                      {/* Past Patients */}
+                      {pastPatients.length > 0 && (
+                        <>
+                          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#9ca3af', marginBottom: 8 }}>Past Patients</div>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 10 }}>
+                            {pastPatients.map(p => (
+                              <div key={p.id} onClick={() => navigate(`/patients/${p.id}`)} style={{
+                                border: '1px solid #f3f4f6', borderRadius: 2, padding: '12px 14px', cursor: 'pointer',
+                                background: '#fafafa', transition: 'border-color 0.15s',
+                              }} onMouseEnter={e => e.currentTarget.style.borderColor = '#9ca3af'} onMouseLeave={e => e.currentTarget.style.borderColor = '#f3f4f6'}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                                  <div style={{
+                                    width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
+                                    background: '#e5e7eb',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    color: '#6b7280', fontSize: 12, fontWeight: 800,
+                                  }}>{p.name.split(' ').map(w => w[0]).join('').slice(0, 2)}</div>
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--kh-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</div>
+                                    <div style={{ fontSize: 11, color: 'var(--kh-text-muted)' }}>{p.id} · {p.gender}, {p.age}yrs</div>
+                                  </div>
+                                  <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: '#f3f4f6', color: '#6b7280', flexShrink: 0 }}>Discharged</span>
+                                </div>
+                                <div style={{ fontSize: 12, color: 'var(--kh-text-muted)', lineHeight: 1.4 }}>
+                                  <span style={{ fontWeight: 600, color: 'var(--kh-text)' }}>Dx:</span> {p.diagnosis}
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, fontSize: 11, color: '#9ca3af' }}>
+                                  <FiMapPin size={10} /> {p.region}
+                                  <span style={{ marginLeft: 'auto' }}><FiCalendar size={10} style={{ marginRight: 3 }} />{new Date(p.enrolled).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </>
+                  )}
+                </Panel>
+              </div>
             </div>
           )}
 
@@ -590,20 +881,46 @@ export default function NurseProfile() {
               ) : (
                 <>
                   <div className="col-md-6">
-                    <Panel title="Diversity Information" icon={<FiUser size={14} />} accent="#8b5cf6">
-                      <DataRow label="Race / Ethnicity" missing={!diversity.race}>{diversity.race}</DataRow>
-                      <DataRow label="Religion" missing={!diversity.religion}>{diversity.religion}</DataRow>
+                    <Panel title="Diversity Information" icon={<FiUser size={14} />} accent="#8b5cf6"
+                      action={editingSection !== 'diversity' && <button onClick={() => startEditing('diversity', { race: diversity.race || '', religion: diversity.religion || '' })} style={{ background: 'none', border: '1px solid #e5e7eb', borderRadius: 4, padding: '4px 10px', cursor: 'pointer', fontSize: 11, fontWeight: 600, color: '#8b5cf6', display: 'flex', alignItems: 'center', gap: 4 }}><FiEdit2 size={11} /> Edit</button>}
+                    >
+                      {editingSection === 'diversity' ? (
+                        <>
+                          <EditRow label="Race / Ethnicity" field="race" />
+                          <EditRow label="Religion" field="religion" />
+                          <EditActions />
+                        </>
+                      ) : (
+                        <>
+                          <DataRow label="Race / Ethnicity" missing={!diversity.race}>{diversity.race}</DataRow>
+                          <DataRow label="Religion" missing={!diversity.religion}>{diversity.religion}</DataRow>
+                        </>
+                      )}
                     </Panel>
                   </div>
                   <div className="col-md-6">
-                    <Panel title="Health Disclosures" icon={<FiShield size={14} />} accent="#ef4444">
-                      <DataRow label="Disability">{diversity.disability || 'No'}</DataRow>
-                      {diversity.disability === 'Yes' && (
-                        <DataRow label="Disability Detail">{diversity.disability_detail}</DataRow>
-                      )}
-                      <DataRow label="Criminal Records">{diversity.criminal_records || 'No'}</DataRow>
-                      {diversity.criminal_records === 'Yes' && (
-                        <DataRow label="Criminal Record Detail">{diversity.criminal_record_detail}</DataRow>
+                    <Panel title="Health Disclosures" icon={<FiShield size={14} />} accent="#ef4444"
+                      action={editingSection !== 'diversity' && <button onClick={() => startEditing('diversity', { disability: diversity.disability || 'No', disability_detail: diversity.disability_detail || '', criminal_records: diversity.criminal_records || 'No', criminal_record_detail: diversity.criminal_record_detail || '' })} style={{ background: 'none', border: '1px solid #e5e7eb', borderRadius: 4, padding: '4px 10px', cursor: 'pointer', fontSize: 11, fontWeight: 600, color: '#ef4444', display: 'flex', alignItems: 'center', gap: 4 }}><FiEdit2 size={11} /> Edit</button>}
+                    >
+                      {editingSection === 'diversity' && editForm.disability !== undefined ? (
+                        <>
+                          <EditRow label="Disability" field="disability" options={['No', 'Yes']} />
+                          {ef('disability') === 'Yes' && <EditRow label="Disability Detail" field="disability_detail" />}
+                          <EditRow label="Criminal Records" field="criminal_records" options={['No', 'Yes']} />
+                          {ef('criminal_records') === 'Yes' && <EditRow label="Criminal Record Detail" field="criminal_record_detail" />}
+                          <EditActions />
+                        </>
+                      ) : (
+                        <>
+                          <DataRow label="Disability">{diversity.disability || 'No'}</DataRow>
+                          {diversity.disability === 'Yes' && (
+                            <DataRow label="Disability Detail">{diversity.disability_detail}</DataRow>
+                          )}
+                          <DataRow label="Criminal Records">{diversity.criminal_records || 'No'}</DataRow>
+                          {diversity.criminal_records === 'Yes' && (
+                            <DataRow label="Criminal Record Detail">{diversity.criminal_record_detail}</DataRow>
+                          )}
+                        </>
                       )}
                     </Panel>
                   </div>
@@ -626,136 +943,219 @@ export default function NurseProfile() {
                 </div>
               ) : (
                 <div className="row g-3">
+                  {/* ── Qualifications ── */}
                   <div className="col-12">
                     <Panel title="Qualifications" icon={<FiAward size={14} />} accent="#3b82f6"
-                      action={<span style={{ fontSize: 11, fontWeight: 700, color: '#3b82f6' }}>{(education.qualifications || []).length} records</span>}
+                      action={
+                        editingSection === 'qualifications'
+                          ? <span style={{ fontSize: 11, fontWeight: 700, color: '#3b82f6' }}>Editing…</span>
+                          : <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <span style={{ fontSize: 11, fontWeight: 700, color: '#3b82f6' }}>{(education.qualifications || []).length} records</span>
+                              <button onClick={() => startEditing('qualifications', { qualifications: (education.qualifications || []).map(q => ({ name: q.name || '', institution: q.institution || '', result: q.result || '', year: q.year || '' })) })} style={{ background: 'none', border: '1px solid #e5e7eb', borderRadius: 4, padding: '4px 10px', cursor: 'pointer', fontSize: 11, fontWeight: 600, color: '#3b82f6', display: 'flex', alignItems: 'center', gap: 4 }}><FiEdit2 size={11} /> Edit</button>
+                            </div>
+                      }
                     >
-                      {(education.qualifications || []).length === 0 ? (
-                        <div style={{ fontSize: 12.5, color: 'var(--kh-text-muted)', padding: '12px 0', textAlign: 'center' }}>No qualifications recorded</div>
+                      {editingSection === 'qualifications' ? (
+                        <>
+                          {(editForm.qualifications || []).map((q, i) => (
+                            <div key={i} style={{ padding: '10px 0', borderBottom: '1px solid #f3f4f6', display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                              <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                                <div><div style={{ fontSize: 10, fontWeight: 700, color: 'var(--kh-text-muted)', marginBottom: 3 }}>Qualification</div><input style={editInputStyle} value={q.name} onChange={e => { const arr = [...editForm.qualifications]; arr[i] = { ...arr[i], name: e.target.value }; uf('qualifications', arr); }} /></div>
+                                <div><div style={{ fontSize: 10, fontWeight: 700, color: 'var(--kh-text-muted)', marginBottom: 3 }}>Institution</div><input style={editInputStyle} value={q.institution} onChange={e => { const arr = [...editForm.qualifications]; arr[i] = { ...arr[i], institution: e.target.value }; uf('qualifications', arr); }} /></div>
+                                <div><div style={{ fontSize: 10, fontWeight: 700, color: 'var(--kh-text-muted)', marginBottom: 3 }}>Result / Grade</div><input style={editInputStyle} value={q.result} onChange={e => { const arr = [...editForm.qualifications]; arr[i] = { ...arr[i], result: e.target.value }; uf('qualifications', arr); }} /></div>
+                                <div><div style={{ fontSize: 10, fontWeight: 700, color: 'var(--kh-text-muted)', marginBottom: 3 }}>Year</div><input style={editInputStyle} value={q.year} onChange={e => { const arr = [...editForm.qualifications]; arr[i] = { ...arr[i], year: e.target.value }; uf('qualifications', arr); }} /></div>
+                              </div>
+                              {editForm.qualifications.length > 1 && <button onClick={() => { const arr = editForm.qualifications.filter((_, j) => j !== i); uf('qualifications', arr); }} style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 4, padding: '6px', cursor: 'pointer', color: '#dc2626', display: 'flex', marginTop: 16 }}><FiTrash2 size={12} /></button>}
+                            </div>
+                          ))}
+                          <button onClick={() => uf('qualifications', [...(editForm.qualifications || []), { name: '', institution: '', result: '', year: '' }])} style={{ marginTop: 10, background: '#f0f7fe', border: '1px solid #d6ecfc', borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 600, color: '#2E7DB8', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5 }}><FiPlus size={12} /> Add Qualification</button>
+                          <EditActions />
+                        </>
                       ) : (
-                        <div className="table-responsive">
-                          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                            <thead>
-                              <tr style={{ background: '#fafbfc' }}>
-                                {['Qualification', 'Institution', 'Result / Grade', 'Year'].map((h, i) => (
-                                  <th key={i} style={{ padding: '8px 12px', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text-muted)', borderBottom: '1px solid #f3f4f6', textAlign: 'left' }}>{h}</th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {education.qualifications.map((q, i) => (
-                                <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                                  <td style={{ padding: '10px 12px', fontSize: 13, fontWeight: 600, color: 'var(--kh-text)' }}>{q.name || '—'}</td>
-                                  <td style={{ padding: '10px 12px', fontSize: 12.5, color: 'var(--kh-text)' }}>{q.institution || '—'}</td>
-                                  <td style={{ padding: '10px 12px', fontSize: 12.5, color: 'var(--kh-text)' }}>{q.result || '—'}</td>
-                                  <td style={{ padding: '10px 12px', fontSize: 12.5, color: 'var(--kh-text-muted)' }}>{q.year || '—'}</td>
+                        (education.qualifications || []).length === 0 ? (
+                          <div style={{ fontSize: 12.5, color: 'var(--kh-text-muted)', padding: '12px 0', textAlign: 'center' }}>No qualifications recorded</div>
+                        ) : (
+                          <div className="table-responsive">
+                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                              <thead>
+                                <tr style={{ background: '#fafbfc' }}>
+                                  {['Qualification', 'Institution', 'Result / Grade', 'Year'].map((h, i) => (
+                                    <th key={i} style={{ padding: '8px 12px', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text-muted)', borderBottom: '1px solid #f3f4f6', textAlign: 'left' }}>{h}</th>
+                                  ))}
                                 </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
+                              </thead>
+                              <tbody>
+                                {education.qualifications.map((q, i) => (
+                                  <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                                    <td style={{ padding: '10px 12px', fontSize: 13, fontWeight: 600, color: 'var(--kh-text)' }}>{q.name || '—'}</td>
+                                    <td style={{ padding: '10px 12px', fontSize: 12.5, color: 'var(--kh-text)' }}>{q.institution || '—'}</td>
+                                    <td style={{ padding: '10px 12px', fontSize: 12.5, color: 'var(--kh-text)' }}>{q.result || '—'}</td>
+                                    <td style={{ padding: '10px 12px', fontSize: 12.5, color: 'var(--kh-text-muted)' }}>{q.year || '—'}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )
                       )}
                     </Panel>
                   </div>
 
-                  {(education.trainingCourses || []).filter(t => t).length > 0 && (
-                    <div className="col-md-5">
-                      <Panel title="Training Courses" icon={<FiCheckCircle size={14} />} accent="#10b981">
-                        {education.trainingCourses.filter(t => t).map((course, i) => (
-                          <div key={i} className="d-flex align-items-center gap-2" style={{ padding: '7px 0', borderBottom: '1px solid #f3f4f6' }}>
-                            <FiCheckCircle size={12} style={{ color: '#10b981', flexShrink: 0 }} />
-                            <span style={{ fontSize: 12.5, color: 'var(--kh-text)' }}>{course}</span>
-                          </div>
-                        ))}
-                      </Panel>
-                    </div>
-                  )}
-
-                  <div className="col-12">
-                    <Panel title="Employment History" icon={<FiClipboard size={14} />} accent="#f59e0b"
-                      action={<span style={{ fontSize: 11, fontWeight: 700, color: '#f59e0b', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '2px 10px' }}>{(education.employmentHistory || []).length} {(education.employmentHistory || []).length === 1 ? 'record' : 'records'}</span>}
+                  {/* ── Training Courses ── */}
+                  <div className="col-md-5">
+                    <Panel title="Training Courses" icon={<FiCheckCircle size={14} />} accent="#10b981"
+                      action={
+                        editingSection === 'training'
+                          ? <span style={{ fontSize: 11, fontWeight: 700, color: '#10b981' }}>Editing…</span>
+                          : <button onClick={() => startEditing('training', { trainingCourses: (education.trainingCourses || []).filter(t => t).length > 0 ? [...education.trainingCourses.filter(t => t)] : [''] })} style={{ background: 'none', border: '1px solid #e5e7eb', borderRadius: 4, padding: '4px 10px', cursor: 'pointer', fontSize: 11, fontWeight: 600, color: '#10b981', display: 'flex', alignItems: 'center', gap: 4 }}><FiEdit2 size={11} /> Edit</button>
+                      }
                     >
-                      {(education.employmentHistory || []).length === 0 ? (
-                        <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--kh-text-muted)', fontSize: 13 }}>No employment history recorded</div>
+                      {editingSection === 'training' ? (
+                        <>
+                          {(editForm.trainingCourses || []).map((course, i) => (
+                            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 0', borderBottom: '1px solid #f3f4f6' }}>
+                              <input style={{ ...editInputStyle, flex: 1 }} value={course} onChange={e => { const arr = [...editForm.trainingCourses]; arr[i] = e.target.value; uf('trainingCourses', arr); }} placeholder="Course name" />
+                              {editForm.trainingCourses.length > 1 && <button onClick={() => uf('trainingCourses', editForm.trainingCourses.filter((_, j) => j !== i))} style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 4, padding: '6px', cursor: 'pointer', color: '#dc2626', display: 'flex' }}><FiTrash2 size={12} /></button>}
+                            </div>
+                          ))}
+                          <button onClick={() => uf('trainingCourses', [...(editForm.trainingCourses || []), ''])} style={{ marginTop: 10, background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 600, color: '#059669', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5 }}><FiPlus size={12} /> Add Course</button>
+                          <EditActions />
+                        </>
                       ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-                          {education.employmentHistory.map((emp, i) => (
-                            <div key={i} style={{
-                              display: 'flex', gap: 0,
-                              borderBottom: i < education.employmentHistory.length - 1 ? '1px solid #f3f4f6' : 'none',
-                              paddingBottom: 20, marginBottom: 20,
-                            }}>
-                              {/* Timeline spine */}
-                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginRight: 16, flexShrink: 0 }}>
-                                <div style={{
-                                  width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
-                                  background: 'linear-gradient(135deg, #f59e0b, #d97706)',
-                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                  color: '#fff', fontSize: 13, fontWeight: 800,
-                                  boxShadow: '0 2px 8px rgba(245,158,11,0.3)',
-                                }}>{i + 1}</div>
-                                {i < education.employmentHistory.length - 1 && (
-                                  <div style={{ width: 2, flex: 1, background: '#f3f4f6', marginTop: 6, minHeight: 24 }} />
-                                )}
+                        (education.trainingCourses || []).filter(t => t).length === 0 ? (
+                          <div style={{ fontSize: 12.5, color: 'var(--kh-text-muted)', padding: '12px 0', textAlign: 'center' }}>No training courses recorded</div>
+                        ) : (
+                          education.trainingCourses.filter(t => t).map((course, i) => (
+                            <div key={i} className="d-flex align-items-center gap-2" style={{ padding: '7px 0', borderBottom: '1px solid #f3f4f6' }}>
+                              <FiCheckCircle size={12} style={{ color: '#10b981', flexShrink: 0 }} />
+                              <span style={{ fontSize: 12.5, color: 'var(--kh-text)' }}>{course}</span>
+                            </div>
+                          ))
+                        )
+                      )}
+                    </Panel>
+                  </div>
+
+                  {/* ── Employment History ── */}
+                  <div className="col-12">
+                    <Panel title="Employment History" icon={<FiClipboard size={14} />} accent="#f59e0b" style={{ background: '#fffbeb', border: '1px solid #e5e7eb' }}
+                      action={
+                        editingSection === 'employment'
+                          ? <span style={{ fontSize: 11, fontWeight: 700, color: '#f59e0b' }}>Editing…</span>
+                          : <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <span style={{ fontSize: 11, fontWeight: 700, color: '#f59e0b', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '2px 10px' }}>{(education.employmentHistory || []).length} {(education.employmentHistory || []).length === 1 ? 'record' : 'records'}</span>
+                              <button onClick={() => startEditing('employment', { employmentHistory: (education.employmentHistory || []).map(emp => ({ jobTitle: emp.jobTitle || '', employerName: emp.employerName || '', businessType: emp.businessType || '', startDate: emp.startDate ? emp.startDate.split('T')[0] : '', grade: emp.grade || '', reportingOfficer: emp.reportingOfficer || '', contactPerson: emp.contactPerson || '', address: emp.address || '', descriptionOfDuties: emp.descriptionOfDuties || '', reasonForLeaving: emp.reasonForLeaving || '' })) })} style={{ background: 'none', border: '1px solid #e5e7eb', borderRadius: 4, padding: '4px 10px', cursor: 'pointer', fontSize: 11, fontWeight: 600, color: '#f59e0b', display: 'flex', alignItems: 'center', gap: 4 }}><FiEdit2 size={11} /> Edit</button>
+                            </div>
+                      }
+                    >
+                      {editingSection === 'employment' ? (
+                        <>
+                          {(editForm.employmentHistory || []).map((emp, i) => (
+                            <div key={i} style={{ padding: '14px 0', borderBottom: '1px solid #f3f4f6', marginBottom: 8 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--kh-text)' }}>Employment {i + 1}</span>
+                                {editForm.employmentHistory.length > 1 && <button onClick={() => uf('employmentHistory', editForm.employmentHistory.filter((_, j) => j !== i))} style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 4, padding: '4px 8px', cursor: 'pointer', color: '#dc2626', fontSize: 11, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}><FiTrash2 size={11} /> Remove</button>}
                               </div>
-
-                              {/* Card body */}
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                {/* Header row */}
-                                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
-                                  <div>
-                                    <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--kh-text)', lineHeight: 1.3 }}>{emp.jobTitle || '—'}</div>
-                                    <div style={{ fontSize: 12.5, fontWeight: 600, color: '#45B6FE', marginTop: 2 }}>{emp.employerName || '—'}</div>
-                                  </div>
-                                  {emp.startDate && (
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '3px 10px', fontSize: 11, fontWeight: 600, color: '#92400e', whiteSpace: 'nowrap' }}>
-                                      <FiCalendar size={11} />
-                                      {new Date(emp.startDate).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}
-                                    </div>
-                                  )}
-                                </div>
-
-                                {/* Info grid */}
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '6px 20px', marginBottom: 10 }}>
-                                  {[
-                                    { label: 'Business Type',     value: emp.businessType },
-                                    { label: 'Grade',             value: emp.grade },
-                                    { label: 'Reporting Officer', value: emp.reportingOfficer },
-                                    { label: 'Contact Person',    value: emp.contactPerson },
-                                  ].filter(f => f.value).map(({ label, value }) => (
-                                    <div key={label}>
-                                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text-muted)', marginBottom: 1 }}>{label}</div>
-                                      <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--kh-text)' }}>{value}</div>
-                                    </div>
-                                  ))}
-                                </div>
-
-                                {/* Address */}
-                                {emp.address && (
-                                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: 12, color: 'var(--kh-text-muted)', marginBottom: 6 }}>
-                                    <FiMapPin size={12} style={{ marginTop: 2, flexShrink: 0, color: '#9ca3af' }} />
-                                    <span>{emp.address}</span>
-                                  </div>
-                                )}
-
-                                {/* Full-width fields */}
-                                {emp.descriptionOfDuties && (
-                                  <div style={{ background: '#f8f9fa', border: '1px solid #f3f4f6', borderRadius: 6, padding: '8px 12px', marginBottom: 6 }}>
-                                    <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text-muted)', marginBottom: 3 }}>Description of Duties</div>
-                                    <div style={{ fontSize: 12.5, color: 'var(--kh-text)', lineHeight: 1.5 }}>{emp.descriptionOfDuties}</div>
-                                  </div>
-                                )}
-
-                                {emp.reasonForLeaving && (
-                                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, padding: '5px 10px', fontSize: 12 }}>
-                                    <span style={{ fontWeight: 700, color: '#991b1b' }}>Reason for leaving:</span>
-                                    <span style={{ color: '#7f1d1d' }}>{emp.reasonForLeaving}</span>
-                                  </div>
-                                )}
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                                <div><div style={{ fontSize: 10, fontWeight: 700, color: 'var(--kh-text-muted)', marginBottom: 3 }}>Job Title</div><input style={editInputStyle} value={emp.jobTitle} onChange={e => { const arr = [...editForm.employmentHistory]; arr[i] = { ...arr[i], jobTitle: e.target.value }; uf('employmentHistory', arr); }} /></div>
+                                <div><div style={{ fontSize: 10, fontWeight: 700, color: 'var(--kh-text-muted)', marginBottom: 3 }}>Employer Name</div><input style={editInputStyle} value={emp.employerName} onChange={e => { const arr = [...editForm.employmentHistory]; arr[i] = { ...arr[i], employerName: e.target.value }; uf('employmentHistory', arr); }} /></div>
+                                <div><div style={{ fontSize: 10, fontWeight: 700, color: 'var(--kh-text-muted)', marginBottom: 3 }}>Business Type</div><input style={editInputStyle} value={emp.businessType} onChange={e => { const arr = [...editForm.employmentHistory]; arr[i] = { ...arr[i], businessType: e.target.value }; uf('employmentHistory', arr); }} /></div>
+                                <div><div style={{ fontSize: 10, fontWeight: 700, color: 'var(--kh-text-muted)', marginBottom: 3 }}>Start Date</div><input type="date" style={editInputStyle} value={emp.startDate} onChange={e => { const arr = [...editForm.employmentHistory]; arr[i] = { ...arr[i], startDate: e.target.value }; uf('employmentHistory', arr); }} /></div>
+                                <div><div style={{ fontSize: 10, fontWeight: 700, color: 'var(--kh-text-muted)', marginBottom: 3 }}>Grade</div><input style={editInputStyle} value={emp.grade} onChange={e => { const arr = [...editForm.employmentHistory]; arr[i] = { ...arr[i], grade: e.target.value }; uf('employmentHistory', arr); }} /></div>
+                                <div><div style={{ fontSize: 10, fontWeight: 700, color: 'var(--kh-text-muted)', marginBottom: 3 }}>Reporting Officer</div><input style={editInputStyle} value={emp.reportingOfficer} onChange={e => { const arr = [...editForm.employmentHistory]; arr[i] = { ...arr[i], reportingOfficer: e.target.value }; uf('employmentHistory', arr); }} /></div>
+                                <div><div style={{ fontSize: 10, fontWeight: 700, color: 'var(--kh-text-muted)', marginBottom: 3 }}>Contact Person</div><input style={editInputStyle} value={emp.contactPerson} onChange={e => { const arr = [...editForm.employmentHistory]; arr[i] = { ...arr[i], contactPerson: e.target.value }; uf('employmentHistory', arr); }} /></div>
+                                <div><div style={{ fontSize: 10, fontWeight: 700, color: 'var(--kh-text-muted)', marginBottom: 3 }}>Address</div><input style={editInputStyle} value={emp.address} onChange={e => { const arr = [...editForm.employmentHistory]; arr[i] = { ...arr[i], address: e.target.value }; uf('employmentHistory', arr); }} /></div>
+                                <div style={{ gridColumn: '1 / -1' }}><div style={{ fontSize: 10, fontWeight: 700, color: 'var(--kh-text-muted)', marginBottom: 3 }}>Description of Duties</div><textarea style={{ ...editInputStyle, minHeight: 60, resize: 'vertical' }} value={emp.descriptionOfDuties} onChange={e => { const arr = [...editForm.employmentHistory]; arr[i] = { ...arr[i], descriptionOfDuties: e.target.value }; uf('employmentHistory', arr); }} /></div>
+                                <div style={{ gridColumn: '1 / -1' }}><div style={{ fontSize: 10, fontWeight: 700, color: 'var(--kh-text-muted)', marginBottom: 3 }}>Reason for Leaving</div><input style={editInputStyle} value={emp.reasonForLeaving} onChange={e => { const arr = [...editForm.employmentHistory]; arr[i] = { ...arr[i], reasonForLeaving: e.target.value }; uf('employmentHistory', arr); }} /></div>
                               </div>
                             </div>
                           ))}
-                        </div>
+                          <button onClick={() => uf('employmentHistory', [...(editForm.employmentHistory || []), { jobTitle: '', employerName: '', businessType: '', startDate: '', grade: '', reportingOfficer: '', contactPerson: '', address: '', descriptionOfDuties: '', reasonForLeaving: '' }])} style={{ marginTop: 10, background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 600, color: '#92400e', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5 }}><FiPlus size={12} /> Add Employment</button>
+                          <EditActions />
+                        </>
+                      ) : (
+                        (education.employmentHistory || []).length === 0 ? (
+                          <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--kh-text-muted)', fontSize: 13 }}>No employment history recorded</div>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                            {education.employmentHistory.map((emp, i) => (
+                              <div key={i} style={{
+                                display: 'flex', gap: 0,
+                                borderBottom: i < education.employmentHistory.length - 1 ? '1px solid #f3f4f6' : 'none',
+                                paddingBottom: 20, marginBottom: 20,
+                              }}>
+                                {/* Timeline spine */}
+                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginRight: 16, flexShrink: 0 }}>
+                                  <div style={{
+                                    width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
+                                    background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    color: '#fff', fontSize: 13, fontWeight: 800,
+                                    boxShadow: '0 2px 8px rgba(245,158,11,0.3)',
+                                  }}>{i + 1}</div>
+                                  {i < education.employmentHistory.length - 1 && (
+                                    <div style={{ width: 2, flex: 1, background: '#f3f4f6', marginTop: 6, minHeight: 24 }} />
+                                  )}
+                                </div>
+
+                                {/* Card body */}
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  {/* Header row */}
+                                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
+                                    <div>
+                                      <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--kh-text)', lineHeight: 1.3 }}>{emp.jobTitle || '—'}</div>
+                                      <div style={{ fontSize: 12.5, fontWeight: 600, color: '#45B6FE', marginTop: 2 }}>{emp.employerName || '—'}</div>
+                                    </div>
+                                    {emp.startDate && (
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '3px 10px', fontSize: 11, fontWeight: 600, color: '#92400e', whiteSpace: 'nowrap' }}>
+                                        <FiCalendar size={11} />
+                                        {new Date(emp.startDate).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {/* Info grid */}
+                                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '6px 20px', marginBottom: 10 }}>
+                                    {[
+                                      { label: 'Business Type',     value: emp.businessType },
+                                      { label: 'Grade',             value: emp.grade },
+                                      { label: 'Reporting Officer', value: emp.reportingOfficer },
+                                      { label: 'Contact Person',    value: emp.contactPerson },
+                                    ].filter(f => f.value).map(({ label, value }) => (
+                                      <div key={label}>
+                                        <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text-muted)', marginBottom: 1 }}>{label}</div>
+                                        <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--kh-text)' }}>{value}</div>
+                                      </div>
+                                    ))}
+                                  </div>
+
+                                  {/* Address */}
+                                  {emp.address && (
+                                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: 12, color: 'var(--kh-text-muted)', marginBottom: 6 }}>
+                                      <FiMapPin size={12} style={{ marginTop: 2, flexShrink: 0, color: '#9ca3af' }} />
+                                      <span>{emp.address}</span>
+                                    </div>
+                                  )}
+
+                                  {/* Full-width fields */}
+                                  {emp.descriptionOfDuties && (
+                                    <div style={{ background: '#f8f9fa', border: '1px solid #f3f4f6', borderRadius: 6, padding: '8px 12px', marginBottom: 6 }}>
+                                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text-muted)', marginBottom: 3 }}>Description of Duties</div>
+                                      <div style={{ fontSize: 12.5, color: 'var(--kh-text)', lineHeight: 1.5 }}>{emp.descriptionOfDuties}</div>
+                                    </div>
+                                  )}
+
+                                  {emp.reasonForLeaving && (
+                                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, padding: '5px 10px', fontSize: 12 }}>
+                                      <span style={{ fontWeight: 700, color: '#991b1b' }}>Reason for leaving:</span>
+                                      <span style={{ color: '#7f1d1d' }}>{emp.reasonForLeaving}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )
                       )}
                     </Panel>
                   </div>
@@ -781,33 +1181,78 @@ export default function NurseProfile() {
               ) : (
                 <>
                   <div className="col-md-6">
-                    <Panel title="Staff Relationship" icon={<FiUser size={14} />} accent="#8b5cf6">
-                      <DataRow label="Has Staff Relation">{supporting.staffRelation || 'No'}</DataRow>
-                      {supporting.staffRelation === 'Yes' && (
-                        <DataRow label="Relation Detail">{supporting.staffRelationDetail}</DataRow>
+                    <Panel title="Staff Relationship" icon={<FiUser size={14} />} accent="#8b5cf6"
+                      action={editingSection !== 'supporting' && <button onClick={() => startEditing('supporting', { staffRelation: supporting.staffRelation || 'No', staffRelationDetail: supporting.staffRelationDetail || '', vacancyAdvertised: supporting.vacancyAdvertised || '' })} style={{ background: 'none', border: '1px solid #e5e7eb', borderRadius: 4, padding: '4px 10px', cursor: 'pointer', fontSize: 11, fontWeight: 600, color: '#8b5cf6', display: 'flex', alignItems: 'center', gap: 4 }}><FiEdit2 size={11} /> Edit</button>}
+                    >
+                      {editingSection === 'supporting' && editForm.staffRelation !== undefined ? (
+                        <>
+                          <EditRow label="Has Staff Relation" field="staffRelation" options={['No', 'Yes']} />
+                          {ef('staffRelation') === 'Yes' && <EditRow label="Relation Detail" field="staffRelationDetail" />}
+                          <EditRow label="How Applied" field="vacancyAdvertised" />
+                          <EditActions />
+                        </>
+                      ) : (
+                        <>
+                          <DataRow label="Has Staff Relation">{supporting.staffRelation || 'No'}</DataRow>
+                          {supporting.staffRelation === 'Yes' && (
+                            <DataRow label="Relation Detail">{supporting.staffRelationDetail}</DataRow>
+                          )}
+                        </>
                       )}
                     </Panel>
-                    <Panel title="Vacancy Source" icon={<FiFileText size={14} />} accent="#3b82f6">
-                      <DataRow label="How Applied">{supporting.vacancyAdvertised || '—'}</DataRow>
-                      {supporting.vacancyDetail && Object.entries(supporting.vacancyDetail).map(([k, v]) => (
-                        <DataRow key={k} label={k.charAt(0).toUpperCase() + k.slice(1).replace(/([A-Z])/g, ' $1')}>{v}</DataRow>
-                      ))}
-                    </Panel>
+                    {editingSection !== 'supporting' && (
+                      <Panel title="Vacancy Source" icon={<FiFileText size={14} />} accent="#3b82f6">
+                        <DataRow label="How Applied">{supporting.vacancyAdvertised || '—'}</DataRow>
+                        {supporting.vacancyDetail && Object.entries(supporting.vacancyDetail).map(([k, v]) => (
+                          <DataRow key={k} label={k.charAt(0).toUpperCase() + k.slice(1).replace(/([A-Z])/g, ' $1')}>{v}</DataRow>
+                        ))}
+                      </Panel>
+                    )}
                   </div>
                   <div className="col-md-6">
                     <Panel title="Referees" icon={<FiUser size={14} />} accent="#10b981"
-                      action={<span style={{ fontSize: 11, fontWeight: 700, color: '#10b981' }}>{(supporting.referees || []).filter(r => r.name).length} provided</span>}
+                      action={editingSection !== 'supporting' ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: '#10b981' }}>{(supporting.referees || []).filter(r => r.name).length} provided</span>
+                          <button onClick={() => { const refs = (supporting.referees || []).map(r => ({ name: r.name || '', address: r.address || '', telephone: r.telephone || '' })); while (refs.length < 2) refs.push({ name: '', address: '', telephone: '' }); startEditing('supporting', { referees: refs }); }} style={{ background: 'none', border: '1px solid #e5e7eb', borderRadius: 4, padding: '4px 10px', cursor: 'pointer', fontSize: 11, fontWeight: 600, color: '#10b981', display: 'flex', alignItems: 'center', gap: 4 }}><FiEdit2 size={11} /> Edit</button>
+                        </div>
+                      ) : null}
                     >
-                      {(supporting.referees || []).filter(r => r.name).length === 0 ? (
-                        <div style={{ fontSize: 12.5, color: 'var(--kh-text-muted)', padding: '12px 0', textAlign: 'center' }}>No referees provided</div>
+                      {editingSection === 'supporting' && editForm.referees !== undefined ? (
+                        <>
+                          {(editForm.referees || []).map((ref, i) => (
+                            <div key={i} style={{ padding: '10px 0', borderBottom: '1px solid #f3f4f6' }}>
+                              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--kh-text)', marginBottom: 6 }}>Referee {i + 1}</div>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                  <span style={{ fontSize: 11.5, color: 'var(--kh-text-muted)', minWidth: 60 }}>Name</span>
+                                  <input style={editInputStyle} value={ref.name} onChange={e => { const refs = [...editForm.referees]; refs[i] = { ...refs[i], name: e.target.value }; uf('referees', refs); }} />
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                  <span style={{ fontSize: 11.5, color: 'var(--kh-text-muted)', minWidth: 60 }}>Address</span>
+                                  <input style={editInputStyle} value={ref.address} onChange={e => { const refs = [...editForm.referees]; refs[i] = { ...refs[i], address: e.target.value }; uf('referees', refs); }} />
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                  <span style={{ fontSize: 11.5, color: 'var(--kh-text-muted)', minWidth: 60 }}>Phone</span>
+                                  <input style={editInputStyle} value={ref.telephone} onChange={e => { const refs = [...editForm.referees]; refs[i] = { ...refs[i], telephone: e.target.value }; uf('referees', refs); }} />
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                          <EditActions />
+                        </>
                       ) : (
-                        (supporting.referees || []).filter(r => r.name).map((ref, i) => (
-                          <div key={i} style={{ padding: '10px 0', borderBottom: '1px solid #f3f4f6' }}>
-                            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--kh-text)', marginBottom: 4 }}>Referee {i + 1}: {ref.name}</div>
-                            {ref.address && <div style={{ fontSize: 12, color: 'var(--kh-text-muted)', marginBottom: 2 }}><FiMapPin size={11} style={{ marginRight: 4 }} />{ref.address}</div>}
-                            {ref.telephone && <div style={{ fontSize: 12, color: 'var(--kh-text-muted)' }}><FiPhone size={11} style={{ marginRight: 4 }} />{ref.telephone}</div>}
-                          </div>
-                        ))
+                        (supporting.referees || []).filter(r => r.name).length === 0 ? (
+                          <div style={{ fontSize: 12.5, color: 'var(--kh-text-muted)', padding: '12px 0', textAlign: 'center' }}>No referees provided</div>
+                        ) : (
+                          (supporting.referees || []).filter(r => r.name).map((ref, i) => (
+                            <div key={i} style={{ padding: '10px 0', borderBottom: '1px solid #f3f4f6' }}>
+                              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--kh-text)', marginBottom: 4 }}>Referee {i + 1}: {ref.name}</div>
+                              {ref.address && <div style={{ fontSize: 12, color: 'var(--kh-text-muted)', marginBottom: 2 }}><FiMapPin size={11} style={{ marginRight: 4 }} />{ref.address}</div>}
+                              {ref.telephone && <div style={{ fontSize: 12, color: 'var(--kh-text-muted)' }}><FiPhone size={11} style={{ marginRight: 4 }} />{ref.telephone}</div>}
+                            </div>
+                          ))
+                        )
                       )}
                     </Panel>
                   </div>
@@ -914,13 +1359,13 @@ export default function NurseProfile() {
                         </button>
                       </div>
 
-                      <div style={{ padding: '20px 24px', display: 'flex', gap: 28, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                      <div style={{ padding: '10px 16px', display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
                         {/* Photo display */}
                         <div
                           onClick={() => kycInputRefs.profilePhoto.current?.click()}
                           style={{
-                            width: 200, height: 240, borderRadius: 7, flexShrink: 0, cursor: 'pointer',
-                            border: photoSrc ? '2px solid var(--kh-primary)' : '2px dashed #d1d5db',
+                            width: 160, height: 160, borderRadius: '50%', flexShrink: 0, cursor: 'pointer',
+                            border: photoSrc ? '2px solid #e5e7eb' : '2px dashed #d1d5db',
                             background: photoSrc ? 'transparent' : '#f8f9fa',
                             overflow: 'hidden', position: 'relative',
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -929,7 +1374,7 @@ export default function NurseProfile() {
                         >
                           {photoSrc ? (
                             <>
-                              <img src={photoSrc} alt="KYC Profile" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                              <img src={photoSrc} alt="KYC Profile" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                               {/* Hover overlay */}
                               <div style={{
                                 position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)',
@@ -972,8 +1417,6 @@ export default function NurseProfile() {
                             </div>
                           )}
                           <div style={{ fontSize: 11.5, color: 'var(--kh-text-muted)', lineHeight: 1.7 }}>
-                            <div>• Minimum resolution: <strong>300×400 px</strong></div>
-                            <div>• Clear face, front-facing, no filters</div>
                             <div>• Formats accepted: <strong>JPG, PNG</strong></div>
                             <div>• Max file size: <strong>5 MB</strong></div>
                           </div>
@@ -1005,16 +1448,16 @@ export default function NurseProfile() {
                         const doc = kycDocs[slot.key];
                         return (
                           <div key={slot.key} style={{
-                            border: doc ? `1.5px solid ${slot.accent}` : '1.5px dashed #d1d5db',
+                            border: doc ? '1.5px solid #e5e7eb' : '1.5px dashed #d1d5db',
                             borderRadius: 7, overflow: 'hidden',
-                            background: doc ? slot.accentBg : '#fafafa',
+                            background: '#f3f4f6',
                             transition: 'all 0.15s',
                           }}>
                             {/* Header strip */}
                             <div style={{
-                              padding: '8px 12px', borderBottom: doc ? `1px solid ${slot.accent}33` : '1px solid #f3f4f6',
+                              padding: '8px 12px', borderBottom: '1px solid #e5e7eb',
                               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                              background: doc ? `${slot.accentBg}` : '#f3f4f6',
+                              background: '#eef0f3',
                             }}>
                               <span style={{ fontSize: 11.5, fontWeight: 700, color: doc ? slot.accent : '#6b7280' }}>{slot.label}</span>
                               <span style={{
@@ -1030,15 +1473,12 @@ export default function NurseProfile() {
                             <div style={{ padding: '14px 12px' }}>
                               {doc ? (
                                 <>
-                                  {doc.url ? (
-                                    <img src={doc.url} alt={slot.label} style={{ width: '100%', height: 180, objectFit: 'cover', borderRadius: 5, marginBottom: 8, display: 'block' }} />
+                                  {doc.url && doc.fileType?.startsWith?.('image') ? (
+                                    <img src={doc.url} alt="" loading="lazy" style={{ width: '100%', height: 180, objectFit: 'cover', borderRadius: 5, marginBottom: 8, display: 'block' }} />
                                   ) : (
-                                    <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: '#fff', borderRadius: 5, marginBottom: 8, border: '1px solid #e5e7eb' }}>
-                                      <FiFileText size={22} style={{ color: slot.accent }} />
-                                      <div>
-                                        <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--kh-text)' }}>{doc.fileName}</div>
-                                        <div style={{ fontSize: 10, color: 'var(--kh-text-muted)' }}>PDF document</div>
-                                      </div>
+                                    <div style={{ height: 120, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#fff', borderRadius: 5, marginBottom: 8, border: '1px solid #e5e7eb' }}>
+                                      <FiFileText size={32} style={{ color: slot.accent }} />
+                                      <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--kh-text)', textAlign: 'center', padding: '0 8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}>{doc.fileName}</div>
                                     </div>
                                   )}
                                   <div style={{ fontSize: 11, color: 'var(--kh-text-muted)', marginBottom: 8 }}>
@@ -1046,7 +1486,7 @@ export default function NurseProfile() {
                                     <div style={{ color: '#6b7280' }}>Uploaded: {doc.uploadedAt}</div>
                                   </div>
                                   <div style={{ display: 'flex', gap: 6 }}>
-                                    <button title="View" style={{ flex: 1, background: '#fff', border: `1px solid ${slot.accent}`, borderRadius: 6, padding: '5px 0', fontSize: 11.5, fontWeight: 700, color: slot.accent, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                                    <button title="View" onClick={() => setPreviewDoc({ ...doc, url: doc.fullUrl || doc.url, label: slot.label })} style={{ flex: 1, background: '#fff', border: `1px solid ${slot.accent}`, borderRadius: 6, padding: '5px 0', fontSize: 11.5, fontWeight: 700, color: slot.accent, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
                                       <FiEye size={12} /> View
                                     </button>
                                     <input ref={kycInputRefs[slot.key]} type="file" accept="image/*,.pdf" style={{ display: 'none' }} onChange={handleKycUpload(slot.key)} />
@@ -1085,6 +1525,110 @@ export default function NurseProfile() {
 
         </div>
       </div>
+
+      {/* ═══ DOCUMENT PREVIEW MODAL ═══ */}
+      {previewDoc && (
+        <div
+          onClick={() => setPreviewDoc(null)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 9999,
+            background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 24,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#fff', borderRadius: 12, width: '100%', maxWidth: 780,
+              maxHeight: '90vh', display: 'flex', flexDirection: 'column',
+              overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+            }}
+          >
+            {/* Header */}
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '14px 20px', borderBottom: '1px solid #e5e7eb', flexShrink: 0,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <FiFileText size={18} style={{ color: '#45B6FE' }} />
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--kh-text, #1a1a2e)' }}>{previewDoc.label}</div>
+                  <div style={{ fontSize: 11.5, color: '#6b7280', marginTop: 1 }}>{previewDoc.fileName}</div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {previewDoc.url && (
+                  <a
+                    href={previewDoc.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 5,
+                      padding: '6px 14px', borderRadius: 6, fontSize: 12, fontWeight: 600,
+                      background: '#45B6FE', color: '#fff', textDecoration: 'none',
+                      border: 'none', cursor: 'pointer',
+                    }}
+                  >
+                    <FiEye size={13} /> Open in new tab
+                  </a>
+                )}
+                <button
+                  onClick={() => setPreviewDoc(null)}
+                  style={{
+                    width: 32, height: 32, borderRadius: '50%', border: '1px solid #e5e7eb',
+                    background: '#f9fafb', cursor: 'pointer', display: 'flex',
+                    alignItems: 'center', justifyContent: 'center', color: '#6b7280',
+                  }}
+                  title="Close"
+                >
+                  <FiX size={16} />
+                </button>
+              </div>
+            </div>
+
+            {/* Preview body */}
+            <div style={{ flex: 1, overflow: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f9fafb', minHeight: 300 }}>
+              {previewDoc.url && previewDoc.fileType?.startsWith?.('image') ? (
+                <img
+                  src={previewDoc.url}
+                  alt={previewDoc.label}
+                  style={{ maxWidth: '100%', maxHeight: '75vh', objectFit: 'contain', padding: 20 }}
+                />
+              ) : previewDoc.url && previewDoc.fileType === 'application/pdf' ? (
+                <iframe
+                  src={previewDoc.url}
+                  title={previewDoc.fileName}
+                  style={{ width: '100%', height: '75vh', border: 'none' }}
+                />
+              ) : previewDoc.url ? (
+                <div style={{ textAlign: 'center', padding: 40 }}>
+                  <FiFileText size={48} style={{ color: '#9ca3af', marginBottom: 12 }} />
+                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--kh-text, #1a1a2e)', marginBottom: 4 }}>{previewDoc.fileName}</div>
+                  <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 16 }}>This file type cannot be previewed inline. Click below to open it.</div>
+                  <a
+                    href={previewDoc.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 5,
+                      padding: '8px 20px', borderRadius: 6, fontSize: 13, fontWeight: 600,
+                      background: '#45B6FE', color: '#fff', textDecoration: 'none',
+                    }}
+                  >
+                    <FiEye size={14} /> Open file
+                  </a>
+                </div>
+              ) : (
+                <div style={{ textAlign: 'center', padding: 40 }}>
+                  <FiAlertCircle size={40} style={{ color: '#d97706', marginBottom: 10 }} />
+                  <div style={{ fontSize: 13, color: '#6b7280' }}>No preview available for this document.</div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

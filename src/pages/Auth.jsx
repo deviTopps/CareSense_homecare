@@ -32,9 +32,11 @@ export default function Auth({ onLogin }) {
   useEffect(() => { setReady(true); }, []);
 
   /* ── Validation ── */
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   const validateLogin = () => {
     const e = {};
     if (!loginForm.email.trim()) e.email = 'Email is required';
+    else if (!emailRegex.test(loginForm.email.trim())) e.email = 'Enter a valid email address';
     if (!loginForm.password) e.password = 'Password is required';
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -44,6 +46,7 @@ export default function Auth({ onLogin }) {
     if (!signupForm.firstName.trim()) e.firstName = 'First name is required';
     if (!signupForm.lastName.trim()) e.lastName = 'Last name is required';
     if (!signupForm.email.trim()) e.email = 'Email is required';
+    else if (!emailRegex.test(signupForm.email.trim())) e.email = 'Enter a valid email address';
     if (!signupForm.phone.trim()) e.phone = 'Phone number is required';
     if (!signupForm.agencyName.trim()) e.agencyName = 'Agency name is required';
     if (!signupForm.location.trim()) e.location = 'Location is required';

@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiPlus, FiSearch, FiChevronRight, FiChevronLeft, FiChevronsLeft, FiChevronsRight, FiArrowUp, FiArrowDown, FiCamera, FiUpload, FiX, FiCheck, FiSave, FiArrowRight, FiAlertCircle, FiClock, FiEdit, FiEye } from 'react-icons/fi';
+import { FiPlus, FiSearch, FiChevronRight, FiChevronLeft, FiChevronsLeft, FiChevronsRight, FiArrowUp, FiArrowDown, FiCamera, FiUpload, FiX, FiCheck, FiSave, FiArrowRight, FiAlertCircle, FiClock, FiEdit, FiTrash2 } from 'react-icons/fi';
 import { apiFetch } from '../api';
+import compressImage from '../utils/compressImage';
 
 const ROLE_LABELS = { head_nurse: 'Head Nurse', supervising_nurse: 'Supervising Nurse', Office_nurse: 'Office Nurse', field_nurse: 'Field Nurse' };
 
@@ -93,6 +94,8 @@ export default function Workforce() {
   const [saving, setSaving] = useState(false);
   const [apiError, setApiError] = useState('');
   const [photoPreview, setPhotoPreview] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null); // nurse to delete
+  const [deleting, setDeleting] = useState(false);
 
   // ── Table logic ──
   const incompleteNurses = nurses.filter(n => !n.isComplete);
@@ -124,19 +127,43 @@ export default function Workforce() {
   const addArrayItem = (field, template) => setForm(p => ({ ...p, [field]: [...p[field], typeof template === 'object' ? { ...template } : template] }));
   const removeArrayItem = (field, idx) => setForm(p => ({ ...p, [field]: p[field].filter((_, i) => i !== idx) }));
 
-  const handlePhotoUpload = (e) => {
+  const handlePhotoUpload = async (e) => {
     const file = e.target.files[0];
     if (file) {
       if (file.size > 5 * 1024 * 1024) { alert('Photo must be under 5 MB'); return; }
+      const compressed = await compressImage(file, { maxWidth: 600, maxHeight: 600, quality: 0.75 });
       const reader = new FileReader();
       reader.onloadend = () => setPhotoPreview(reader.result);
-      reader.readAsDataURL(file);
+      reader.readAsDataURL(compressed);
     }
   };
 
   const resetAll = () => {
     setStep(0); setForm({ ...initialFormState, qualifications: [{ ...emptyQualification }], trainingCourses: [''], employmentHistory: [{ ...emptyEmployment }], referees: [{ ...emptyReferee }, { ...emptyReferee }] });
     setNurseId(null); setCompletedSteps([]); setSaving(false); setApiError(''); setPhotoPreview(null);
+  };
+
+  const handleDeleteNurse = async (nurse, e) => {
+    e.stopPropagation();
+    setDeleteTarget(nurse);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      const res = await apiFetch(`/nurses/${deleteTarget.id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || data.message || `Delete failed (HTTP ${res.status})`);
+      }
+      setNurses(prev => prev.filter(n => n.id !== deleteTarget.id));
+      setDeleteTarget(null);
+    } catch (err) {
+      alert('Failed to delete nurse. Please try again.');
+    } finally {
+      setDeleting(false);
+    }
   };
   const closeModal = () => { setShowModal(false); resetAll(); fetchNurses(); };
 
@@ -249,7 +276,7 @@ export default function Workforce() {
           <div style={{ position: 'relative', flexShrink: 0 }}>
             {photoPreview ? (
               <div style={{ position: 'relative' }}>
-                <img src={photoPreview} alt="Preview" style={{ width: 130, height: 130, objectFit: 'cover', borderRadius: '50%', border: '3px solid #D6ECFC', boxShadow: '0 4px 12px rgba(45,127,184,0.12)' }} />
+                <img src={photoPreview} alt="Preview" loading="lazy" style={{ width: 130, height: 130, objectFit: 'cover', borderRadius: '50%', border: '3px solid #D6ECFC', boxShadow: '0 4px 12px rgba(45,127,184,0.12)' }} />
                 <button onClick={() => setPhotoPreview(null)} style={{ position: 'absolute', top: -8, right: -8, width: 24, height: 24, borderRadius: '50%', background: '#e74c3c', color: '#fff', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 6px rgba(0,0,0,0.15)' }}><FiX size={13} /></button>
               </div>
             ) : (
@@ -550,7 +577,7 @@ export default function Workforce() {
               <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('gender')}>Gender <SortIcon col="gender" /></th>
               <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('phone')}>Phone <SortIcon col="phone" /></th>
               <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('joined')}>Joined <SortIcon col="joined" /></th>
-              <th style={{ width: 40 }}></th>
+              <th style={{ width: 110, textAlign: 'center' }}>Actions</th>
             </tr></thead>
             <tbody>
               {loading ? (
@@ -579,13 +606,22 @@ export default function Workforce() {
                   <td style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>{n.phone}</td>
                   <td style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>{n.joined}</td>
                   <td style={{ textAlign: 'center' }}>
-                    {!n.isComplete ? (
-                      <button onClick={(e) => continueRegistration(n, e)} title="View remaining details" style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 10px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', boxShadow: '0 1px 4px rgba(217,119,6,0.25)' }}>
-                        <FiEye size={11} /> View
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); navigate(`/workforce/${n.id}`); }}
+                        title="Edit nurse"
+                        style={{ background: '#f0f7fe', color: '#2E7DB8', border: '1px solid #d6ecfc', borderRadius: 6, padding: '5px 8px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 3 }}
+                      >
+                        <FiEdit size={11} /> Edit
                       </button>
-                    ) : (
-                      <FiChevronRight size={14} style={{ color: '#45B6FE' }} />
-                    )}
+                      <button
+                        onClick={(e) => handleDeleteNurse(n, e)}
+                        title="Delete nurse"
+                        style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', borderRadius: 6, padding: '5px 8px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 3 }}
+                      >
+                        <FiTrash2 size={11} /> Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -613,6 +649,90 @@ export default function Workforce() {
           </div>
         </div>
       </div>
+
+      {/* ── Delete Confirmation Modal ── */}
+      {deleteTarget && (
+        <div
+          onClick={() => !deleting && setDeleteTarget(null)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 9999,
+            background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 24,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#fff', borderRadius: 2, width: '100%', maxWidth: 420,
+              overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
+            }}
+          >
+            {/* Icon */}
+            <div style={{ padding: '32px 24px 0', textAlign: 'center' }}>
+              <div style={{
+                width: 56, height: 56, borderRadius: '50%',
+                background: '#fef2f2', border: '2px solid #fecaca',
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                marginBottom: 16,
+              }}>
+                <FiTrash2 size={24} style={{ color: '#dc2626' }} />
+              </div>
+              <div style={{ fontSize: 17, fontWeight: 700, color: '#111827', marginBottom: 6 }}>Delete Nurse</div>
+              <div style={{ fontSize: 13.5, color: '#6b7280', lineHeight: 1.6 }}>
+                Are you sure you want to delete <strong style={{ color: '#111827' }}>{deleteTarget.name}</strong>?
+                This action cannot be undone and all associated data will be permanently removed.
+              </div>
+            </div>
+
+            {/* Nurse info summary */}
+            <div style={{ margin: '16px 24px', padding: '10px 14px', background: '#f9fafb', borderRadius: 8, border: '1px solid #f3f4f6' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{
+                  width: 36, height: 36, borderRadius: '50%',
+                  background: 'linear-gradient(135deg, #45B6FE, #2E8FD4)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: '#fff', fontSize: 12, fontWeight: 700, flexShrink: 0,
+                }}>
+                  {deleteTarget.name !== '—' ? deleteTarget.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() : '?'}
+                </div>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{deleteTarget.name}</div>
+                  <div style={{ fontSize: 11.5, color: '#6b7280' }}>{deleteTarget.role} · {deleteTarget.email}</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div style={{ padding: '0 24px 24px', display: 'flex', gap: 10 }}>
+              <button
+                onClick={() => setDeleteTarget(null)}
+                disabled={deleting}
+                style={{
+                  flex: 1, padding: '10px 0', borderRadius: 8, fontSize: 13, fontWeight: 700,
+                  background: '#fff', color: '#374151', border: '1px solid #d1d5db',
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                disabled={deleting}
+                style={{
+                  flex: 1, padding: '10px 0', borderRadius: 8, fontSize: 13, fontWeight: 700,
+                  background: deleting ? '#f87171' : '#dc2626', color: '#fff', border: 'none',
+                  cursor: deleting ? 'not-allowed' : 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  opacity: deleting ? 0.8 : 1,
+                }}
+              >
+                <FiTrash2 size={13} /> {deleting ? 'Deleting…' : 'Delete Nurse'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Multi-step Registration Modal ── */}
       {showModal && (
