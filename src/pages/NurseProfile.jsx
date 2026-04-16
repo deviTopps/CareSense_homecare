@@ -7,7 +7,7 @@ import {
   FiShield, FiAward, FiClipboard, FiUpload, FiAlertCircle,
   FiChevronLeft, FiChevronRight, FiChevronsLeft, FiChevronsRight,
   FiRefreshCw, FiCheck, FiCamera, FiX, FiSave, FiPlus, FiTrash2, FiUsers,
-} from 'react-icons/fi';
+} from '../icons/hugeicons-feather';
 import { apiFetch, API_BASE } from '../api';
 import compressImage, { createThumbnailURL } from '../utils/compressImage';
 

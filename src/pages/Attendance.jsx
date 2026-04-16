@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { FiCheckCircle, FiAlertCircle, FiXCircle, FiMapPin, FiClock, FiX, FiSearch, FiChevronLeft, FiChevronRight, FiChevronsLeft, FiChevronsRight, FiFilter } from 'react-icons/fi';
+import { FiCheckCircle, FiAlertCircle, FiXCircle, FiMapPin, FiClock, FiX, FiSearch, FiChevronLeft, FiChevronRight, FiChevronsLeft, FiChevronsRight, FiFilter } from '../icons/hugeicons-feather';
 
 /* ── All Clock-in Records ── */
 const records = [

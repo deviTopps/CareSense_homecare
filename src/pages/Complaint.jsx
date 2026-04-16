@@ -4,7 +4,7 @@ import {
   FiChevronLeft, FiChevronRight, FiChevronsLeft, FiChevronsRight,
   FiUser, FiMapPin, FiPhone, FiFileText, FiSend, FiMessageSquare,
   FiCalendar, FiFlag, FiEye
-} from 'react-icons/fi';
+} from '../icons/hugeicons-feather';
 
 /* ── Complaints Data ── */
 const initialComplaints = [

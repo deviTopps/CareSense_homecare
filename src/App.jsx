@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
+import { AnimatePresence, motion } from 'motion/react';
 import { isTokenValid, clearAuth, getUser } from './api';
 import Sidebar from './components/Sidebar';
 import Topbar from './components/Topbar';
@@ -62,7 +63,18 @@ function App() {
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} onLogout={handleLogout} user={user} />
       <div className="main-content">
         <Topbar onToggleSidebar={() => setSidebarOpen(prev => !prev)} onLogout={handleLogout} />
-        {children}
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={location.pathname}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.22, ease: 'easeOut' }}
+            style={{ flex: 1, display: 'flex', flexDirection: 'column' }}
+          >
+            {children}
+          </motion.div>
+        </AnimatePresence>
         <Footer />
       </div>
     </div>
@@ -72,10 +84,14 @@ function App() {
     <Routes>
       {/* Public route */}
       <Route path="/login" element={
-        isAuthenticated ? <Navigate to="/dashboard" replace /> : <Auth onLogin={handleLogin} />
+        isAuthenticated ? <Navigate to="/dashboard" replace /> : (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25 }}>
+            <Auth onLogin={handleLogin} />
+          </motion.div>
+        )
       } />
 
-      <Route path="/" element={<LandingPage />} />
+      <Route path="/" element={<motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25 }}><LandingPage /></motion.div>} />
 
       {/* Protected routes */}
       <Route path="/dashboard" element={

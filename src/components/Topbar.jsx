@@ -1,5 +1,6 @@
 import { useLocation } from 'react-router-dom';
-import { FiSearch, FiBell, FiMenu, FiLogOut, FiShield, FiHelpCircle } from 'react-icons/fi';
+import { motion } from 'motion/react';
+import { FiSearch, FiBell, FiMenu, FiLogOut, FiShield, FiHelpCircle } from '../icons/hugeicons-feather';
 
 const pageMeta = {
   '/':           { title: 'Dashboard',              sub: 'Real-time homecare overview' },
@@ -29,7 +30,12 @@ export default function Topbar({ onToggleSidebar, onLogout }) {
   };
 
   return (
-    <header className="topbar">
+    <motion.header
+      className="topbar"
+      initial={{ opacity: 0, y: -8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.22, ease: 'easeOut' }}
+    >
       <div className="topbar-left">
         <button className="menu-toggle" onClick={onToggleSidebar}>
           <FiMenu />
@@ -45,10 +51,10 @@ export default function Topbar({ onToggleSidebar, onLogout }) {
           <input type="text" placeholder="Search..." />
         </div>
 
-        <button className="topbar-icon-btn">
+        <motion.button className="topbar-icon-btn" whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.98 }}>
           <FiBell />
           <span className="badge-dot"></span>
-        </button>
+        </motion.button>
 
         <div style={{
           fontSize: 12, color: 'var(--kh-text-muted)', fontWeight: 500,
@@ -80,6 +86,6 @@ export default function Topbar({ onToggleSidebar, onLogout }) {
           <FiLogOut size={13} /> Logout
         </button>
       </div>
-    </header>
+    </motion.header>
   );
 }

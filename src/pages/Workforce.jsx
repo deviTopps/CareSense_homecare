@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiPlus, FiSearch, FiChevronRight, FiChevronLeft, FiChevronsLeft, FiChevronsRight, FiArrowUp, FiArrowDown, FiCamera, FiUpload, FiX, FiCheck, FiSave, FiArrowRight, FiAlertCircle, FiClock, FiEdit, FiTrash2 } from 'react-icons/fi';
+import { FiPlus, FiSearch, FiChevronRight, FiChevronLeft, FiChevronsLeft, FiChevronsRight, FiArrowUp, FiArrowDown, FiCamera, FiUpload, FiX, FiCheck, FiSave, FiArrowRight, FiAlertCircle, FiClock, FiEdit, FiTrash2 } from '../icons/hugeicons-feather';
 import { apiFetch } from '../api';
 import compressImage from '../utils/compressImage';
 

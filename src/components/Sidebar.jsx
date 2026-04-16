@@ -1,10 +1,11 @@
 import { NavLink } from 'react-router-dom';
 import { useState } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import {
   FiGrid, FiCalendar, FiFileText, FiUsers, FiClock,
   FiSettings, FiLogOut, FiChevronDown, FiChevronRight, FiList, FiUserMinus, FiActivity, FiAlertCircle,
   FiMessageSquare, FiMessageCircle, FiRepeat, FiUser, FiCreditCard, FiSmartphone
-} from 'react-icons/fi';
+} from '../icons/hugeicons-feather';
 
 const navItems = [
   { label: 'OVERVIEW', type: 'section' },
@@ -33,8 +34,24 @@ export default function Sidebar({ isOpen, onClose, onLogout, user }) {
 
   return (
     <>
-      {isOpen && <div className="sidebar-overlay d-lg-none" onClick={onClose} />}
-      <aside className={`sidebar${isOpen ? ' open' : ''}`}>
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            className="sidebar-overlay d-lg-none"
+            onClick={onClose}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
+          />
+        )}
+      </AnimatePresence>
+      <motion.aside
+        className={`sidebar${isOpen ? ' open' : ''}`}
+        initial={{ x: -16, opacity: 0 }}
+        animate={{ x: 0, opacity: 1 }}
+        transition={{ duration: 0.24, ease: 'easeOut' }}
+      >
         {/* Brand */}
         <div className="sidebar-brand">
           <img src="/Blue_Logo.png" alt="Kulobal Homecare" className="brand-logo" />
@@ -149,7 +166,7 @@ export default function Sidebar({ isOpen, onClose, onLogout, user }) {
             </button>
           </div>
         </div>
-      </aside>
+      </motion.aside>
     </>
   );
 }

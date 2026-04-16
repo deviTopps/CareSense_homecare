@@ -3,7 +3,7 @@ import {
   FiPlus, FiCalendar, FiClock, FiMapPin, FiUser, FiRepeat,
   FiChevronLeft, FiChevronRight, FiFilter, FiX, FiCheck, FiRefreshCw,
   FiArrowRight, FiAlertCircle, FiEdit2, FiTrash2
-} from 'react-icons/fi';
+} from '../icons/hugeicons-feather';
 
 /* ── Nurses ── */
 const NURSES = [

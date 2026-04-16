@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { FiUsers, FiCheckCircle, FiDownload, FiCalendar, FiX, FiPlus, FiInfo, FiSmartphone, FiCreditCard } from 'react-icons/fi';
+import { FiUsers, FiCheckCircle, FiDownload, FiCalendar, FiX, FiPlus, FiInfo, FiSmartphone, FiCreditCard } from '../icons/hugeicons-feather';
 import { BsBank2 } from 'react-icons/bs';
 import { apiFetch } from '../api';
 

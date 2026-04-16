@@ -5,7 +5,7 @@ import {
   FiFilter, FiUser, FiMapPin, FiPhone, FiActivity, FiHeart,
   FiThermometer, FiFileText, FiSend, FiShield, FiRefreshCw,
   FiChevronDown, FiChevronUp, FiXCircle, FiEdit3
-} from 'react-icons/fi';
+} from '../icons/hugeicons-feather';
 
 /* ── Emergency Cases Data ── */
 const initialCases = [

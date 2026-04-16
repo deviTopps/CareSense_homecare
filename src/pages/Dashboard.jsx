@@ -1,9 +1,10 @@
 import { useState } from 'react';
+import { motion } from 'motion/react';
 import {
   FiUsers, FiCalendar, FiActivity, FiClock,
   FiCheckCircle, FiAlertTriangle, FiHeart, FiX,
   FiUser, FiMapPin, FiPhone, FiThermometer, FiFileText
-} from 'react-icons/fi';
+} from '../icons/hugeicons-feather';
 
 /* ── Flagged Issues Data ── */
 const flaggedIssues = [
@@ -106,14 +107,14 @@ export default function Dashboard() {
   const filtered = flagTab === 'all' ? flaggedIssues : flaggedIssues.filter(f => f.type === flagTab);
 
   return (
-    <div className="page-wrapper">
+    <motion.div className="page-wrapper" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25 }}>
       {/* Welcome Banner */}
-      <div style={{
+      <motion.div style={{
         background: '#f3f4f6',
         borderRadius: 2, padding: '16px 32px', marginBottom: 20,
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         border: '1px solid #e5e7eb',
-      }}>
+      }} initial={{ y: 12, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.3, ease: 'easeOut' }}>
         <div>
           <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--kh-text-muted)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 6 }}>
             Dashboard Overview
@@ -141,12 +142,12 @@ export default function Dashboard() {
             <span style={{ fontSize: 18, fontWeight: 800, color: '#fff' }}>AA</span>
           </div>
         </div>
-      </div>
+      </motion.div>
 
       {/* Big Overview Cards */}
       <div className="row g-3 mb-4">
         {/* Current Patients */}
-        <div className="col-lg-3">
+        <motion.div className="col-lg-3" initial={{ y: 14, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.02, duration: 0.28 }}>
           <div style={{ background: 'linear-gradient(135deg, #E8F4FE 0%, #A8D8FC 50%, #45B6FE 100%)', border: '1px solid #A8D8FC', borderRadius: 2, padding: '32px 24px', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
             <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'rgba(255,255,255,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
               <FiUsers size={26} style={{ color: '#1A7ABF' }} />
@@ -155,10 +156,10 @@ export default function Dashboard() {
             <div style={{ fontSize: 14, fontWeight: 700, color: '#1a2d3c', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 8 }}>Current Patients</div>
             <div style={{ fontSize: 12.5, color: '#2d5a7a', lineHeight: 1.5 }}>Enrolled across all regions</div>
           </div>
-        </div>
+        </motion.div>
 
         {/* Emergency Issues */}
-        <div className="col-lg-3">
+        <motion.div className="col-lg-3" initial={{ y: 14, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.06, duration: 0.28 }}>
           <div style={{ background: 'linear-gradient(135deg, #fca5a5 0%, #ef4444 50%, #b91c1c 100%)', borderRadius: 2, padding: '32px 24px', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
             <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
               <FiAlertTriangle size={26} style={{ color: '#fff' }} />
@@ -167,10 +168,10 @@ export default function Dashboard() {
             <div style={{ fontSize: 14, fontWeight: 700, color: '#fff', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 8 }}>Emergency Issues</div>
             <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.8)', lineHeight: 1.5 }}>Requires immediate attention</div>
           </div>
-        </div>
+        </motion.div>
 
         {/* Pending Care Visits */}
-        <div className="col-lg-3">
+        <motion.div className="col-lg-3" initial={{ y: 14, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.1, duration: 0.28 }}>
           <div style={{ background: 'linear-gradient(135deg, #fde68a 0%, #f59e0b 50%, #d97706 100%)', borderRadius: 2, padding: '32px 24px', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
             <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
               <FiClock size={26} style={{ color: '#fff' }} />
@@ -179,10 +180,10 @@ export default function Dashboard() {
             <div style={{ fontSize: 14, fontWeight: 700, color: '#fff', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 8 }}>Pending Care Visits</div>
             <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.8)', lineHeight: 1.5 }}>Scheduled today · awaiting check-in</div>
           </div>
-        </div>
+        </motion.div>
 
         {/* Active Nurses */}
-        <div className="col-lg-3">
+        <motion.div className="col-lg-3" initial={{ y: 14, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.14, duration: 0.28 }}>
           <div style={{ background: 'linear-gradient(135deg, #7EC8FE 0%, #45B6FE 50%, #1565A0 100%)', borderRadius: 2, padding: '32px 24px', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
             <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
               <FiUsers size={26} style={{ color: '#fff' }} />
@@ -191,11 +192,11 @@ export default function Dashboard() {
             <div style={{ fontSize: 14, fontWeight: 700, color: '#fff', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 8 }}>Active Nurses</div>
             <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.8)', lineHeight: 1.5 }}>32 on duty · 4 on leave</div>
           </div>
-        </div>
+        </motion.div>
       </div>
 
       {/* ── Emergency Issues Data Table ── */}
-      <div className="kh-card" style={{ overflow: 'hidden' }}>
+      <motion.div className="kh-card" style={{ overflow: 'hidden' }} initial={{ y: 12, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.18, duration: 0.28 }}>
         <div className="card-header-custom" style={{ borderBottom: 'none', paddingBottom: 0 }}>
           <h6 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <FiAlertTriangle size={16} style={{ color: '#ef4444' }} />
@@ -283,7 +284,7 @@ export default function Dashboard() {
             </tbody>
           </table>
         </div>
-      </div>
+      </motion.div>
 
       {/* ═══ Flagged Alert Portal (Modal) ═══ */}
       {selectedFlag && (
@@ -453,6 +454,6 @@ export default function Dashboard() {
           </div>
         </div>
       )}
-    </div>
+    </motion.div>
   );
 }

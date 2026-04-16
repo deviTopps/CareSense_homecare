@@ -221,7 +221,7 @@ export default function LandingPage() {
             </motion.div>
             <motion.div variants={fadeUp} transition={{ duration: 0.6, delay: 0.15 }}>
               <div className="visual-card">
-                <div style={{ fontFamily: 'Sora', fontWeight: 700, fontSize: '0.95rem', marginBottom: 20 }}>Workforce Performance</div>
+                <div style={{ fontFamily: 'Poppins', fontWeight: 700, fontSize: '0.95rem', marginBottom: 20 }}>Workforce Performance</div>
                 <div className="portfolio-grid">
                   <div className="portfolio-item">
                     <div className="portfolio-label">On-Time Visits</div>

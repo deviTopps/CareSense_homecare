@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FiPlus, FiMapPin, FiClock, FiChevronRight, FiCalendar, FiXCircle } from 'react-icons/fi';
+import { FiPlus, FiMapPin, FiClock, FiChevronRight, FiCalendar, FiXCircle } from '../icons/hugeicons-feather';
 
 const initialVisits = [
   { id: 'V-2001', patient: 'Kwame Boateng', date: '2026-03-22', time: '09:00', duration: '45 min', type: 'Routine Check', frequency: 'Weekly', prevVisit: '2026-03-15', nextVisit: '2026-03-29', region: 'Accra', status: 'completed', address: '14 Osu Badu St, Accra' },

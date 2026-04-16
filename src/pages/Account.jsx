@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FiUser, FiMail, FiPhone, FiLock, FiSave, FiBell, FiGlobe, FiTrash2, FiAlertTriangle, FiX } from 'react-icons/fi';
+import { FiUser, FiMail, FiPhone, FiLock, FiSave, FiBell, FiGlobe, FiTrash2, FiAlertTriangle, FiX } from '../icons/hugeicons-feather';
 import { getUser } from '../api';
 
 const Panel = ({ title, icon, accent = '#45B6FE', children }) => (
