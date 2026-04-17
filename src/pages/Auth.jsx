@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { FiEye, FiEyeOff, FiArrowRight, FiCheck, FiMail } from '../icons/hugeicons-feather';
 import { API_BASE } from '../api';
 
@@ -101,6 +101,24 @@ export default function Auth({ onLogin }) {
 
   const switchMode = (m) => { setMode(m); setErrors({}); setApiError(''); setForgotSent(false); setShowPassword(false); setShowConfirmPassword(false); };
 
+  useEffect(() => {
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+
+    if (mode === 'login') {
+      document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = previousBodyOverflow || '';
+      document.documentElement.style.overflow = previousHtmlOverflow || '';
+    }
+
+    return () => {
+      document.body.style.overflow = previousBodyOverflow || '';
+      document.documentElement.style.overflow = previousHtmlOverflow || '';
+    };
+  }, [mode]);
+
   /* ── Finorix-inspired styles (Poppins font, pill buttons) ── */
   const fontFamily = "'Poppins', -apple-system, BlinkMacSystemFont, sans-serif";
   const inputBase = {
@@ -149,11 +167,67 @@ export default function Auth({ onLogin }) {
 
   return (
     <div style={{
-      minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: '#f8f8f8', fontFamily,
-      padding: '40px 20px',
+      minHeight: '100vh', display: 'flex', alignItems: mode === 'login' ? 'stretch' : 'center', justifyContent: mode === 'login' ? 'stretch' : 'center',
+      background: mode === 'login' ? '#ffffff' : '#f8f8f8', fontFamily,
+      padding: mode === 'login' ? 0 : '40px 20px',
+      height: mode === 'login' ? '100vh' : 'auto',
+      overflow: mode === 'login' ? 'hidden' : 'visible',
     }}>
-      <div style={{ width: '100%', maxWidth: mode === 'signup' ? 540 : 440 }}>
+      <div style={{
+        width: '100%',
+        minHeight: mode === 'login' ? '100vh' : 'auto',
+        height: mode === 'login' ? '100vh' : 'auto',
+        maxWidth: mode === 'login' ? '100%' : mode === 'signup' ? 540 : 440,
+        display: mode === 'login' ? 'flex' : 'block',
+        flexWrap: 'wrap',
+        background: mode === 'login' ? '#ffffff' : 'transparent',
+        border: mode === 'login' ? 'none' : 'none',
+        borderRadius: 0,
+        boxShadow: 'none',
+        overflow: mode === 'login' ? 'hidden' : 'visible',
+      }}>
+        {mode === 'login' && (
+          <div style={{
+            flex: '1 1 50%',
+            minHeight: '100vh',
+            background: 'linear-gradient(160deg, #f0f9ff 0%, #eff6ff 45%, #f8fafc 100%)',
+            display: 'flex',
+            alignItems: 'stretch',
+            justifyContent: 'stretch',
+            padding: 0,
+            borderRight: 'none',
+            overflow: 'hidden',
+          }}>
+            <img
+              src="/Total Visits.svg"
+              alt="Total visits analytics overview"
+              style={{
+                width: '100%',
+                height: '100%',
+                minHeight: '100vh',
+                objectFit: 'cover',
+                display: 'block',
+                objectPosition: 'center 25%',
+                padding: 0,
+              }}
+            />
+          </div>
+        )}
+
+        <div style={{
+          flex: mode === 'login' ? '1 1 50%' : '1 1 auto',
+          width: '100%',
+          maxWidth: mode === 'login' ? 'none' : mode === 'signup' ? 540 : 440,
+          margin: mode === 'login' ? 0 : undefined,
+          padding: mode === 'login' ? '56px clamp(24px, 4vw, 56px) 40px' : 0,
+          minHeight: mode === 'login' ? '100vh' : 'auto',
+          maxHeight: mode === 'login' ? '100vh' : 'none',
+          display: mode === 'login' ? 'flex' : 'block',
+          alignItems: mode === 'login' ? 'center' : undefined,
+          justifyContent: mode === 'login' ? 'center' : undefined,
+          overflow: mode === 'login' ? 'hidden' : 'visible',
+        }}>
+        <div style={{ width: '100%', maxWidth: mode === 'login' ? 460 : '100%' }}>
 
         {/* Logo + heading */}
         <div style={{ textAlign: 'center', marginBottom: 36 }}>
@@ -174,9 +248,9 @@ export default function Auth({ onLogin }) {
 
         {/* Card */}
         <div style={{
-          background: '#fff', borderRadius: 3, border: '1px solid #e4e5df',
+          background: '#fff', borderRadius: 3, border: mode === 'login' ? 'none' : '1px solid #e4e5df',
           padding: mode === 'signup' ? '32px 32px 28px' : '36px 36px 32px',
-          boxShadow: '0 2px 12px rgba(0,0,0,0.04)',
+          boxShadow: mode === 'login' ? 'none' : '0 2px 12px rgba(0,0,0,0.04)',
         }}>
 
           {/* ═══ LOGIN ═══ */}
@@ -427,6 +501,8 @@ export default function Auth({ onLogin }) {
         <p style={{ textAlign: 'center', fontSize: 12, color: '#d1d5db', marginTop: 36, fontWeight: 500, fontFamily }}>
           © 2026 Data Leap Technologies Inc.
         </p>
+      </div>
+      </div>
       </div>
     </div>
   );

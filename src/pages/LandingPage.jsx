@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import { motion } from 'motion/react';
+import { useEffect, useState } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import { HugeiconsIcon } from '@hugeicons/react';
 import {
   Calendar03Icon,
@@ -14,8 +14,16 @@ import './LandingPage.css';
 /* animation presets */
 const fadeUp = { hidden: { opacity: 0, y: 30 }, show: { opacity: 1, y: 0 } };
 const stagger = { show: { transition: { staggerChildren: 0.1 } } };
+const COOKIE_CONSENT_KEY = 'kulobalCookieConsent';
 
 export default function LandingPage() {
+  const [showCookieBanner, setShowCookieBanner] = useState(false);
+  const [showCookiePrefs, setShowCookiePrefs] = useState(false);
+  const [cookiePrefs, setCookiePrefs] = useState({
+    analytics: true,
+    marketing: false,
+  });
+
   useEffect(() => {
     const nav = document.querySelector('.cf-nav');
     const onScroll = () => {
@@ -25,6 +33,66 @@ export default function LandingPage() {
     window.addEventListener('scroll', onScroll);
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(COOKIE_CONSENT_KEY);
+      if (!saved) {
+        setShowCookieBanner(true);
+        return;
+      }
+
+      const parsed = JSON.parse(saved);
+      if (parsed?.preferences && typeof parsed.preferences === 'object') {
+        setCookiePrefs(prev => ({
+          ...prev,
+          ...parsed.preferences,
+        }));
+      }
+      setShowCookieBanner(false);
+    } catch {
+      setShowCookieBanner(true);
+    }
+  }, []);
+
+  const persistCookieConsent = (consent, preferences) => {
+    const payload = {
+      consent,
+      preferences: {
+        analytics: Boolean(preferences?.analytics),
+        marketing: Boolean(preferences?.marketing),
+        necessary: true,
+      },
+      savedAt: new Date().toISOString(),
+    };
+
+    localStorage.setItem(COOKIE_CONSENT_KEY, JSON.stringify(payload));
+    setCookiePrefs({
+      analytics: Boolean(preferences?.analytics),
+      marketing: Boolean(preferences?.marketing),
+    });
+    setShowCookiePrefs(false);
+    setShowCookieBanner(false);
+  };
+
+  const handleAcceptAllCookies = () => {
+    persistCookieConsent('accepted', { analytics: true, marketing: true });
+  };
+
+  const handleRejectOptionalCookies = () => {
+    persistCookieConsent('rejected', { analytics: false, marketing: false });
+  };
+
+  const handleSaveCookiePreferences = () => {
+    persistCookieConsent('customized', cookiePrefs);
+  };
+
+  const toggleCookiePreference = (key) => {
+    setCookiePrefs(prev => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  };
 
   const features = [
     { icon: Calendar03Icon, title: 'Smart Scheduling', desc: 'Coordinate visits, shift swaps, and patient assignments from one intuitive calendar view.' },
@@ -373,10 +441,98 @@ export default function LandingPage() {
           </div>
         </div>
         <div className="footer-bottom">
-          <p>© {new Date().getFullYear()} Kulobal Homecare Inc. All rights reserved.</p>
-          <span>Made with ❤️ for better homecare</span>
+          <p>© {new Date().getFullYear()} Data Leap Technologies Inc. All rights reserved.</p>
+         
         </div>
       </footer>
+
+      <AnimatePresence>
+        {showCookieBanner && (
+          <motion.aside
+            className="cookie-banner"
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            transition={{ duration: 0.28, ease: 'easeOut' }}
+            role="dialog"
+            aria-label="Cookie preferences"
+            aria-live="polite"
+          >
+            <div className="cookie-banner__header">
+              <div className="cookie-banner__chip">Cookie Preferences</div>
+              <button
+                className="cookie-banner__manage"
+                type="button"
+                onClick={() => setShowCookiePrefs(prev => !prev)}
+              >
+                {showCookiePrefs ? 'Hide settings' : 'Manage settings'}
+              </button>
+            </div>
+
+            <h4>We use cookies to improve your experience.</h4>
+            <p>
+              We use essential cookies to keep the site secure and optional cookies for analytics and marketing.
+              You can accept all, reject optional, or customize your preferences.
+            </p>
+
+            <AnimatePresence>
+              {showCookiePrefs && (
+                <motion.div
+                  className="cookie-banner__prefs"
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.22, ease: 'easeOut' }}
+                >
+                  <div className="cookie-pref-item">
+                    <div>
+                      <strong>Necessary</strong>
+                      <span>Required for core site functionality.</span>
+                    </div>
+                    <span className="cookie-pref-badge">Always on</span>
+                  </div>
+
+                  <div className="cookie-pref-item">
+                    <div>
+                      <strong>Analytics</strong>
+                      <span>Help us understand usage and improve performance.</span>
+                    </div>
+                    <button
+                      type="button"
+                      className={`cookie-toggle ${cookiePrefs.analytics ? 'on' : ''}`}
+                      onClick={() => toggleCookiePreference('analytics')}
+                      aria-pressed={cookiePrefs.analytics}
+                    >
+                      <span />
+                    </button>
+                  </div>
+
+                  <div className="cookie-pref-item">
+                    <div>
+                      <strong>Marketing</strong>
+                      <span>Enable personalized offers and campaign insights.</span>
+                    </div>
+                    <button
+                      type="button"
+                      className={`cookie-toggle ${cookiePrefs.marketing ? 'on' : ''}`}
+                      onClick={() => toggleCookiePreference('marketing')}
+                      aria-pressed={cookiePrefs.marketing}
+                    >
+                      <span />
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <div className="cookie-banner__actions">
+              <button type="button" className="cookie-btn ghost" onClick={handleRejectOptionalCookies}>Reject optional</button>
+              <button type="button" className="cookie-btn outline" onClick={handleSaveCookiePreferences}>Save preferences</button>
+              <button type="button" className="cookie-btn primary" onClick={handleAcceptAllCookies}>Accept all</button>
+            </div>
+          </motion.aside>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
