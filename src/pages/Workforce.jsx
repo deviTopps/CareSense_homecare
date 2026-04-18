@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiPlus, FiSearch, FiChevronRight, FiChevronLeft, FiChevronsLeft, FiChevronsRight, FiArrowUp, FiArrowDown, FiCamera, FiUpload, FiX, FiCheck, FiSave, FiArrowRight, FiAlertCircle, FiClock, FiEdit, FiTrash2 } from '../icons/hugeicons-feather';
-import { apiFetch } from '../api';
+import { FiPlus, FiSearch, FiChevronRight, FiChevronLeft, FiChevronsLeft, FiChevronsRight, FiArrowUp, FiArrowDown, FiCamera, FiUpload, FiX, FiCheck, FiSave, FiArrowRight, FiAlertCircle, FiClock, FiEdit, FiTrash2, FiUsers } from '../icons/hugeicons-feather';
+import { apiFetch, isTokenValid } from '../api';
 import compressImage from '../utils/compressImage';
 
-const ROLE_LABELS = { head_nurse: 'Head Nurse', supervising_nurse: 'Supervising Nurse', Office_nurse: 'Office Nurse', field_nurse: 'Field Nurse' };
+const ROLE_LABELS = { head_nurse: 'Head Nurse', supervising_nurse: 'Supervising Nurse', office_nurse: 'Office Nurse', field_nurse: 'Field Nurse' };
 
 // Track fully-completed nurse registrations locally so we don't depend on API field presence
 const getCompletedNurseIds = () => { try { return new Set(JSON.parse(localStorage.getItem('completedNurseIds') || '[]')); } catch { return new Set(); } };
@@ -25,7 +25,7 @@ const emptyReferee = { name: '', address: '', telephone: '' };
 
 const initialFormState = {
   // Step 1 — Personal Info
-  jobReference: '', jobTitle: '', title: '', lastName: '', firstName: '', gender: '', email: '', address: '', mmcPinNo: '', phone: '', homeTelephone: '', citizenship: 'Ghana', role: 'field_nurse', password: '',
+  title: '', lastName: '', firstName: '', gender: '', email: '', address: '', mmcPinNo: '', phone: '', homeTelephone: '', jobReference: '', jobTitle: '', citizenship: 'Ghana', role: 'field_nurse', password: '',
   // Step 2 — Diversity Info
   race: '', religion: '', disability: 'No', disability_detail: '', criminal_records: 'No', criminal_record_detail: '',
   // Step 3 — Education & Employment
@@ -113,6 +113,29 @@ export default function Workforce() {
   const paged = sorted.slice(startRow - 1, endRow);
   const pgBtn = (onClick, disabled, children) => (<button onClick={onClick} disabled={disabled} style={{ padding: '6px 10px', border: '1px solid var(--kh-border-light)', borderRadius: 2, background: disabled ? 'var(--kh-off-white)' : '#fff', cursor: disabled ? 'default' : 'pointer', color: disabled ? 'var(--kh-text-muted)' : 'var(--kh-text)', fontSize: 13, display: 'flex', alignItems: 'center' }}>{children}</button>);
 
+  const removeEmptyValues = (value) => {
+    if (Array.isArray(value)) {
+      return value
+        .map(item => removeEmptyValues(item))
+        .filter(item => item !== undefined);
+    }
+
+    if (value && typeof value === 'object') {
+      const entries = Object.entries(value)
+        .map(([key, item]) => [key, removeEmptyValues(item)])
+        .filter(([, item]) => item !== undefined);
+      return Object.fromEntries(entries);
+    }
+
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      return trimmed === '' ? undefined : trimmed;
+    }
+
+    if (value === null || value === undefined) return undefined;
+    return value;
+  };
+
   // ── Form helpers ──
   const u = (field, value) => setForm(p => ({ ...p, [field]: value }));
 
@@ -185,42 +208,103 @@ export default function Workforce() {
       if (step < STEPS.length - 1) setStep(step + 1);
       return;
     }
+    // Check token validity before attempting
+    if (!isTokenValid()) {
+      setApiError('Your session has expired. Please log out and log back in, then try again.');
+      return;
+    }
     setSaving(true); setApiError('');
     try {
       let body;
       if (step === 0) {
-        body = {
-          jobReference: form.jobReference, jobTitle: form.jobTitle, title: form.title,
-          lastName: form.lastName, firstName: form.firstName, gender: form.gender,
-          email: form.email, address: form.address, mmcPinNo: form.mmcPinNo,
-          phone: form.phone, homeTelephone: form.homeTelephone,
-          citizenship: form.citizenship, role: form.role, password: form.password,
+        const requiredStep0 = {
+          title: form.title,
+          firstName: form.firstName,
+          lastName: form.lastName,
+          gender: form.gender,
+          email: form.email,
+          address: form.address,
+          phone: form.phone,
+          role: form.role,
+          password: form.password,
+          jobReference: form.jobReference,
+          jobTitle: form.jobTitle,
         };
+        const missingRequired = Object.entries(requiredStep0)
+          .filter(([, value]) => !String(value || '').trim())
+          .map(([key]) => key);
+
+        if (missingRequired.length > 0) {
+          setApiError(`Please fill required fields before continuing: ${missingRequired.join(', ')}`);
+          return;
+        }
+
+        const step0Body = {
+          title: form.title,
+          firstName: form.firstName,
+          lastName: form.lastName,
+          gender: form.gender,
+          email: form.email,
+          address: form.address,
+          phone: form.phone,
+          homeTelephone: form.homeTelephone?.trim() || form.phone.trim(),
+          role: form.role,
+          password: form.password,
+          jobReference: form.jobReference.trim(),
+          jobTitle: form.jobTitle.trim(),
+        };
+        if (form.mmcPinNo?.trim()) step0Body.mmcPinNo = form.mmcPinNo.trim();
+        if (form.citizenship?.trim()) step0Body.citizenship = form.citizenship.trim();
+        body = step0Body;
       } else if (step === 1) {
-        body = {
+        if (!nurseId) {
+          setApiError('Nurse profile ID is missing. Please complete Personal Info first.');
+          return;
+        }
+        body = removeEmptyValues({
           nurseId, race: form.race, religion: form.religion,
           disability: form.disability,
           disability_detail: form.disability === 'Yes' ? form.disability_detail || 'N/A' : 'N/A',
           criminal_records: form.criminal_records,
           criminal_record_detail: form.criminal_records === 'Yes' ? form.criminal_record_detail || 'N/A' : 'N/A',
-        };
+        });
       } else if (step === 2) {
-        body = {
+        if (!nurseId) {
+          setApiError('Nurse profile ID is missing. Please complete Personal Info first.');
+          return;
+        }
+        body = removeEmptyValues({
           nurseId,
           qualifications: form.qualifications.filter(q => q.name || q.institution),
           trainingCourses: form.trainingCourses.filter(t => t.trim()),
           employmentHistory: form.employmentHistory.filter(e => e.employerName),
-        };
+        });
       } else if (step === 3) {
-        body = {
+        if (!nurseId) {
+          setApiError('Nurse profile ID is missing. Please complete Personal Info first.');
+          return;
+        }
+        body = removeEmptyValues({
           nurseId,
           staffRelation: form.staffRelation, staffRelationDetail: form.staffRelation === 'Yes' ? form.staffRelationDetail || 'N/A' : 'N/A',
           vacancyAdvertised: form.vacancyAdvertised,
           referees: form.referees.filter(r => r.name),
-        };
+        });
+      }
+      console.log('[saveStep] endpoint:', STEPS[step].endpoint);
+      console.log('[saveStep] payload:', JSON.stringify(body, null, 2));
+      // Copy curl command to clipboard for direct testing
+      if (step === 0) {
+        const token = localStorage.getItem('token');
+        const curlCmd = `curl -s -X POST 'https://care-sense-backend.onrender.com/api/nurses/create/personal-info' -H 'Content-Type: application/json' -H 'Authorization: Bearer ${token}' -d '${JSON.stringify(body)}'`;
+        navigator.clipboard?.writeText(curlCmd).catch(() => {});
+        console.log('[CURL TEST]', curlCmd);
       }
       const res = await apiFetch(STEPS[step].endpoint, { method: 'POST', body: JSON.stringify(body) });
-      const data = await res.json();
+      const rawText = await res.text();
+      console.log('[saveStep] response status:', res.status, 'body:', rawText);
+      let data;
+      try { data = JSON.parse(rawText); } catch { data = { message: rawText }; }
 
       // Resolve the nurse id — prefer body.nurseId (always fresh) over stale state
       const resolvedId = body?.nurseId || nurseId;
@@ -228,17 +312,16 @@ export default function Workforce() {
       if (!res.ok) {
         const msg = (data.error || data.message || '').toLowerCase();
         // If data already exists for this step, treat as completed and advance
-        if (msg.includes('already exists')) {
+        if (msg.includes('already exists') || msg.includes('duplicate') || msg.includes('already registered')) {
           setCompletedSteps(prev => [...new Set([...prev, step])]);
           if (step < STEPS.length - 1) {
             setStep(step + 1);
           } else {
-            // Last step already existed — still mark complete
             if (resolvedId) markNurseComplete(resolvedId);
           }
           return;
         }
-        throw new Error(data.error || data.message || 'Failed to save');
+        throw new Error(data.error || data.message || data.details || (Array.isArray(data.errors) ? data.errors.map(e => e.message || e.msg || JSON.stringify(e)).join('; ') : null) || JSON.stringify(data) || 'Failed to save');
       }
       // Step 0 returns nurseId — extract and store it
       let currentNurseId = resolvedId;
@@ -254,7 +337,12 @@ export default function Workforce() {
         if (currentNurseId) markNurseComplete(currentNurseId);
       }
     } catch (err) {
-      setApiError(err.message);
+      const message = String(err?.message || 'Failed to save');
+      if (message.toLowerCase().includes('failed to fetch')) {
+        setApiError('Cannot connect to the server right now. Please check your network and try again.');
+      } else {
+        setApiError(`Error: ${message}`);
+      }
     } finally {
       setSaving(false);
     }
@@ -299,17 +387,9 @@ export default function Workforce() {
       </div>
 
       <div style={sectionCardStyle}>
-        <div style={sectionTitleStyle}>Job Details</div>
-        <div className="row g-3">
-          <div className="col-md-6"><label className="form-label" style={fieldLabelStyle}>Job Reference</label><input className={inp} value={form.jobReference} onChange={e => u('jobReference', e.target.value)} placeholder="e.g. New Job" /></div>
-          <div className="col-md-6"><label className="form-label" style={fieldLabelStyle}>Job Title</label><input className={inp} value={form.jobTitle} onChange={e => u('jobTitle', e.target.value)} placeholder="e.g. Care Nurse" /></div>
-        </div>
-      </div>
-
-      <div style={sectionCardStyle}>
         <div style={sectionTitleStyle}>Personal Details</div>
         <div className="row g-3">
-          <div className="col-md-3"><label className="form-label" style={fieldLabelStyle}>Title</label><input className={inp} value={form.title} onChange={e => u('title', e.target.value)} placeholder="e.g. Care Nurse" /></div>
+          <div className="col-md-3"><label className="form-label" style={fieldLabelStyle}>Title</label><select className={inp} value={form.title} onChange={e => u('title', e.target.value)}><option value="">Select title</option><option value="Mr">Mr</option><option value="Mrs">Mrs</option><option value="Ms">Ms</option><option value="Miss">Miss</option><option value="Dr">Dr</option><option value="Prof">Prof</option><option value="Rev">Rev</option></select></div>
           <div className="col-md-4"><label className="form-label" style={fieldLabelStyle}>First Name *</label><input className={inp} value={form.firstName} onChange={e => u('firstName', e.target.value)} placeholder="First name" /></div>
           <div className="col-md-5"><label className="form-label" style={fieldLabelStyle}>Last Name *</label><input className={inp} value={form.lastName} onChange={e => u('lastName', e.target.value)} placeholder="Last name" /></div>
           <div className="col-md-4"><label className="form-label" style={fieldLabelStyle}>Gender *</label>
@@ -326,10 +406,26 @@ export default function Workforce() {
           <div className="col-md-6"><label className="form-label" style={fieldLabelStyle}>Role *</label>
             <select className={sel} value={form.role} onChange={e => u('role', e.target.value)}>
               <option value="head_nurse">Head Nurse</option><option value="supervising_nurse">Supervising Nurse</option>
-              <option value="Office_nurse">Office Nurse</option><option value="field_nurse">Field Nurse</option>
+              <option value="office_nurse">Office Nurse</option><option value="field_nurse">Field Nurse</option>
             </select>
           </div>
           <div className="col-md-6"><label className="form-label" style={fieldLabelStyle}>Password *</label><input type="password" className={inp} value={form.password} onChange={e => u('password', e.target.value)} placeholder="Min 8 characters" /></div>
+        </div>
+      </div>
+
+      <div style={sectionCardStyle}>
+        <div style={sectionTitleStyle}>Job Details</div>
+        <div className="row g-3">
+          <div className="col-md-6"><label className="form-label" style={fieldLabelStyle}>Job Reference *</label><input className={inp} value={form.jobReference} onChange={e => u('jobReference', e.target.value)} placeholder="e.g. REF-001" /></div>
+          <div className="col-md-6"><label className="form-label" style={fieldLabelStyle}>Job Title *</label>
+            <select className={inp} value={form.jobTitle} onChange={e => u('jobTitle', e.target.value)}>
+              <option value="">Select job title</option>
+              <option value="head_nurse">Head Nurse</option>
+              <option value="supervising_nurse">Supervising Nurse</option>
+              <option value="office_nurse">Office Nurse</option>
+              <option value="field_nurse">Field Nurse</option>
+            </select>
+          </div>
         </div>
       </div>
     </div>
@@ -540,6 +636,29 @@ export default function Workforce() {
 
   return (
     <div className="page-wrapper">
+
+      {/* ── Info Banner ── */}
+      <div style={{
+        background: 'linear-gradient(135deg, #EBF5FF 0%, #F0F9FF 100%)',
+        border: '1px solid #BFDBFE',
+        borderRadius: 12,
+        padding: '14px 20px',
+        marginBottom: 16,
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: 14,
+      }}>
+        <div style={{ flexShrink: 0, width: 36, height: 36, borderRadius: 8, background: '#45B6FE', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <FiUsers size={18} color="#fff" />
+        </div>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: '#1e3a5f', marginBottom: 3 }}>Workforce Management</div>
+          <div style={{ fontSize: 12.5, color: '#4b6a8a', lineHeight: 1.6 }}>
+            Register and manage all nurses on the CareSense platform. Use <strong>Register Nurse</strong> to onboard new staff through a 4-step process covering personal info, diversity data, education &amp; employment history, and supporting information. Nurses with incomplete registrations are flagged under <strong>Incomplete</strong> and can be continued at any time.
+          </div>
+        </div>
+      </div>
+
       <div className="kh-card">
         <div style={{ background: '#45B6FE', padding: '14px 20px', display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
           <div className="d-flex gap-2 align-items-center">
@@ -736,9 +855,9 @@ export default function Workforce() {
 
       {/* ── Multi-step Registration Modal ── */}
       {showModal && (
-        <div className="modal d-block" style={{ background: 'rgba(0,0,0,0.25)', backdropFilter: 'blur(4px)' }} onClick={closeModal}>
+        <div className="modal modal-open" style={{ background: 'rgba(0,0,0,0.25)', backdropFilter: 'blur(4px)' }} onClick={closeModal}>
           <div className="modal-dialog modal-dialog-centered modal-dialog-scrollable" style={{ maxWidth: 1060 }} onClick={e => e.stopPropagation()}>
-            <div className="modal-content" style={{ borderRadius: 3, border: 'none', boxShadow: '0 20px 60px rgba(0,0,0,0.12)' }}>
+            <div className="modal-content kh-modal-panel" style={{ borderRadius: 12, border: 'none', boxShadow: '0 20px 60px rgba(0,0,0,0.12)' }}>
 
               {/* Header */}
               <div className="modal-header" style={{ borderBottom: '1px solid var(--kh-border-light)', padding: '20px 24px', background: '#F0F7FE' }}>
@@ -746,7 +865,7 @@ export default function Workforce() {
                   <h6 className="modal-title" style={{ fontWeight: 700, fontSize: 16, marginBottom: 10 }}>Register Nurse</h6>
                   <div style={{ fontSize: 12.5, color: '#2E7DB8', fontWeight: 600 }}>View and update the remaining nurse registration details.</div>
                 </div>
-                <button className="btn-close" onClick={closeModal} />
+                <button className="btn btn-sm btn-ghost" onClick={closeModal}><FiX size={16} /></button>
               </div>
 
               {/* Body */}
@@ -763,7 +882,7 @@ export default function Workforce() {
                     </div>
                     <div style={{ fontSize: 20, fontWeight: 700, color: '#111827', marginBottom: 8 }}>Nurse Registered Successfully!</div>
                     <div style={{ fontSize: 14, color: '#6b7280', marginBottom: 24 }}>All steps have been completed. The nurse has been added to the system.</div>
-                    <button className="btn btn-kh-primary" onClick={closeModal} style={{ padding: '10px 32px' }}>Close</button>
+                    <button className="btn btn-primary" onClick={closeModal} style={{ padding: '10px 32px' }}>Close</button>
                   </div>
                 ) : (
                   stepRenderers[step]()
@@ -775,16 +894,16 @@ export default function Workforce() {
                 <div className="modal-footer" style={{ borderTop: '1px solid var(--kh-border-light)', padding: '16px 24px', background: '#fff', display: 'flex', justifyContent: 'space-between' }}>
                   <div>
                     {step > 0 && (
-                      <button className="btn btn-kh-outline" onClick={() => setStep(step - 1)} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <button className="btn btn-outline" onClick={() => setStep(step - 1)} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <FiChevronLeft size={14} /> Back
                       </button>
                     )}
                   </div>
                   <div className="d-flex gap-2">
-                    <button className="btn btn-kh-outline" onClick={closeModal}>
+                    <button className="btn btn-outline" onClick={closeModal}>
                       <FiSave size={13} style={{ marginRight: 6 }} /> Save & Exit
                     </button>
-                    <button className="btn btn-kh-primary" disabled={saving} onClick={saveStep} style={{ display: 'flex', alignItems: 'center', gap: 6, opacity: saving ? 0.7 : 1 }}>
+                    <button className="btn btn-primary" disabled={saving} onClick={saveStep} style={{ display: 'flex', alignItems: 'center', gap: 6, opacity: saving ? 0.7 : 1 }}>
                       {saving ? 'Saving…' : isLastStep ? <><FiCheck size={14} /> Complete Registration</> : <>Save & Continue <FiArrowRight size={14} /></>}
                     </button>
                   </div>

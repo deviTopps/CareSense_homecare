@@ -14,7 +14,7 @@ import compressImage, { createThumbnailURL } from '../utils/compressImage';
 const ROLE_LABELS = {
   head_nurse: 'Head Nurse',
   supervising_nurse: 'Supervising Nurse',
-  Office_nurse: 'Office Nurse',
+  office_nurse: 'Office Nurse',
   field_nurse: 'Field Nurse',
 };
 
@@ -703,7 +703,7 @@ export default function NurseProfile() {
                     <>
                       <EditRow label="Job Reference" field="jobReference" />
                       <EditRow label="Job Title" field="jobTitle" />
-                      <EditRow label="Role" field="role" options={['head_nurse', 'supervising_nurse', 'Office_nurse', 'field_nurse']} />
+                      <EditRow label="Role" field="role" options={['head_nurse', 'supervising_nurse', 'office_nurse', 'field_nurse']} />
                       <EditRow label="MMC Pin No." field="mmcPinNo" />
                       <EditActions />
                     </>

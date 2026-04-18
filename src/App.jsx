@@ -59,9 +59,9 @@ function App() {
 
   // Layout wrapper for authenticated pages
   const AuthLayout = ({ children }) => (
-    <div className="app-layout">
+    <div className="app-layout kh-bs-theme">
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} onLogout={handleLogout} user={user} />
-      <div className="main-content">
+      <div className="main-content bg-base-200 text-base-content">
         <Topbar onToggleSidebar={() => setSidebarOpen(prev => !prev)} onLogout={handleLogout} />
         <AnimatePresence mode="wait" initial={false}>
           <motion.div

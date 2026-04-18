@@ -1141,9 +1141,9 @@ export default function Patients() {
         const currentPatient = patients.find(p => p.id === assignModal.id);
         const assignedNames = currentPatient ? currentPatient.nurses : [];
         return (
-        <div className="modal d-block" style={{ background: 'rgba(0,0,0,0.3)', backdropFilter: 'blur(4px)', zIndex: 1060 }} onClick={() => setAssignModal(null)}>
+        <div className="modal modal-open" style={{ background: 'rgba(0,0,0,0.3)', backdropFilter: 'blur(4px)', zIndex: 1060 }} onClick={() => setAssignModal(null)}>
           <div className="modal-dialog modal-dialog-centered" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
-            <div className="modal-content" style={{ borderRadius: 2, border: 'none', boxShadow: '0 20px 60px rgba(0,0,0,0.15)', overflow: 'hidden' }}>
+            <div className="modal-content kh-modal-panel" style={{ borderRadius: 12, border: 'none', boxShadow: '0 20px 60px rgba(0,0,0,0.15)', overflow: 'hidden' }}>
               {/* Header */}
               <div style={{ background: '#45B6FE', padding: '18px 24px', color: '#fff' }}>
                 <div className="d-flex justify-content-between align-items-center">
@@ -1153,7 +1153,7 @@ export default function Patients() {
                       Patient: <strong>{assignModal.name}</strong> ({assignModal.id}) · {assignModal.region}
                     </div>
                   </div>
-                  <button onClick={() => setAssignModal(null)} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: 2, padding: '5px 7px', cursor: 'pointer', color: '#fff', display: 'flex' }}><FiX size={16} /></button>
+                  <button onClick={() => setAssignModal(null)} className="btn btn-xs btn-ghost" style={{ background: 'rgba(255,255,255,0.2)', color: '#fff' }}><FiX size={16} /></button>
                 </div>
                 {/* Currently assigned badges */}
                 {assignedNames.length > 0 && (
@@ -1179,7 +1179,7 @@ export default function Patients() {
               <div style={{ padding: '16px 24px 8px', borderBottom: '1px solid #e5e7eb' }}>
                 <div style={{ position: 'relative' }}>
                   <FiSearch size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--kh-text-muted)' }} />
-                  <input className="form-control form-control-kh" placeholder="Search by name, specialisation or region..." value={nurseSearch}
+                  <input className="input input-bordered input-sm w-full form-control-kh" placeholder="Search by name, specialisation or region..." value={nurseSearch}
                     onChange={e => setNurseSearch(e.target.value)} style={{ paddingLeft: 34, fontSize: 13 }} />
                 </div>
               </div>
@@ -1212,19 +1212,11 @@ export default function Patients() {
                         </div>
                       </div>
                       {isAssigned ? (
-                        <button style={{
-                          background: '#fef2f2', color: '#ef4444', border: '1px solid #fecaca', borderRadius: 2,
-                          padding: '6px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer',
-                          display: 'flex', alignItems: 'center', gap: 5,
-                        }}>
+                        <button className="btn btn-xs btn-outline btn-error" style={{ fontSize: 12, fontWeight: 700 }}>
                           <FiX size={13} /> Remove
                         </button>
                       ) : (
-                        <button style={{
-                          background: '#45B6FE', color: '#fff', border: 'none', borderRadius: 2,
-                          padding: '6px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer',
-                          display: 'flex', alignItems: 'center', gap: 5,
-                        }}>
+                        <button className="btn btn-xs btn-primary" style={{ fontSize: 12, fontWeight: 700 }}>
                           <FiPlus size={13} /> Assign
                         </button>
                       )}
@@ -1235,10 +1227,7 @@ export default function Patients() {
               {/* Footer */}
               <div style={{ padding: '14px 24px', borderTop: '2px solid #D6ECFC', background: '#fafbfc', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: 12.5, color: '#2E7DB8', fontWeight: 600 }}>{assignedNames.length} nurse{assignedNames.length !== 1 ? 's' : ''} assigned</span>
-                <button onClick={() => setAssignModal(null)} style={{
-                  background: '#45B6FE', color: '#fff', border: 'none', borderRadius: 2,
-                  padding: '8px 20px', fontSize: 13, fontWeight: 700, cursor: 'pointer',
-                }}>Done</button>
+                <button onClick={() => setAssignModal(null)} className="btn btn-sm btn-primary" style={{ fontSize: 13, fontWeight: 700 }}>Done</button>
               </div>
             </div>
           </div>
@@ -1248,11 +1237,11 @@ export default function Patients() {
 
       {/* ═══ ADMISSION MODAL ═══ */}
       {showModal && (
-        <div className="modal d-block" style={{ background: 'rgba(0,0,0,0.3)', backdropFilter: 'blur(4px)', zIndex: 1060 }} onClick={() => setShowModal(false)}>
+        <div className="modal modal-open" style={{ background: 'rgba(0,0,0,0.3)', backdropFilter: 'blur(4px)', zIndex: 1060 }} onClick={() => setShowModal(false)}>
           <div style={{ display: 'flex', height: '100vh', padding: 30, maxWidth: 'calc(100vw - 40px)', margin: '0 auto' }} onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', width: '100%', background: '#fff', borderRadius: 2, overflow: 'hidden', boxShadow: '0 24px 80px rgba(0,0,0,0.15)' }}>
               {/* LEFT: Tab Navigation */}
-              <div style={{ width: 260, background: 'var(--kh-off-white)', borderRight: '1px solid var(--kh-border-light)', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+              <div className="bg-base-200" style={{ width: 260, borderRight: '1px solid var(--kh-border-light)', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
                 <div style={{ padding: '22px 20px 16px', borderBottom: '1px solid var(--kh-border-light)' }}>
                   <h6 style={{ fontSize: 15, fontWeight: 800, margin: 0, color: 'var(--kh-text)' }}>Client Admission</h6>
                   <p style={{ fontSize: 11.5, color: 'var(--kh-text-muted)', margin: '4px 0 12px' }}>Complete each section. Save & continue anytime.</p>
@@ -1292,7 +1281,7 @@ export default function Patients() {
                     <h6 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Client Admission Form</h6>
                     <span style={{ fontSize: 12, color: 'var(--kh-text-muted)' }}>Step {activeTab + 1} of {TABS.length} — {TABS[activeTab].label}</span>
                   </div>
-                  <button onClick={() => setShowModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--kh-text-muted)', padding: 6 }}><FiX size={20} /></button>
+                  <button onClick={() => setShowModal(false)} className="btn btn-sm btn-ghost" style={{ color: 'var(--kh-text-muted)' }}><FiX size={20} /></button>
                 </div>
                 <div style={{ flex: 1, overflowY: 'auto', padding: '24px 28px' }}><ActiveTabComponent form={admissionForm} setField={setAdmissionField} onRegistrationBlur={handleRegistrationBlur} registrationCheck={registrationCheck} /></div>
                 <div style={{ padding: '14px 28px', borderTop: '1px solid var(--kh-border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>

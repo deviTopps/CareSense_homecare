@@ -53,13 +53,35 @@ export function clearAuth() {
  */
 export async function apiFetch(path, options = {}, onUnauthorized) {
   const token = getToken();
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
   const headers = {
     'Content-Type': 'application/json',
     ...(options.headers || {}),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 
-  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  const requestUrl = `${API_BASE}${normalizedPath}`;
+  const requestOptions = { ...options, headers };
+
+  console.log('[apiFetch] →', requestOptions.method || 'GET', requestUrl);
+  console.log('[apiFetch] headers:', JSON.stringify(headers));
+  if (options.body) console.log('[apiFetch] body:', options.body);
+
+  let res;
+  try {
+    res = await fetch(requestUrl, requestOptions);
+  } catch (error) {
+    if (error instanceof TypeError) {
+      await new Promise(resolve => setTimeout(resolve, 900));
+      try {
+        res = await fetch(requestUrl, requestOptions);
+      } catch {
+        throw new Error('Unable to reach server. Please check your internet connection and try again in a few seconds.');
+      }
+    } else {
+      throw error;
+    }
+  }
 
   if (res.status === 401) {
     clearAuth();

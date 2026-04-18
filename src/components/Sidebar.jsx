@@ -119,14 +119,9 @@ export default function Sidebar({ isOpen, onClose, onLogout, user }) {
         </nav>
 
         {/* Upgrade */}
-        <div style={{
-          margin: '0 14px 16px',
-          border: '1.5px solid var(--kh-primary)',
-          borderRadius: 10,
-          overflow: 'hidden',
-        }}>
+        <div className="card bg-base-100 border border-primary/30 shadow-sm" style={{ margin: '0 14px 16px', borderRadius: 10, overflow: 'hidden' }}>
           {/* Top accent strip */}
-          <div style={{ background: 'var(--kh-primary)', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div className="bg-primary text-primary-content" style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 8 }}>
             <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'rgba(255,255,255,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <FiSmartphone size={14} color="#fff" />
             </div>
@@ -139,14 +134,8 @@ export default function Sidebar({ isOpen, onClose, onLogout, user }) {
             </div>
             <NavLink
               to="/billing"
-              style={{
-                display: 'block', textAlign: 'center', padding: '7px 0',
-                borderRadius: 7, background: 'var(--kh-primary)',
-                color: '#fff', fontWeight: 700, fontSize: 12,
-                textDecoration: 'none', transition: 'background 0.15s',
-              }}
-              onMouseEnter={e => e.currentTarget.style.background = 'var(--kh-primary-dark)'}
-              onMouseLeave={e => e.currentTarget.style.background = 'var(--kh-primary)'}
+              className="btn btn-sm btn-primary"
+              style={{ width: '100%', fontSize: 12, fontWeight: 700 }}
             >
               Download Nurse App →
             </NavLink>
@@ -161,7 +150,7 @@ export default function Sidebar({ isOpen, onClose, onLogout, user }) {
               <div className="user-name">{displayName}</div>
               <div className="user-role">{displayRole}</div>
             </div>
-            <button onClick={onLogout} title="Logout" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--kh-text-muted)', padding: 4, display: 'flex', alignItems: 'center' }}>
+            <button onClick={onLogout} title="Logout" className="btn btn-ghost btn-xs" style={{ color: 'var(--kh-text-muted)' }}>
               <FiLogOut size={15} />
             </button>
           </div>

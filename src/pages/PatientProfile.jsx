@@ -2097,10 +2097,36 @@ export default function PatientProfile() {
             </div>
           </div>
 
-          {/* ── Add New Vital Record Form ── */}
+          {/* ── Add New Vital Record Modal ── */}
           {showVitalForm && (
-            <div className="col-lg-12">
-              <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 5, overflow: 'hidden' }}>
+            <div
+              style={{
+                position: 'fixed',
+                inset: 0,
+                background: 'rgba(15, 23, 42, 0.45)',
+                zIndex: 1700,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: 16,
+              }}
+              onClick={() => setShowVitalForm(false)}
+            >
+              <div
+                style={{
+                  width: 'min(1100px, 96vw)',
+                  maxHeight: '90vh',
+                  overflowY: 'auto',
+                  background: '#fff',
+                  border: '1px solid #e5e7eb',
+                  borderRadius: 8,
+                  boxShadow: '0 24px 60px rgba(15, 23, 42, 0.24)',
+                }}
+                onClick={(e) => e.stopPropagation()}
+                role="dialog"
+                aria-modal="true"
+                aria-label="Add vital record"
+              >
                 <div style={{
                   padding: '12px 18px', borderBottom: '1px solid #f3f4f6', display: 'flex',
                   alignItems: 'center', justifyContent: 'space-between',
@@ -2116,23 +2142,23 @@ export default function PatientProfile() {
                 </div>
                 <div style={{ padding: '16px 18px' }}>
                   {/* Date/Time/Nurse row */}
-                  <div className="row g-2 mb-3">
-                    <div className="col-md-3">
+                  <div style={{ display: 'grid', gap: 10, marginBottom: 14 }}>
+                    <div>
                       <label style={{ display: 'block', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text-muted)', marginBottom: 4 }}>Date *</label>
                       <input type="date" value={vitalForm.date} onChange={e => setVitalForm(f => ({ ...f, date: e.target.value }))}
                         style={{ width: '100%', padding: '8px 12px', fontSize: 13, fontWeight: 500, border: '1px solid #d1d5db', borderRadius: 2, background: '#fff', color: 'var(--kh-text)' }} />
                     </div>
-                    <div className="col-md-2">
+                    <div>
                       <label style={{ display: 'block', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text-muted)', marginBottom: 4 }}>Time *</label>
                       <input type="time" value={vitalForm.time} onChange={e => setVitalForm(f => ({ ...f, time: e.target.value }))}
                         style={{ width: '100%', padding: '8px 12px', fontSize: 13, fontWeight: 500, border: '1px solid #d1d5db', borderRadius: 2, background: '#fff', color: 'var(--kh-text)' }} />
                     </div>
-                    <div className="col-md-3">
+                    <div>
                       <label style={{ display: 'block', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text-muted)', marginBottom: 4 }}>Recorded By</label>
                       <input value={vitalForm.recordedBy} onChange={e => setVitalForm(f => ({ ...f, recordedBy: e.target.value }))} placeholder="Nurse name"
                         style={{ width: '100%', padding: '8px 12px', fontSize: 13, fontWeight: 500, border: '1px solid #d1d5db', borderRadius: 2, background: '#fff', color: 'var(--kh-text)' }} />
                     </div>
-                    <div className="col-md-4">
+                    <div>
                       <label style={{ display: 'block', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text-muted)', marginBottom: 4 }}>Notes</label>
                       <input value={vitalForm.notes} onChange={e => setVitalForm(f => ({ ...f, notes: e.target.value }))} placeholder="Additional notes..."
                         style={{ width: '100%', padding: '8px 12px', fontSize: 13, fontWeight: 500, border: '1px solid #d1d5db', borderRadius: 2, background: '#fff', color: 'var(--kh-text)' }} />
@@ -2140,7 +2166,7 @@ export default function PatientProfile() {
                   </div>
 
                   {/* Vital fields */}
-                  <div className="row g-2 mb-3">
+                  <div style={{ display: 'grid', gap: 10, marginBottom: 14 }}>
                     {[
                       { key: 'bp', label: 'Blood Pressure', placeholder: 'e.g. 130/85' },
                       { key: 'sugar', label: 'Blood Sugar', placeholder: 'e.g. 6.5 mmol/L' },
@@ -2151,7 +2177,7 @@ export default function PatientProfile() {
                       { key: 'weight', label: 'Weight', placeholder: 'e.g. 82 kg' },
                       { key: 'urinalysis', label: 'Urinalysis', placeholder: 'e.g. Normal' },
                     ].map((field, i) => (
-                      <div key={i} className="col-md-3 col-sm-6">
+                      <div key={i}>
                         <label style={{ display: 'block', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text-muted)', marginBottom: 4 }}>
                           {field.label}
                         </label>
@@ -3899,42 +3925,35 @@ export default function PatientProfile() {
 
       {showUpdateModal && (
         <div
+          className="kh-modal-overlay"
           style={{
-            position: 'fixed',
-            inset: 0,
             zIndex: 9999,
-            background: 'rgba(0,0,0,0.45)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
             padding: 16,
           }}
           onClick={() => { if (!savingProfileUpdate) setShowUpdateModal(false); }}
         >
           <div
             onClick={event => event.stopPropagation()}
+            className="kh-modal-panel"
             style={{
-              background: '#fff',
               width: 'min(1120px, 96vw)',
               maxHeight: '92vh',
               overflow: 'hidden',
-              borderRadius: 8,
-              boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
               display: 'flex',
               flexDirection: 'column',
             }}
           >
-            <div style={{ padding: '14px 18px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div className="kh-modal-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div>
                 <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--kh-text)' }}>Edit Patient Data</div>
                 <div style={{ fontSize: 11.5, color: 'var(--kh-text-muted)', marginTop: 2 }}>Updates all configured `patients/*` PATCH endpoints</div>
               </div>
-              <button onClick={() => { if (!savingProfileUpdate) setShowUpdateModal(false); }} style={{ background: 'none', border: 'none', color: 'var(--kh-text-muted)', cursor: savingProfileUpdate ? 'not-allowed' : 'pointer' }}>
+              <button onClick={() => { if (!savingProfileUpdate) setShowUpdateModal(false); }} className="btn btn-sm btn-ghost" style={{ color: 'var(--kh-text-muted)', cursor: savingProfileUpdate ? 'not-allowed' : 'pointer' }}>
                 <FiX size={18} />
               </button>
             </div>
 
-            <div style={{ padding: '16px 18px', overflowY: 'auto' }}>
+            <div className="kh-modal-body" style={{ overflowY: 'auto' }}>
               {profileUpdateError && (
                 <div style={{ marginBottom: 12, borderRadius: 4, border: '1px solid #fecaca', background: '#fef2f2', color: '#dc2626', padding: '10px 12px', fontSize: 12.5, fontWeight: 600 }}>
                   {profileUpdateError}
@@ -3995,11 +4014,11 @@ export default function PatientProfile() {
               </div>
             </div>
 
-            <div style={{ borderTop: '1px solid #e5e7eb', padding: '12px 18px', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button onClick={() => setShowUpdateModal(false)} disabled={savingProfileUpdate} style={{ background: '#fff', border: '1px solid #d1d5db', borderRadius: 4, padding: '8px 14px', fontSize: 12.5, fontWeight: 700, cursor: savingProfileUpdate ? 'not-allowed' : 'pointer' }}>
+            <div className="kh-modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button onClick={() => setShowUpdateModal(false)} disabled={savingProfileUpdate} className="btn btn-outline btn-sm" style={{ fontSize: 12.5, fontWeight: 700, cursor: savingProfileUpdate ? 'not-allowed' : 'pointer' }}>
                 Cancel
               </button>
-              <button onClick={submitProfileUpdates} disabled={savingProfileUpdate} style={{ background: '#45B6FE', color: '#fff', border: 'none', borderRadius: 4, padding: '8px 14px', fontSize: 12.5, fontWeight: 700, cursor: savingProfileUpdate ? 'not-allowed' : 'pointer', opacity: savingProfileUpdate ? 0.75 : 1 }}>
+              <button onClick={submitProfileUpdates} disabled={savingProfileUpdate} className="btn btn-primary btn-sm" style={{ fontSize: 12.5, fontWeight: 700, cursor: savingProfileUpdate ? 'not-allowed' : 'pointer', opacity: savingProfileUpdate ? 0.75 : 1 }}>
                 {savingProfileUpdate ? 'Saving...' : 'Save Updates'}
               </button>
             </div>

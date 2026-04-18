@@ -21,14 +21,6 @@ export default function Topbar({ onToggleSidebar, onLogout }) {
     weekday: 'short', day: 'numeric', month: 'short', year: 'numeric'
   });
 
-  const smallBtnStyle = {
-    display: 'inline-flex', alignItems: 'center', gap: 5,
-    padding: '5px 12px', fontSize: 11.5, fontWeight: 600,
-    borderRadius: 2, cursor: 'pointer', transition: 'all 0.15s',
-    background: '#fff', border: '1px solid #d1d5db', color: 'var(--kh-text-muted)',
-    whiteSpace: 'nowrap',
-  };
-
   return (
     <motion.header
       className="topbar"
@@ -48,41 +40,32 @@ export default function Topbar({ onToggleSidebar, onLogout }) {
       <div className="topbar-right">
         <div className="topbar-search">
           <FiSearch className="search-icon" />
-          <input type="text" placeholder="Search..." />
+          <input type="text" placeholder="Search..." className="input input-bordered input-sm" />
         </div>
 
-        <motion.button className="topbar-icon-btn" whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.98 }}>
-          <FiBell />
+        <motion.button
+          className="topbar-icon-btn"
+          whileHover={{ scale: 1.04 }}
+          whileTap={{ scale: 0.98 }}
+          style={{ position: 'relative' }}
+        >
+          <FiBell size={18} />
           <span className="badge-dot"></span>
         </motion.button>
 
-        <div style={{
-          fontSize: 12, color: 'var(--kh-text-muted)', fontWeight: 500,
-          padding: '5px 12px', background: 'var(--kh-light)', borderRadius: 2,
-          whiteSpace: 'nowrap',
-        }}>
+        <div className="badge badge-neutral badge-outline" style={{ fontSize: 11.5, fontWeight: 600, padding: '0 10px', height: 28 }}>
           {today}
         </div>
 
         <div style={{ width: 1, height: 24, background: '#e5e7eb', margin: '0 4px' }} />
 
-        <button style={smallBtnStyle}
-          onMouseEnter={e => { e.currentTarget.style.background = '#F0F7FE'; e.currentTarget.style.borderColor = '#45B6FE'; e.currentTarget.style.color = '#45B6FE'; }}
-          onMouseLeave={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = '#d1d5db'; e.currentTarget.style.color = 'var(--kh-text-muted)'; }}
-        >
+        <button className="btn btn-sm btn-outline">
           <FiHelpCircle size={13} /> Help
         </button>
-        <button style={smallBtnStyle}
-          onMouseEnter={e => { e.currentTarget.style.background = '#F0F7FE'; e.currentTarget.style.borderColor = '#45B6FE'; e.currentTarget.style.color = '#45B6FE'; }}
-          onMouseLeave={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = '#d1d5db'; e.currentTarget.style.color = 'var(--kh-text-muted)'; }}
-        >
+        <button className="btn btn-sm btn-outline">
           <FiShield size={13} /> Policy
         </button>
-        <button style={{ ...smallBtnStyle, background: '#fef2f2', borderColor: '#fecaca', color: '#dc2626' }}
-          onClick={onLogout}
-          onMouseEnter={e => { e.currentTarget.style.background = '#dc2626'; e.currentTarget.style.color = '#fff'; }}
-          onMouseLeave={e => { e.currentTarget.style.background = '#fef2f2'; e.currentTarget.style.color = '#dc2626'; }}
-        >
+        <button className="btn btn-sm btn-error btn-outline" onClick={onLogout}>
           <FiLogOut size={13} /> Logout
         </button>
       </div>
