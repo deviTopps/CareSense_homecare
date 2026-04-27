@@ -7,7 +7,7 @@ export default function Auth({ onLogin }) {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loginForm, setLoginForm] = useState({ email: '', password: '', remember: false });
-  const [signupForm, setSignupForm] = useState({ firstName: '', lastName: '', email: '', phone: '', password: '', confirmPassword: '', agencyName: '', location: '' });
+  const [signupForm, setSignupForm] = useState({ firstName: '', lastName: '', email: '', phone: '', password: '', confirmPassword: '', agencyName: '', location: '', country: 'Ghana' });
   const [forgotForm, setForgotForm] = useState({ email: '' });
   const [forgotSent, setForgotSent] = useState(false);
   const [errors, setErrors] = useState({});
@@ -79,7 +79,7 @@ export default function Auth({ onLogin }) {
           phone: signupForm.phone.trim(),
           agencyName: signupForm.agencyName.trim(),
           location: signupForm.location,
-          country: 'Ghana',
+          country: signupForm.country || 'Ghana',
           password: signupForm.password,
         }),
       });
@@ -128,8 +128,12 @@ export default function Auth({ onLogin }) {
     fontFamily,
   };
   const inputErr = { ...inputBase, borderColor: '#ef4444', background: '#fef2f2' };
-  const focusRing = (e) => { e.target.style.borderColor = '#45B6FE'; e.target.style.boxShadow = '0 0 0 4px rgba(69,182,254,0.12)'; e.target.style.background = '#fff'; };
-  const blurRing = (e, err) => { e.target.style.borderColor = err ? '#ef4444' : '#e5e7eb'; e.target.style.boxShadow = 'none'; e.target.style.background = err ? '#fef2f2' : '#f9fafb'; };
+  const focusRing = (e) => { e.target.style.borderColor = '#1663ff'; e.target.style.boxShadow = '0 0 0 4px rgba(22,99,255,0.12)'; e.target.style.background = '#fff'; };
+  const blurRing = (e, err) => {
+    e.target.style.borderColor = err ? '#ef4444' : mode === 'signup' ? '#d9e0ea' : '#e5e7eb';
+    e.target.style.boxShadow = 'none';
+    e.target.style.background = err ? '#fef2f2' : mode === 'signup' ? '#fff' : '#f9fafb';
+  };
   const labelStyle = { display: 'block', fontSize: 13, fontWeight: 700, color: '#1b3a1c', marginBottom: 8, letterSpacing: '-0.01em', fontFamily };
   const errStyle = { fontSize: 12, color: '#ef4444', marginTop: 5, fontWeight: 600, fontFamily };
   const eyeBtn = {
@@ -165,27 +169,110 @@ export default function Auth({ onLogin }) {
     </>
   );
 
+  const isSignupMode = mode === 'signup';
+  const signupSteps = [
+    { id: 1, label: 'Account', active: true },
+    { id: 2, label: 'Profile' },
+    { id: 3, label: 'Security' },
+    { id: 4, label: 'Complete' },
+  ];
+  const signupCountries = ['Ghana', 'United States', 'United Kingdom', 'Canada'];
+  const signupInputBase = {
+    ...inputBase,
+    height: 56,
+    border: '1px solid #d9e0ea',
+    borderRadius: 12,
+    background: '#fff',
+    boxShadow: '0 1px 2px rgba(15, 23, 42, 0.04)',
+    color: '#111827',
+  };
+  const signupInputErr = { ...signupInputBase, borderColor: '#ef4444', background: '#fef2f2' };
+  const signupLabelStyle = {
+    display: 'block',
+    fontSize: 12,
+    fontWeight: 600,
+    color: '#8a94a6',
+    marginBottom: 8,
+    fontFamily,
+  };
+  const signupSubmitBtnStyle = {
+    ...submitBtnStyle,
+    height: 54,
+    borderRadius: 10,
+    background: '#1663ff',
+    fontSize: 12,
+    letterSpacing: '0.12em',
+    textTransform: 'uppercase',
+    boxShadow: '0 18px 28px rgba(22, 99, 255, 0.22)',
+  };
+
   return (
-    <div style={{
-      minHeight: '100vh', display: 'flex', alignItems: mode === 'login' ? 'stretch' : 'center', justifyContent: mode === 'login' ? 'stretch' : 'center',
-      background: mode === 'login' ? '#ffffff' : '#f8f8f8', fontFamily,
-      padding: mode === 'login' ? 0 : '40px 20px',
-      height: mode === 'login' ? '100vh' : 'auto',
-      overflow: mode === 'login' ? 'hidden' : 'visible',
-    }}>
+    <div
+      className={isSignupMode ? 'register-screen' : undefined}
+      style={{
+        minHeight: '100vh', display: 'flex', alignItems: mode === 'login' ? 'stretch' : 'center', justifyContent: mode === 'login' ? 'stretch' : 'center',
+        background: mode === 'login' ? '#ffffff' : isSignupMode ? '#dbe2ea' : '#f8f8f8', fontFamily,
+        padding: mode === 'login' ? 0 : isSignupMode ? '36px 20px' : '40px 20px',
+        height: mode === 'login' ? '100vh' : 'auto',
+        overflow: mode === 'login' ? 'hidden' : 'visible',
+      }}>
       <div style={{
         width: '100%',
         minHeight: mode === 'login' ? '100vh' : 'auto',
         height: mode === 'login' ? '100vh' : 'auto',
-        maxWidth: mode === 'login' ? '100%' : mode === 'signup' ? 540 : 440,
-        display: mode === 'login' ? 'flex' : 'block',
+        maxWidth: mode === 'login' ? '100%' : isSignupMode ? 1220 : 540,
+        display: mode === 'login' || isSignupMode ? 'flex' : 'block',
         flexWrap: 'wrap',
-        background: mode === 'login' ? '#ffffff' : 'transparent',
+        background: mode === 'login' ? '#ffffff' : isSignupMode ? '#ffffff' : 'transparent',
         border: mode === 'login' ? 'none' : 'none',
-        borderRadius: 0,
-        boxShadow: 'none',
-        overflow: mode === 'login' ? 'hidden' : 'visible',
+        borderRadius: isSignupMode ? 28 : 0,
+        boxShadow: isSignupMode ? '0 30px 60px rgba(15, 23, 42, 0.14)' : 'none',
+        overflow: mode === 'login' || isSignupMode ? 'hidden' : 'visible',
       }}>
+        {isSignupMode && (
+          <div className="register-showcase">
+            <div className="register-showcase__brand">
+              <span className="register-showcase__brand-mark">
+                <span />
+                <span />
+              </span>
+              <strong>CARESENSE</strong>
+            </div>
+
+            <div className="register-showcase__content">
+              <p className="register-showcase__eyebrow">StartGlobal inspired onboarding</p>
+              <h2>Let&apos;s setup your operating agreement</h2>
+              <p>
+                Launch your homecare workspace with one guided registration flow for your agency,
+                team details, and secure access.
+              </p>
+            </div>
+
+            <div className="register-showcase__testimonial">
+              <h4>I barely had to do anything</h4>
+              <p>
+                Love the experience. Got my business set up and all necessary details in about a month and I barely had to do anything.
+              </p>
+              <div className="register-showcase__author">
+                <div className="register-showcase__author-meta">
+                  <img src="/user-avatar.png" alt="Satisfied client" />
+                  <div>
+                    <strong>Catherine Johns</strong>
+                    <span>Agency Owner</span>
+                  </div>
+                </div>
+                <div className="register-showcase__rating">★★★★★</div>
+              </div>
+            </div>
+
+            <div className="register-showcase__pager">
+              <span className="active" />
+              <span />
+              <span />
+            </div>
+          </div>
+        )}
+
         {mode === 'login' && (
           <div style={{
             flex: '1 1 50%',
@@ -215,42 +302,52 @@ export default function Auth({ onLogin }) {
         )}
 
         <div style={{
-          flex: mode === 'login' ? '1 1 50%' : '1 1 auto',
+          flex: mode === 'login' ? '1 1 50%' : isSignupMode ? '1 1 calc(100% - 390px)' : '1 1 auto',
           width: '100%',
-          maxWidth: mode === 'login' ? 'none' : mode === 'signup' ? 540 : 440,
-          margin: mode === 'login' ? 0 : undefined,
-          padding: mode === 'login' ? '56px clamp(24px, 4vw, 56px) 40px' : 0,
-          minHeight: mode === 'login' ? '100vh' : 'auto',
+          maxWidth: mode === 'login' ? 'none' : isSignupMode ? 'none' : 440,
+          margin: mode === 'login' ? 0 : isSignupMode ? '0 auto' : undefined,
+          padding: mode === 'login' ? '56px clamp(24px, 4vw, 56px) 40px' : isSignupMode ? '34px clamp(28px, 4vw, 64px) 34px' : 0,
+          minHeight: mode === 'login' ? '100vh' : isSignupMode ? 720 : 'auto',
           maxHeight: mode === 'login' ? '100vh' : 'none',
-          display: mode === 'login' ? 'flex' : 'block',
+          display: mode === 'login' || isSignupMode ? 'flex' : 'block',
           alignItems: mode === 'login' ? 'center' : undefined,
-          justifyContent: mode === 'login' ? 'center' : undefined,
+          justifyContent: mode === 'login' ? 'center' : isSignupMode ? 'center' : undefined,
           overflow: mode === 'login' ? 'hidden' : 'visible',
         }}>
-        <div style={{ width: '100%', maxWidth: mode === 'login' ? 460 : '100%' }}>
+        <div className={isSignupMode ? 'register-form-shell' : undefined} style={{ width: '100%', maxWidth: mode === 'login' ? 460 : isSignupMode ? 560 : '100%' }}>
 
         {/* Logo + heading */}
-        <div style={{ textAlign: 'center', marginBottom: 36 }}>
-          <img src="/Blue_Logo.png" alt="Kulobal Homecare" style={{ height: 72, objectFit: 'contain', marginBottom: 24 }} />
-          <h1 style={{ fontSize: 26, fontWeight: 800, color: '#1b3a1c', margin: '0 0 8px', fontFamily, letterSpacing: '-0.03em' }}>
+        <div className={isSignupMode ? 'register-form-header' : undefined} style={{ textAlign: isSignupMode ? 'left' : 'center', marginBottom: isSignupMode ? 28 : 36 }}>
+          {!isSignupMode && <img src="/Blue_Logo.png" alt="Kulobal Homecare" style={{ height: 72, objectFit: 'contain', marginBottom: 24 }} />}
+          {isSignupMode && (
+            <div className="register-progress" aria-label="Registration steps">
+              {signupSteps.map((step, index) => (
+                <div key={step.id} className={`register-progress__step${step.active ? ' is-active' : ''}${index < signupSteps.length - 1 ? ' has-line' : ''}`}>
+                  <span className="register-progress__dot" />
+                </div>
+              ))}
+            </div>
+          )}
+          <h1 style={{ fontSize: isSignupMode ? 24 : 26, fontWeight: 800, color: isSignupMode ? '#1e1e1e' : '#1b3a1c', margin: '0 0 8px', fontFamily, letterSpacing: '-0.03em' }}>
             {mode === 'login' && 'Welcome back'}
-            {mode === 'signup' && 'Create your account'}
+            {mode === 'signup' && 'Let\'s get started'}
             {mode === 'forgot' && 'Reset password'}
             {mode === 'thankyou' && 'You\'re all set!'}
           </h1>
-          <p style={{ fontSize: 15, color: '#6b7280', margin: 0, fontWeight: 500, fontFamily }}>
+          <p style={{ fontSize: isSignupMode ? 14 : 15, color: '#7b8597', margin: 0, fontWeight: 500, fontFamily, maxWidth: isSignupMode ? 460 : 'none' }}>
             {mode === 'login' && 'Sign in to continue to your dashboard'}
-            {mode === 'signup' && 'Get started with CareSense'}
+            {mode === 'signup' && 'Complete your account details to access your CareSense workspace.'}
             {mode === 'forgot' && (forgotSent ? 'Check your inbox for reset instructions' : 'Enter your email to receive a reset link')}
             {mode === 'thankyou' && 'Your account has been created successfully'}
           </p>
         </div>
 
         {/* Card */}
-        <div style={{
+        <div className={isSignupMode ? 'register-form-card' : undefined} style={{
           background: '#fff', borderRadius: 3, border: mode === 'login' ? 'none' : '1px solid #e4e5df',
-          padding: mode === 'signup' ? '32px 32px 28px' : '36px 36px 32px',
-          boxShadow: mode === 'login' ? 'none' : '0 2px 12px rgba(0,0,0,0.04)',
+          padding: mode === 'signup' ? 0 : '36px 36px 32px',
+          boxShadow: mode === 'login' || isSignupMode ? 'none' : '0 2px 12px rgba(0,0,0,0.04)',
+          border: isSignupMode ? 'none' : mode === 'login' ? 'none' : '1px solid #e4e5df',
         }}>
 
           {/* ═══ LOGIN ═══ */}
@@ -312,65 +409,60 @@ export default function Auth({ onLogin }) {
 
           {/* ═══ SIGNUP ═══ */}
           {mode === 'signup' && (
-            <form onSubmit={handleSignup}>
+            <form onSubmit={handleSignup} className="register-form-grid">
               {apiError && (
                 <div style={{ padding: '12px 16px', marginBottom: 18, borderRadius: 12, background: '#fef2f2', color: '#dc2626', fontSize: 13, fontWeight: 600, fontFamily }}>
                   {apiError}
                 </div>
               )}
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+              <div className="register-form-grid__row register-form-grid__row--split">
                 <div>
-                  <label style={labelStyle}>First name</label>
+                  <label style={signupLabelStyle}>First name</label>
                   <input type="text" placeholder="Benjamin" value={signupForm.firstName}
                     onChange={e => setSignupForm(f => ({ ...f, firstName: e.target.value }))}
-                    style={errors.firstName ? inputErr : inputBase}
+                    style={errors.firstName ? signupInputErr : signupInputBase}
                     onFocus={focusRing} onBlur={e => blurRing(e, errors.firstName)} />
                   {errors.firstName && <div style={errStyle}>{errors.firstName}</div>}
                 </div>
                 <div>
-                  <label style={labelStyle}>Last name</label>
+                  <label style={signupLabelStyle}>Last name</label>
                   <input type="text" placeholder="Andoh" value={signupForm.lastName}
                     onChange={e => setSignupForm(f => ({ ...f, lastName: e.target.value }))}
-                    style={errors.lastName ? inputErr : inputBase}
+                    style={errors.lastName ? signupInputErr : signupInputBase}
                     onFocus={focusRing} onBlur={e => blurRing(e, errors.lastName)} />
                   {errors.lastName && <div style={errStyle}>{errors.lastName}</div>}
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+              <div className="register-form-grid__row">
                 <div>
-                  <label style={labelStyle}>Email</label>
+                  <label style={signupLabelStyle}>Email</label>
                   <input type="email" placeholder="you@company.com" value={signupForm.email}
                     onChange={e => setSignupForm(f => ({ ...f, email: e.target.value }))}
-                    style={errors.email ? inputErr : inputBase}
+                    style={errors.email ? signupInputErr : signupInputBase}
                     onFocus={focusRing} onBlur={e => blurRing(e, errors.email)} />
                   {errors.email && <div style={errStyle}>{errors.email}</div>}
                 </div>
-                <div>
-                  <label style={labelStyle}>Phone</label>
-                  <input type="tel" placeholder="+233 XX XXX XXXX" value={signupForm.phone}
-                    onChange={e => setSignupForm(f => ({ ...f, phone: e.target.value }))}
-                    style={errors.phone ? inputErr : inputBase}
-                    onFocus={focusRing} onBlur={e => blurRing(e, errors.phone)} />
-                  {errors.phone && <div style={errStyle}>{errors.phone}</div>}
-                </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+              <div className="register-form-grid__row register-form-grid__row--split">
                 <div>
-                  <label style={labelStyle}>Agency name</label>
-                  <input type="text" placeholder="Golden Years Care" value={signupForm.agencyName}
-                    onChange={e => setSignupForm(f => ({ ...f, agencyName: e.target.value }))}
-                    style={errors.agencyName ? inputErr : inputBase}
-                    onFocus={focusRing} onBlur={e => blurRing(e, errors.agencyName)} />
-                  {errors.agencyName && <div style={errStyle}>{errors.agencyName}</div>}
+                  <label style={signupLabelStyle}>Country of residence</label>
+                  <select
+                    value={signupForm.country}
+                    onChange={e => setSignupForm(f => ({ ...f, country: e.target.value }))}
+                    style={{ ...(signupForm.country ? signupInputBase : signupInputBase), cursor: 'pointer', color: '#111827' }}
+                    onFocus={focusRing}
+                    onBlur={e => blurRing(e, false)}>
+                    {signupCountries.map(country => <option key={country} value={country}>{country}</option>)}
+                  </select>
                 </div>
                 <div>
-                  <label style={labelStyle}>Location</label>
+                  <label style={signupLabelStyle}>State</label>
                   <select value={signupForm.location}
                     onChange={e => setSignupForm(f => ({ ...f, location: e.target.value }))}
-                    style={{ ...(errors.location ? inputErr : inputBase), cursor: 'pointer', color: signupForm.location ? '#111827' : '#9ca3af' }}
+                    style={{ ...(errors.location ? signupInputErr : signupInputBase), cursor: 'pointer', color: signupForm.location ? '#111827' : '#9ca3af' }}
                     onFocus={focusRing} onBlur={e => blurRing(e, errors.location)}>
                     {locationOptions}
                   </select>
@@ -378,13 +470,38 @@ export default function Auth({ onLogin }) {
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 22 }}>
+              <div className="register-form-grid__row">
                 <div>
-                  <label style={labelStyle}>Password</label>
+                  <label style={signupLabelStyle}>Agency name</label>
+                  <input type="text" placeholder="Golden Years Care" value={signupForm.agencyName}
+                    onChange={e => setSignupForm(f => ({ ...f, agencyName: e.target.value }))}
+                    style={errors.agencyName ? signupInputErr : signupInputBase}
+                    onFocus={focusRing} onBlur={e => blurRing(e, errors.agencyName)} />
+                  {errors.agencyName && <div style={errStyle}>{errors.agencyName}</div>}
+                </div>
+              </div>
+
+              <div className="register-form-grid__row">
+                <div>
+                  <label style={signupLabelStyle}>Phone number</label>
+                  <div className="register-phone-field">
+                    <span className="register-phone-field__prefix">🇬🇭</span>
+                    <input type="tel" placeholder="+233 XX XXX XXXX" value={signupForm.phone}
+                      onChange={e => setSignupForm(f => ({ ...f, phone: e.target.value }))}
+                      style={{ ...(errors.phone ? signupInputErr : signupInputBase), border: 'none', boxShadow: 'none', paddingLeft: 0 }}
+                      onFocus={focusRing} onBlur={e => blurRing(e, errors.phone)} />
+                  </div>
+                  {errors.phone && <div style={errStyle}>{errors.phone}</div>}
+                </div>
+              </div>
+
+              <div className="register-form-grid__row">
+                <div>
+                  <label style={signupLabelStyle}>Password</label>
                   <div style={{ position: 'relative' }}>
                     <input type={showPassword ? 'text' : 'password'} placeholder="Min. 8 characters"
                       value={signupForm.password} onChange={e => setSignupForm(f => ({ ...f, password: e.target.value }))}
-                      style={{ ...(errors.password ? inputErr : inputBase), paddingRight: 42 }}
+                      style={{ ...(errors.password ? signupInputErr : signupInputBase), paddingRight: 42 }}
                       onFocus={focusRing} onBlur={e => blurRing(e, errors.password)} />
                     <button type="button" onClick={() => setShowPassword(!showPassword)} style={eyeBtn}>
                       {showPassword ? <FiEyeOff size={15} /> : <FiEye size={15} />}
@@ -392,12 +509,15 @@ export default function Auth({ onLogin }) {
                   </div>
                   {errors.password && <div style={errStyle}>{errors.password}</div>}
                 </div>
+              </div>
+
+              <div className="register-form-grid__row">
                 <div>
-                  <label style={labelStyle}>Confirm password</label>
+                  <label style={signupLabelStyle}>Confirm password</label>
                   <div style={{ position: 'relative' }}>
                     <input type={showConfirmPassword ? 'text' : 'password'} placeholder="Re-enter password"
                       value={signupForm.confirmPassword} onChange={e => setSignupForm(f => ({ ...f, confirmPassword: e.target.value }))}
-                      style={{ ...(errors.confirmPassword ? inputErr : inputBase), paddingRight: 42 }}
+                      style={{ ...(errors.confirmPassword ? signupInputErr : signupInputBase), paddingRight: 42 }}
                       onFocus={focusRing} onBlur={e => blurRing(e, errors.confirmPassword)} />
                     <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} style={eyeBtn}>
                       {showConfirmPassword ? <FiEyeOff size={15} /> : <FiEye size={15} />}
@@ -409,14 +529,14 @@ export default function Auth({ onLogin }) {
 
               <p style={{ fontSize: 12, color: '#9ca3af', margin: '0 0 20px', lineHeight: 1.7, fontWeight: 500, fontFamily }}>
                 By creating an account, you agree to our{' '}
-                <span style={{ color: '#45B6FE', cursor: 'pointer', fontWeight: 700 }}>Terms</span> and{' '}
-                <span style={{ color: '#45B6FE', cursor: 'pointer', fontWeight: 700 }}>Privacy Policy</span>.
+                <span style={{ color: '#1663ff', cursor: 'pointer', fontWeight: 700 }}>Terms</span> and{' '}
+                <span style={{ color: '#1663ff', cursor: 'pointer', fontWeight: 700 }}>Privacy Policy</span>.
               </p>
 
               <button type="submit" disabled={loading}
                 onMouseEnter={!loading ? handleBtnHover : undefined} onMouseLeave={!loading ? handleBtnLeave : undefined}
-                style={{ ...submitBtnStyle, opacity: loading ? 0.7 : 1, cursor: loading ? 'not-allowed' : 'pointer' }}>
-                {loading ? 'Creating account…' : <>Create account <FiArrowRight size={16} /></>}
+                style={{ ...signupSubmitBtnStyle, opacity: loading ? 0.7 : 1, cursor: loading ? 'not-allowed' : 'pointer' }}>
+                {loading ? 'Creating account…' : <>Get started <FiArrowRight size={16} /></>}
               </button>
             </form>
           )}

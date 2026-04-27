@@ -29,6 +29,10 @@ function ProtectedRoute({ isAuthenticated, children }) {
 
 function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage.getItem('kh-sidebar-collapsed') === 'true';
+  });
   const [isAuthenticated, setIsAuthenticated] = useState(() => isTokenValid());
   const navigate = useNavigate();
   const location = useLocation();
@@ -43,6 +47,11 @@ function App() {
     }, 60_000);
     return () => clearInterval(interval);
   }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('kh-sidebar-collapsed', String(sidebarCollapsed));
+  }, [sidebarCollapsed]);
 
   const handleLogin = useCallback(() => {
     setIsAuthenticated(true);
@@ -59,9 +68,16 @@ function App() {
 
   // Layout wrapper for authenticated pages
   const AuthLayout = ({ children }) => (
-    <div className="app-layout kh-bs-theme">
-      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} onLogout={handleLogout} user={user} />
-      <div className="main-content bg-base-200 text-base-content">
+    <div className={`app-layout kh-bs-theme${sidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
+      <Sidebar
+        isOpen={sidebarOpen}
+        isCollapsed={sidebarCollapsed}
+        onClose={() => setSidebarOpen(false)}
+        onToggleCollapse={() => setSidebarCollapsed(prev => !prev)}
+        onLogout={handleLogout}
+        user={user}
+      />
+      <div className={`main-content bg-base-200 text-base-content${sidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
         <Topbar onToggleSidebar={() => setSidebarOpen(prev => !prev)} onLogout={handleLogout} />
         <AnimatePresence mode="wait" initial={false}>
           <motion.div

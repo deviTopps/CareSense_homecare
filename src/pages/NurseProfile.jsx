@@ -97,6 +97,106 @@ const DOC_TYPE_TO_SLOTS = {
   Certificate: ['dbsCertificate'],
 };
 
+const MIME_TYPES_BY_EXTENSION = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+  pdf: 'application/pdf',
+};
+
+function extractUrlFromPayload(payload) {
+  if (!payload) return null;
+
+  const url =
+    payload?.url
+    || payload?.link?.url
+    || payload?.data?.url
+    || payload?.data?.link?.url
+    || payload?.media?.link?.url
+    || payload?.media?.url
+    || payload?.upload?.url
+    || payload?.downloadUrl
+    || payload?.signedUrl
+    || payload?.presignedUrl
+    || null;
+
+  return typeof url === 'string' && url.trim() ? url.trim() : null;
+}
+
+function inferMimeType(value) {
+  const normalizedValue = String(value || '').trim();
+  if (!normalizedValue) return '';
+  if (normalizedValue.includes('/')) return normalizedValue;
+
+  const sanitizedValue = normalizedValue.split('?')[0].split('#')[0];
+  const extension = sanitizedValue.split('.').pop()?.toLowerCase();
+  return extension ? MIME_TYPES_BY_EXTENSION[extension] || '' : '';
+}
+
+function extractNurseProfileImage(rawPayload) {
+  const personal = rawPayload?.personal || rawPayload?.nurse || rawPayload || {};
+  const profileImage = personal?.profileImage || personal?.profilePicture || personal?.image || personal?.photo || {};
+  const documents = Array.isArray(rawPayload?.documents)
+    ? rawPayload.documents
+    : Array.isArray(personal?.documents)
+      ? personal.documents
+      : [];
+
+  const profileDoc = documents.find((doc) => {
+    const docType = String(doc?.documentType || '').toLowerCase();
+    return docType.includes('profile') || docType.includes('photo') || docType.includes('avatar');
+  }) || null;
+
+  return {
+    url:
+      profileImage?.link?.url
+      || profileImage?.url
+      || personal?.profileImageUrl
+      || personal?.profilePictureUrl
+      || personal?.imageUrl
+      || personal?.photoUrl
+      || personal?.avatarUrl
+      || rawPayload?.profileImageUrl
+      || profileDoc?.link?.url
+      || profileDoc?.url
+      || null,
+    objectKey:
+      profileImage?.objectKey
+      || personal?.profileImageObjectKey
+      || personal?.profilePictureObjectKey
+      || profileDoc?.objectKey
+      || null,
+    mediaId:
+      profileImage?.mediaId
+      || profileImage?.media?.id
+      || personal?.profileImageMediaId
+      || personal?.profilePictureMediaId
+      || profileDoc?.mediaId
+      || profileDoc?.media?.id
+      || null,
+    fileName:
+      profileImage?.fileName
+      || profileImage?.name
+      || profileDoc?.fileName
+      || profileDoc?.objectKey?.split('/').pop()
+      || 'profile-photo',
+    fileType:
+      inferMimeType(profileImage?.mimeType)
+      || inferMimeType(profileImage?.contentType)
+      || inferMimeType(profileImage?.fileType)
+      || inferMimeType(profileDoc?.mimeType)
+      || inferMimeType(profileDoc?.contentType)
+      || inferMimeType(profileDoc?.fileType)
+      || inferMimeType(profileDoc?.objectKey)
+      || 'image/jpeg',
+    uploadedAt:
+      profileImage?.createdAt
+      || profileDoc?.createdAt
+      || null,
+  };
+}
+
 /* ── Main Component ── */
 export default function NurseProfile() {
   const { nurseId } = useParams();
@@ -202,6 +302,65 @@ export default function NurseProfile() {
     </div>
   );
   const avatarInputRef = useRef(null);
+  const resolveStoredMediaUrl = useCallback(async ({ mediaId, objectKey }) => {
+    const normalizedMediaId = String(mediaId || '').trim();
+    const normalizedObjectKey = String(objectKey || '').trim();
+
+    if (!normalizedMediaId && !normalizedObjectKey) return null;
+
+    const requestCandidates = [
+      {
+        path: '/media/b2/view-url',
+        method: 'POST',
+        body: {
+          ...(normalizedMediaId ? { mediaId: normalizedMediaId } : {}),
+          ...(normalizedObjectKey ? { objectKey: normalizedObjectKey } : {}),
+        },
+      },
+      {
+        path: '/media/b2/download-url',
+        method: 'POST',
+        body: {
+          ...(normalizedMediaId ? { mediaId: normalizedMediaId } : {}),
+          ...(normalizedObjectKey ? { objectKey: normalizedObjectKey } : {}),
+        },
+      },
+      ...(normalizedMediaId
+        ? [
+            { path: `/media/${normalizedMediaId}`, method: 'GET' },
+            { path: `/media/${normalizedMediaId}/link`, method: 'GET' },
+          ]
+        : []),
+    ];
+
+    for (const candidate of requestCandidates) {
+      try {
+        const response = await apiFetch(candidate.path, {
+          method: candidate.method,
+          ...(candidate.body ? { body: JSON.stringify(candidate.body) } : {}),
+        });
+
+        const responseText = await response.text().catch(() => '');
+        let payload = {};
+        if (responseText) {
+          try {
+            payload = JSON.parse(responseText);
+          } catch {
+            payload = { url: responseText };
+          }
+        }
+
+        if (!response.ok) continue;
+
+        const resolvedUrl = extractUrlFromPayload(payload);
+        if (resolvedUrl) return resolvedUrl;
+      } catch {
+      }
+    }
+
+    return null;
+  }, []);
+
   const uploadNurseDocument = useCallback(async (file, key, { registerEndpoint } = {}) => {
     const resolvedNurseId = nurse?._id || nurse?.id || nurseId;
 
@@ -315,15 +474,17 @@ export default function NurseProfile() {
     try {
       // Compress image before uploading (faster upload + less bandwidth)
       const compressed = await compressImage(file, { maxWidth: 800, maxHeight: 800, quality: 0.75 });
-      await uploadNurseDocument(compressed, 'profilePhoto', { registerEndpoint: '/nurses/update/profile-picture' });
+      const uploadResult = await uploadNurseDocument(compressed, 'profilePhoto', { registerEndpoint: '/nurses/update/profile-picture' });
       // Use a small thumbnail for the avatar preview
       const thumbUrl = await createThumbnailURL(compressed, 200);
-      const url = thumbUrl || URL.createObjectURL(compressed);
+      const persistedUrl = extractUrlFromPayload(uploadResult);
+      const url = thumbUrl || persistedUrl || URL.createObjectURL(compressed);
       setAvatarUrl(url);
       setKycDocs(prev => ({
         ...prev,
         profilePhoto: {
           url,
+          fullUrl: persistedUrl || url,
           fileName: file.name,
           fileType: file.type,
           uploadedAt: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
@@ -370,24 +531,25 @@ export default function NurseProfile() {
       // Compress images before upload (smaller payload = faster upload)
       const compressed = await compressImage(file, { maxWidth: 1200, maxHeight: 1200, quality: 0.8 });
       const opts = key === 'profilePhoto' ? { registerEndpoint: '/nurses/update/profile-picture' } : undefined;
-      await uploadNurseDocument(compressed, key, opts);
+      const uploadResult = await uploadNurseDocument(compressed, key, opts);
 
       const isImage = compressed.type.startsWith('image/');
       // Use small thumbnail for card grid (loads instantly), keep original URL for full preview
       const thumbUrl = isImage ? await createThumbnailURL(compressed, 300) : null;
+      const persistedUrl = extractUrlFromPayload(uploadResult);
       setKycDocs(prev => ({
         ...prev,
         [key]: {
-          url: thumbUrl,
-          fullUrl: isImage ? URL.createObjectURL(compressed) : null,
+          url: thumbUrl || persistedUrl,
+          fullUrl: persistedUrl || (isImage ? URL.createObjectURL(compressed) : null),
           fileName: file.name,
           fileType: file.type,
           uploadedAt: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
         },
       }));
 
-      if (key === 'profilePhoto' && thumbUrl) {
-        setAvatarUrl(thumbUrl);
+      if (key === 'profilePhoto') {
+        setAvatarUrl(thumbUrl || persistedUrl || null);
       }
     } catch (uploadError) {
       alert('Failed to upload document. Please try again.');
@@ -410,56 +572,90 @@ export default function NurseProfile() {
         throw new Error(`HTTP ${res.status}`);
       }
       const data = await res.json();
+      const personalData = data.personal || data.nurse || data;
       // API returns { personal, diversity, education, supportingInfo, documents }
-      setNurse(data.personal || data.nurse || data);
+      setNurse(personalData);
       setDiversity(data.diversity || null);
       setEducation(data.education || null);
       setSupporting(data.supportingInfo || null);
 
-      // ── Hydrate kycDocs from persisted documents ──
-      if (Array.isArray(data.documents) && data.documents.length > 0) {
-        const filled = {}; // track which slots are already filled
-        const newKyc = {
-          profilePhoto: null,
-          idCard: null,
-          passport: null,
-          nursingLicense: null,
-          dbsCertificate: null,
+      const filled = {};
+      const newKyc = {
+        profilePhoto: null,
+        idCard: null,
+        passport: null,
+        nursingLicense: null,
+        dbsCertificate: null,
+      };
+
+      const persistedProfilePhoto = extractNurseProfileImage({ ...data, personal: personalData });
+      const resolvedProfilePhotoUrl = persistedProfilePhoto.url || await resolveStoredMediaUrl({
+        mediaId: persistedProfilePhoto.mediaId,
+        objectKey: persistedProfilePhoto.objectKey,
+      });
+
+      if (resolvedProfilePhotoUrl) {
+        newKyc.profilePhoto = {
+          url: resolvedProfilePhotoUrl,
+          fullUrl: resolvedProfilePhotoUrl,
+          fileName: persistedProfilePhoto.fileName,
+          fileType: persistedProfilePhoto.fileType,
+          uploadedAt: persistedProfilePhoto.uploadedAt
+            ? new Date(persistedProfilePhoto.uploadedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+            : '—',
+          mediaId: persistedProfilePhoto.mediaId,
+          objectKey: persistedProfilePhoto.objectKey,
+        };
+        filled.profilePhoto = true;
+        setAvatarUrl(resolvedProfilePhotoUrl);
+      } else {
+        setAvatarUrl(null);
+      }
+
+      const persistedDocuments = Array.isArray(data.documents) ? data.documents : [];
+      for (const doc of persistedDocuments) {
+        const possibleSlots = DOC_TYPE_TO_SLOTS[doc.documentType] || [];
+        const targetSlot = possibleSlots.find(s => !filled[s]);
+        if (!targetSlot) continue;
+        filled[targetSlot] = true;
+
+        const resolvedUrl = doc.link?.url || doc.url || await resolveStoredMediaUrl({
+          mediaId: doc.mediaId || doc.media?.id,
+          objectKey: doc.objectKey,
+        });
+        const hydratedFileType =
+          inferMimeType(doc.mimeType)
+          || inferMimeType(doc.contentType)
+          || inferMimeType(doc.link?.contentType)
+          || inferMimeType(doc.fileType)
+          || inferMimeType(doc.fileName)
+          || inferMimeType(doc.objectKey);
+
+        newKyc[targetSlot] = {
+          url: resolvedUrl,
+          fullUrl: resolvedUrl,
+          fileName: doc.fileName || doc.objectKey?.split('/').pop() || doc.documentType,
+          fileType: hydratedFileType,
+          uploadedAt: doc.createdAt
+            ? new Date(doc.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+            : '—',
+          mediaId: doc.mediaId || doc.media?.id,
+          objectKey: doc.objectKey,
+          docId: doc.id,
         };
 
-        for (const doc of data.documents) {
-          const possibleSlots = DOC_TYPE_TO_SLOTS[doc.documentType] || [];
-          const targetSlot = possibleSlots.find(s => !filled[s]);
-          if (!targetSlot) continue; // no matching unfilled slot
-          filled[targetSlot] = true;
-
-          const url = doc.link?.url || null;
-          newKyc[targetSlot] = {
-            url,
-            fileName: doc.objectKey?.split('/').pop() || doc.documentType,
-            fileType: doc.documentType,
-            uploadedAt: doc.createdAt
-              ? new Date(doc.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-              : '—',
-            mediaId: doc.mediaId,
-            objectKey: doc.objectKey,
-            docId: doc.id,
-          };
-
-          // If profile photo, also set the avatar
-          if (targetSlot === 'profilePhoto' && url) {
-            setAvatarUrl(url);
-          }
+        if (targetSlot === 'profilePhoto' && resolvedUrl) {
+          setAvatarUrl(resolvedUrl);
         }
-
-        setKycDocs(newKyc);
       }
+
+      setKycDocs(newKyc);
     } catch (e) {
       setError(e.message || 'Failed to load');
     } finally {
       setLoading(false);
     }
-  }, [nurseId]);
+  }, [nurseId, resolveStoredMediaUrl]);
 
   useEffect(() => { fetchProfile(); }, [fetchProfile]);
 
@@ -509,125 +705,189 @@ export default function NurseProfile() {
   const assignedPatients = ALL_PATIENTS.filter(p => p.nurses.some(nm => fullName.toLowerCase().includes(nm.toLowerCase()) || nm.toLowerCase().includes(fullName.toLowerCase())));
   const currentPatients = assignedPatients.filter(p => p.status === 'active');
   const pastPatients = assignedPatients.filter(p => p.status !== 'active');
+  const profileDetails = [
+    { label: 'Gender', value: n.gender || '—' },
+    { label: 'Joined', value: joinedDate },
+    { label: 'Phone', value: n.phone || '—' },
+    { label: 'Address', value: n.address || '—' },
+    { label: 'Citizenship', value: n.citizenship || '—' },
+    { label: 'License', value: n.mmcPinNo || '—' },
+  ];
+  const profileNotes = [
+    supporting?.staffRelation === 'Yes' ? `Related to staff: ${supporting?.staffRelationDetail || 'Yes'}` : 'No staff relationship disclosed',
+    supporting?.vacancyAdvertised ? `Vacancy source: ${supporting.vacancyAdvertised}` : 'Vacancy source not recorded',
+    education?.trainingCourses?.filter(Boolean)?.length ? `${education.trainingCourses.filter(Boolean).length} training course(s) recorded` : 'No training courses recorded',
+    supporting?.referees?.length ? `${supporting.referees.length} referee(s) on file` : 'No referees added yet',
+  ].filter(Boolean);
+  const documentsPreview = Object.entries(kycDocs)
+    .filter(([, doc]) => !!doc)
+    .slice(0, 4)
+    .map(([key, doc]) => ({ key, ...doc }));
+  const overviewRoster = (currentPatients.length ? currentPatients : assignedPatients).slice(0, 4);
+  const snapshotItems = [
+    { label: 'Current Patients', value: currentPatients.length },
+    { label: 'Documents Uploaded', value: Object.values(kycDocs).filter(Boolean).length },
+    { label: 'Qualifications', value: education?.qualifications?.filter(q => q?.name || q?.institution)?.length || 0 },
+    { label: 'Referees', value: supporting?.referees?.length || 0 },
+  ];
 
   /* ── RENDER ── */
   return (
-    <div className="page-wrapper" style={{ background: '#f8f9fa' }}>
+    <div className="page-wrapper nurse-profile-page">
 
       {/* Incomplete banner */}
       {!isFullyComplete && (
-        <div style={{
-          background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 2,
-          padding: '10px 18px', marginBottom: 14,
-          display: 'flex', alignItems: 'center', gap: 10,
-        }}>
+        <div className="nurse-profile-banner">
           <FiClock size={15} style={{ color: '#d97706', flexShrink: 0 }} />
           <span style={{ fontSize: 13, color: '#92400e', fontWeight: 600 }}>
             Registration incomplete — {stepsComplete}/4 steps completed.
           </span>
           <button
             onClick={() => navigate('/workforce')}
-            style={{ marginLeft: 'auto', background: '#f59e0b', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 12, fontWeight: 700, color: '#fff', cursor: 'pointer' }}
+            className="nurse-profile-banner__btn"
           >
             Complete Registration
           </button>
         </div>
       )}
 
-      {/* Header bar */}
-      <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 2, padding: '16px 20px', marginBottom: 16 }}>
-        <div className="d-flex align-items-center gap-3 flex-wrap">
-          <button onClick={() => navigate('/workforce')} style={{
-            background: 'none', border: '1px solid #e5e7eb', borderRadius: 2,
-            padding: '7px 9px', cursor: 'pointer', color: 'var(--kh-text-muted)', display: 'flex',
-          }}><FiArrowLeft size={15} /></button>
+      <div className="nurse-profile-shell">
+      <div className="nurse-profile-topbar">
+        <div className="nurse-profile-topbar__left">
+          <button onClick={() => navigate('/workforce')} className="nurse-profile-icon-btn"><FiArrowLeft size={15} /></button>
+          <div className="nurse-profile-breadcrumbs">
+            <span>Nurses</span>
+            <FiChevronRight size={12} />
+            <span className="is-current">{fullName}</span>
+          </div>
+        </div>
+        <div className="nurse-profile-topbar__actions">
+          <button title="Print" className="nurse-profile-icon-btn"><FiPrinter size={14} /></button>
+          <button title="Edit" onClick={() => { setTab('overview'); startEditing('personal', { firstName: n.firstName || '', lastName: n.lastName || '', email: n.email || '', phone: n.phone || '', homeTelephone: n.homeTelephone || '', gender: n.gender || '', address: n.address || '', citizenship: n.citizenship || '', title: n.title || '' }); }} className="nurse-profile-icon-btn"><FiEdit2 size={14} /></button>
+          <button title="Refresh" onClick={fetchProfile} className="nurse-profile-icon-btn"><FiRefreshCw size={14} /></button>
+        </div>
+      </div>
 
-          {/* Clickable avatar — click to upload a photo */}
-          <input
-            ref={avatarInputRef}
-            type="file"
-            accept="image/*"
-            style={{ display: 'none' }}
-            onChange={handleAvatarChange}
-          />
-          <div
-            onClick={() => avatarInputRef.current?.click()}
-            title="Click to upload photo"
-            style={{
-              position: 'relative', width: 52, height: 52, borderRadius: '50%',
-              flexShrink: 0, cursor: 'pointer', overflow: 'hidden',
-              background: avatarUrl ? 'transparent' : 'linear-gradient(135deg, #45B6FE, #2E8FD4)',
-              boxShadow: '0 3px 10px rgba(69,182,254,0.3)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
+      <div className="nurse-profile-header-card">
+        <div className="nurse-profile-header-card__meta">
+          <div className="nurse-profile-kicker">Medical staff profile</div>
+          <h2>{fullName}</h2>
+          <p>{roleLabel} profile overview with registration progress, documents, patient roster, and onboarding notes.</p>
+        </div>
+        <div className="nurse-profile-header-card__actions">
+          <button
+            type="button"
+            className="nurse-profile-primary-btn"
+            onClick={() => {
+              if (n.email) window.location.href = `mailto:${n.email}`;
             }}
           >
-            {avatarUrl
-              ? <img src={avatarUrl} alt="Profile" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-              : <span style={{ color: '#fff', fontSize: 16, fontWeight: 800 }}>{initials}</span>
-            }
-            {/* Hover overlay */}
-            <div style={{
-              position: 'absolute', inset: 0, borderRadius: '50%',
-              background: 'rgba(0,0,0,0.45)',
-              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2,
-              opacity: 0, transition: 'opacity 0.18s',
-            }}
-              onMouseEnter={e => e.currentTarget.style.opacity = 1}
-              onMouseLeave={e => e.currentTarget.style.opacity = 0}
+            <span className="nurse-profile-primary-btn__icon"><FiMail size={14} /></span>
+            Send Message
+          </button>
+        </div>
+      </div>
+
+      {/* Header bar */}
+      <div className="nurse-profile-summary-shell">
+        <div className="nurse-profile-summary-grid">
+          <div className="nurse-profile-card nurse-profile-card--hero">
+            <input
+              ref={avatarInputRef}
+              type="file"
+              accept="image/*"
+              style={{ display: 'none' }}
+              onChange={handleAvatarChange}
+            />
+
+            <div
+              onClick={() => avatarInputRef.current?.click()}
+              title="Click to upload photo"
+              className="nurse-profile-avatar"
+              style={{
+                background: avatarUrl ? 'transparent' : 'linear-gradient(135deg, #45B6FE, #2E8FD4)',
+              }}
             >
-              <FiCamera size={14} color="#fff" />
-              <span style={{ fontSize: 8, color: '#fff', fontWeight: 700, letterSpacing: '0.3px' }}>PHOTO</span>
+              {avatarUrl
+                ? <img src={avatarUrl} alt="Profile" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                : <span style={{ color: '#fff', fontSize: 22, fontWeight: 800 }}>{initials}</span>
+              }
+              <div className="nurse-profile-avatar__overlay">
+                <FiCamera size={16} color="#fff" />
+                <span>Photo</span>
+              </div>
+            </div>
+
+            <div className="nurse-profile-card__title">{fullName}</div>
+            <div className="nurse-profile-card__subtitle">{n.email || 'No email provided'}</div>
+            <div className="nurse-profile-status-row">
+              <span className={`nurse-profile-status-badge${status === 'active' ? ' is-active' : ' is-pending'}`}>{status === 'active' ? 'Active' : status}</span>
+              {!isFullyComplete && <span className="nurse-profile-status-badge is-warning">Step {stepsComplete}/4</span>}
+            </div>
+            <div className="nurse-profile-mini-stats">
+              <div>
+                <strong>{currentPatients.length}</strong>
+                <span>Patients</span>
+              </div>
+              <div>
+                <strong>{Object.values(kycDocs).filter(Boolean).length}</strong>
+                <span>Files</span>
+              </div>
             </div>
           </div>
 
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="d-flex align-items-center gap-2 flex-wrap">
-              <span style={{ fontSize: 17, fontWeight: 800, color: 'var(--kh-text)' }}>{fullName}</span>
-              <span style={{
-                fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 2,
-                textTransform: 'uppercase', letterSpacing: '0.5px',
-                background: status === 'active' ? '#F0F7FE' : '#fef3c7',
-                color: status === 'active' ? '#1565A0' : '#92400e',
-                border: `1px solid ${status === 'active' ? '#BAE0FD' : '#fde68a'}`,
-              }}>
-                {status === 'active' ? 'Active' : status === 'on-leave' ? 'On Leave' : status}
-              </span>
-              {!isFullyComplete && (
-                <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 2, background: '#fef3c7', color: '#d97706', border: '1px solid #fde68a' }}>
-                  <FiClock size={10} style={{ marginRight: 3 }} />Step {stepsComplete}/4
-                </span>
+          <div className="nurse-profile-card nurse-profile-card--details">
+            <div className="nurse-profile-card-heading">Profile Details</div>
+            <div className="nurse-profile-info-grid">
+              {profileDetails.map((item) => (
+                <div key={item.label} className="nurse-profile-info-item">
+                  <span>{item.label}</span>
+                  <strong>{item.value}</strong>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="nurse-profile-card nurse-profile-card--notes">
+            <div className="nurse-profile-card-heading nurse-profile-card-heading--with-action">
+              <span>Notes</span>
+              <button type="button" className="nurse-profile-link-btn" onClick={() => setTab('supporting')}>See all</button>
+            </div>
+            <div className="nurse-profile-note-list">
+              {profileNotes.map((note, index) => (
+                <div key={`${note}-${index}`} className="nurse-profile-note-item">• {note}</div>
+              ))}
+            </div>
+            <button type="button" className="nurse-profile-inline-btn" onClick={() => setTab('supporting')}>Open supporting info</button>
+          </div>
+
+          <div className="nurse-profile-card nurse-profile-card--files">
+            <div className="nurse-profile-card-heading nurse-profile-card-heading--with-action">
+              <span>Files / Documents</span>
+              <button type="button" className="nurse-profile-link-btn" onClick={() => setTab('documents')}>
+                <FiUpload size={12} /> Add files
+              </button>
+            </div>
+            <div className="nurse-profile-doc-list">
+              {documentsPreview.length > 0 ? documentsPreview.map((doc) => (
+                <button key={doc.key} type="button" className="nurse-profile-doc-item" onClick={() => setTab('documents')}>
+                  <span className="nurse-profile-doc-item__icon"><FiFileText size={14} /></span>
+                  <span className="nurse-profile-doc-item__content">
+                    <strong>{doc.fileName || doc.key}</strong>
+                    <small>{doc.uploadedAt || 'Uploaded'}</small>
+                  </span>
+                </button>
+              )) : (
+                <div className="nurse-profile-empty-note">No documents uploaded yet.</div>
               )}
             </div>
-            <div style={{ fontSize: 12, color: 'var(--kh-text-muted)', marginTop: 3 }}>
-              <span style={{ fontWeight: 600, color: 'var(--kh-text)' }}>{n._id || n.id}</span>
-              <span style={{ margin: '0 6px', color: '#d1d5db' }}>|</span>
-              {roleLabel}
-              {n.mmcPinNo && <><span style={{ margin: '0 6px', color: '#d1d5db' }}>|</span>License: <span style={{ fontWeight: 600 }}>{n.mmcPinNo}</span></>}
-            </div>
-          </div>
-
-          <div className="d-flex gap-4 flex-wrap" style={{ fontSize: 11.5, color: 'var(--kh-text-muted)' }}>
-            {n.phone && <div className="d-flex align-items-center gap-1"><FiPhone size={12} /><span>{n.phone}</span></div>}
-            {n.email && <div className="d-flex align-items-center gap-1"><FiMail size={12} /><span>{n.email}</span></div>}
-            <div>
-              <span style={{ fontWeight: 600, textTransform: 'uppercase', fontSize: 10, letterSpacing: '0.5px' }}>Joined </span>
-              <span style={{ fontWeight: 600, color: 'var(--kh-text)', fontSize: 12 }}>{joinedDate}</span>
-            </div>
-          </div>
-
-          <div style={{ width: 1, height: 36, background: '#e5e7eb' }} />
-          <div className="d-flex gap-1">
-            <button title="Print" style={{ background: 'none', border: '1px solid #e5e7eb', borderRadius: 2, padding: '7px 9px', cursor: 'pointer', color: 'var(--kh-text-muted)', display: 'flex' }}><FiPrinter size={14} /></button>
-            <button title="Edit" onClick={() => { setTab('overview'); startEditing('personal', { firstName: n.firstName || '', lastName: n.lastName || '', email: n.email || '', phone: n.phone || '', homeTelephone: n.homeTelephone || '', gender: n.gender || '', address: n.address || '', citizenship: n.citizenship || '', title: n.title || '' }); }} style={{ background: 'none', border: '1px solid #e5e7eb', borderRadius: 2, padding: '7px 9px', cursor: 'pointer', color: 'var(--kh-text-muted)', display: 'flex' }}><FiEdit2 size={14} /></button>
-            <button title="Refresh" onClick={fetchProfile} style={{ background: 'none', border: '1px solid #e5e7eb', borderRadius: 2, padding: '7px 9px', cursor: 'pointer', color: 'var(--kh-text-muted)', display: 'flex' }}><FiRefreshCw size={14} /></button>
           </div>
         </div>
       </div>
 
       {/* Tab card */}
-      <div className="kh-card">
-        {/* Blue tab strip */}
-        <div style={{ background: '#45B6FE', padding: '0 20px', display: 'flex', gap: 0, overflowX: 'auto' }}>
+      <div className="kh-card nurse-profile-board">
+        <div className="nurse-profile-tabs">
           {TABS.map(t => {
             const tabHasData = t.key === 'overview' ? true
               : t.key === 'diversity'  ? hasDiversity
@@ -635,22 +895,10 @@ export default function NurseProfile() {
               : t.key === 'supporting' ? hasSupporting
               : true;
             return (
-              <button key={t.key} onClick={() => setTab(t.key)} style={{
-                display: 'flex', alignItems: 'center', gap: 6,
-                padding: '12px 18px', fontSize: 12.5, whiteSpace: 'nowrap',
-                fontWeight: tab === t.key ? 700 : 500, border: 'none', cursor: 'pointer',
-                background: tab === t.key ? 'rgba(255,255,255,0.2)' : 'transparent',
-                color: tab === t.key ? '#fff' : 'rgba(255,255,255,0.75)',
-                borderBottom: tab === t.key ? '3px solid #fff' : '3px solid transparent',
-                transition: 'all 0.15s',
-              }}>
+              <button key={t.key} onClick={() => setTab(t.key)} className={`nurse-profile-tab${tab === t.key ? ' active' : ''}`}>
                 {t.icon} {t.label}
                 {t.key !== 'overview' && t.key !== 'documents' && (
-                  <span style={{
-                    width: 7, height: 7, borderRadius: '50%', marginLeft: 2,
-                    background: tabHasData ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.35)',
-                    display: 'inline-block',
-                  }} />
+                  <span className={`nurse-profile-tab__dot${tabHasData ? ' is-ready' : ''}`} />
                 )}
               </button>
             );
@@ -658,208 +906,53 @@ export default function NurseProfile() {
         </div>
 
         {/* Tab content */}
-        <div style={{ padding: 20 }}>
+        <div className="nurse-profile-board__content">
 
           {/* ═══ OVERVIEW ═══ */}
           {tab === 'overview' && (
-            <div className="row g-3 align-items-stretch">
-              <div className="col-lg-4 d-flex flex-column">
-                <Panel title="Personal Information" icon={<FiUser size={14} />} style={{ flex: 1, marginBottom: 0 }}
-                  action={editingSection !== 'personal' && <button onClick={() => startEditing('personal', { firstName: n.firstName || '', lastName: n.lastName || '', email: n.email || '', phone: n.phone || '', homeTelephone: n.homeTelephone || '', gender: n.gender || '', address: n.address || '', citizenship: n.citizenship || '', title: n.title || '' })} style={{ background: 'none', border: '1px solid #e5e7eb', borderRadius: 4, padding: '4px 10px', cursor: 'pointer', fontSize: 11, fontWeight: 600, color: '#45B6FE', display: 'flex', alignItems: 'center', gap: 4 }}><FiEdit2 size={11} /> Edit</button>}
-                >
-                  {editingSection === 'personal' ? (
-                    <>
-                      <EditRow label="First Name" field="firstName" />
-                      <EditRow label="Last Name" field="lastName" />
-                      <EditRow label="Email" field="email" type="email" />
-                      <EditRow label="Phone" field="phone" />
-                      <EditRow label="Home Telephone" field="homeTelephone" />
-                      <EditRow label="Gender" field="gender" options={['Male', 'Female']} />
-                      <EditRow label="Address" field="address" />
-                      <EditRow label="Citizenship" field="citizenship" />
-                      <EditRow label="Title" field="title" />
-                      <EditActions />
-                    </>
-                  ) : (
-                    <>
-                      <DataRow label="Full Name">{fullName}</DataRow>
-                      <DataRow label="Email" missing={!n.email}>{n.email}</DataRow>
-                      <DataRow label="Phone" missing={!n.phone}>{n.phone}</DataRow>
-                      <DataRow label="Home Telephone">{n.homeTelephone}</DataRow>
-                      <DataRow label="Gender" missing={!n.gender}>{n.gender}</DataRow>
-                      <DataRow label="Address" missing={!n.address}>{n.address}</DataRow>
-                      <DataRow label="Citizenship">{n.citizenship}</DataRow>
-                      <DataRow label="Title">{n.title}</DataRow>
-                    </>
-                  )}
-                </Panel>
-              </div>
-
-              <div className="col-lg-4 d-flex flex-column">
-                <Panel title="Professional Details" icon={<FiAward size={14} />} accent="#3b82f6" style={{ flex: 1, marginBottom: 0 }}
-                  action={editingSection !== 'professional' && <button onClick={() => startEditing('professional', { jobReference: n.jobReference || '', jobTitle: n.jobTitle || '', role: n.role || '', mmcPinNo: n.mmcPinNo || '' })} style={{ background: 'none', border: '1px solid #e5e7eb', borderRadius: 4, padding: '4px 10px', cursor: 'pointer', fontSize: 11, fontWeight: 600, color: '#3b82f6', display: 'flex', alignItems: 'center', gap: 4 }}><FiEdit2 size={11} /> Edit</button>}
-                >
-                  {editingSection === 'professional' ? (
-                    <>
-                      <EditRow label="Job Reference" field="jobReference" />
-                      <EditRow label="Job Title" field="jobTitle" />
-                      <EditRow label="Role" field="role" options={['head_nurse', 'supervising_nurse', 'office_nurse', 'field_nurse']} />
-                      <EditRow label="MMC Pin No." field="mmcPinNo" />
-                      <EditActions />
-                    </>
-                  ) : (
-                    <>
-                      <DataRow label="Nurse ID">{n._id || n.id}</DataRow>
-                      <DataRow label="Job Reference">{n.jobReference}</DataRow>
-                      <DataRow label="Job Title" missing={!n.jobTitle}>{n.jobTitle}</DataRow>
-                      <DataRow label="Role">{roleLabel}</DataRow>
-                      <DataRow label="MMC Pin No." missing={!n.mmcPinNo}>{n.mmcPinNo}</DataRow>
-                      <DataRow label="Date Joined">{joinedDate}</DataRow>
-                      <DataRow label="Status">
-                        <span style={{
-                          fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 2,
-                          background: status === 'active' ? '#F0F7FE' : '#fef3c7',
-                          color: status === 'active' ? '#1565A0' : '#92400e',
-                        }}>
-                          {status === 'active' ? 'Active' : status === 'on-leave' ? 'On Leave' : status}
+            <div className="nurse-profile-overview-grid">
+              <div className="nurse-profile-card nurse-profile-card--timeline">
+                <div className="nurse-profile-card-heading nurse-profile-card-heading--with-action">
+                  <span>Assigned Care Roster</span>
+                  <button type="button" className="nurse-profile-inline-btn" onClick={() => setTab('overview')}>Current patients</button>
+                </div>
+                {overviewRoster.length === 0 ? (
+                  <div className="nurse-profile-empty-note">No patients assigned to this nurse yet.</div>
+                ) : (
+                  <div className="nurse-profile-timeline-table">
+                    <div className="nurse-profile-timeline-head">
+                      <span>Patient</span>
+                      <span>Care Focus</span>
+                      <span>Region</span>
+                      <span>Status</span>
+                    </div>
+                    {overviewRoster.map((patient) => (
+                      <button key={patient.id} type="button" className="nurse-profile-timeline-row" onClick={() => navigate(`/patients/${patient.id}`)}>
+                        <span>
+                          <strong>{patient.name}</strong>
+                          <small>{patient.id}</small>
                         </span>
-                      </DataRow>
-                    </>
-                  )}
-                </Panel>
+                        <span>{patient.diagnosis}</span>
+                        <span>{patient.region}</span>
+                        <span>
+                          <em className={patient.status === 'active' ? 'is-active' : ''}>{patient.status === 'active' ? 'Active' : 'Discharged'}</em>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
-              <div className="col-lg-4 d-flex flex-column">
-                <Panel title="Registration Progress" icon={<FiClipboard size={14} />} style={{ flex: 1, marginBottom: 0 }}>
-                  {[
-                    { label: 'Personal Info',           done: true },
-                    { label: 'Diversity & Health',      done: hasDiversity },
-                    { label: 'Education & Employment',  done: hasEducation },
-                    { label: 'Supporting Info',         done: hasSupporting },
-                  ].map((s, i) => (
-                    <div key={i} className="d-flex align-items-center gap-2" style={{ padding: '8px 0', borderBottom: '1px solid #f3f4f6' }}>
-                      <div style={{
-                        width: 22, height: 22, borderRadius: '50%', flexShrink: 0,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        background: s.done ? '#45B6FE' : '#f3f4f6',
-                        color: s.done ? '#fff' : '#9ca3af',
-                      }}>
-                        {s.done ? <FiCheck size={11} /> : <span style={{ fontSize: 10, fontWeight: 700 }}>{i + 1}</span>}
-                      </div>
-                      <span style={{ fontSize: 13, fontWeight: 600, color: s.done ? 'var(--kh-text)' : '#9ca3af' }}>{s.label}</span>
-                      <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 700, color: s.done ? '#45B6FE' : '#d97706' }}>
-                        {s.done ? 'Complete' : 'Pending'}
-                      </span>
+              <div className="nurse-profile-card nurse-profile-card--snapshot">
+                <div className="nurse-profile-card-heading">Profile Snapshot</div>
+                <div className="nurse-profile-snapshot-list">
+                  {snapshotItems.map((item) => (
+                    <div key={item.label} className="nurse-profile-snapshot-item">
+                      <span>{item.label}</span>
+                      <strong>{item.value}</strong>
                     </div>
                   ))}
-                  {!isFullyComplete && (
-                    <button
-                      onClick={() => navigate('/workforce')}
-                      style={{ marginTop: 14, width: '100%', background: '#f59e0b', border: 'none', borderRadius: 6, padding: '8px', fontSize: 12.5, fontWeight: 700, color: '#fff', cursor: 'pointer' }}
-                    >
-                      Complete Registration →
-                    </button>
-                  )}
-                </Panel>
-              </div>
-
-              {/* ── Assigned Patients ── */}
-              <div className="col-12" style={{ marginTop: 4 }}>
-                <Panel title="Assigned Patients" icon={<FiUsers size={14} />} accent="#10b981"
-                  action={
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: '#10b981', background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 10, padding: '2px 10px' }}>
-                        {currentPatients.length} current
-                      </span>
-                      {pastPatients.length > 0 && (
-                        <span style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 10, padding: '2px 10px' }}>
-                          {pastPatients.length} past
-                        </span>
-                      )}
-                    </div>
-                  }
-                >
-                  {assignedPatients.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--kh-text-muted)', fontSize: 13 }}>
-                      <FiUsers size={28} style={{ color: '#d1d5db', marginBottom: 10 }} />
-                      <div>No patients assigned to this nurse</div>
-                    </div>
-                  ) : (
-                    <>
-                      {/* Current Patients */}
-                      {currentPatients.length > 0 && (
-                        <>
-                          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#10b981', marginBottom: 8 }}>Current Patients</div>
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 10, marginBottom: pastPatients.length > 0 ? 20 : 0 }}>
-                            {currentPatients.map(p => (
-                              <div key={p.id} onClick={() => navigate(`/patients/${p.id}`)} style={{
-                                border: '1px solid #e5e7eb', borderRadius: 2, padding: '12px 14px', cursor: 'pointer',
-                                background: '#fff', transition: 'border-color 0.15s',
-                              }} onMouseEnter={e => e.currentTarget.style.borderColor = '#10b981'} onMouseLeave={e => e.currentTarget.style.borderColor = '#e5e7eb'}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                                  <div style={{
-                                    width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
-                                    background: 'linear-gradient(135deg, #10b981, #059669)',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    color: '#fff', fontSize: 12, fontWeight: 800,
-                                  }}>{p.name.split(' ').map(w => w[0]).join('').slice(0, 2)}</div>
-                                  <div style={{ flex: 1, minWidth: 0 }}>
-                                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--kh-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</div>
-                                    <div style={{ fontSize: 11, color: 'var(--kh-text-muted)' }}>{p.id} · {p.gender}, {p.age}yrs</div>
-                                  </div>
-                                  <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: '#ecfdf5', color: '#059669', flexShrink: 0 }}>Active</span>
-                                </div>
-                                <div style={{ fontSize: 12, color: 'var(--kh-text-muted)', lineHeight: 1.4 }}>
-                                  <span style={{ fontWeight: 600, color: 'var(--kh-text)' }}>Dx:</span> {p.diagnosis}
-                                </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, fontSize: 11, color: '#9ca3af' }}>
-                                  <FiMapPin size={10} /> {p.region}
-                                  <span style={{ marginLeft: 'auto' }}><FiCalendar size={10} style={{ marginRight: 3 }} />{new Date(p.enrolled).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </>
-                      )}
-
-                      {/* Past Patients */}
-                      {pastPatients.length > 0 && (
-                        <>
-                          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#9ca3af', marginBottom: 8 }}>Past Patients</div>
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 10 }}>
-                            {pastPatients.map(p => (
-                              <div key={p.id} onClick={() => navigate(`/patients/${p.id}`)} style={{
-                                border: '1px solid #f3f4f6', borderRadius: 2, padding: '12px 14px', cursor: 'pointer',
-                                background: '#fafafa', transition: 'border-color 0.15s',
-                              }} onMouseEnter={e => e.currentTarget.style.borderColor = '#9ca3af'} onMouseLeave={e => e.currentTarget.style.borderColor = '#f3f4f6'}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                                  <div style={{
-                                    width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
-                                    background: '#e5e7eb',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    color: '#6b7280', fontSize: 12, fontWeight: 800,
-                                  }}>{p.name.split(' ').map(w => w[0]).join('').slice(0, 2)}</div>
-                                  <div style={{ flex: 1, minWidth: 0 }}>
-                                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--kh-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</div>
-                                    <div style={{ fontSize: 11, color: 'var(--kh-text-muted)' }}>{p.id} · {p.gender}, {p.age}yrs</div>
-                                  </div>
-                                  <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: '#f3f4f6', color: '#6b7280', flexShrink: 0 }}>Discharged</span>
-                                </div>
-                                <div style={{ fontSize: 12, color: 'var(--kh-text-muted)', lineHeight: 1.4 }}>
-                                  <span style={{ fontWeight: 600, color: 'var(--kh-text)' }}>Dx:</span> {p.diagnosis}
-                                </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, fontSize: 11, color: '#9ca3af' }}>
-                                  <FiMapPin size={10} /> {p.region}
-                                  <span style={{ marginLeft: 'auto' }}><FiCalendar size={10} style={{ marginRight: 3 }} />{new Date(p.enrolled).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </>
-                      )}
-                    </>
-                  )}
-                </Panel>
+                </div>
               </div>
             </div>
           )}
@@ -931,8 +1024,8 @@ export default function NurseProfile() {
 
           {/* ═══ EDUCATION ═══ */}
           {tab === 'education' && (
-            <div>
-              {!hasEducation ? (
+              <div className="row g-3">
+                {!hasEducation ? (
                 <div style={{ textAlign: 'center', padding: '60px 24px', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 2 }}>
                   <FiAlertCircle size={36} style={{ color: '#d97706', marginBottom: 12 }} />
                   <div style={{ fontSize: 15, fontWeight: 700, color: '#92400e', marginBottom: 6 }}>Education & Employment not yet submitted</div>
@@ -942,7 +1035,7 @@ export default function NurseProfile() {
                   </button>
                 </div>
               ) : (
-                <div className="row g-3">
+                  <>
                   {/* ── Qualifications ── */}
                   <div className="col-12">
                     <Panel title="Qualifications" icon={<FiAward size={14} />} accent="#3b82f6"
@@ -1159,7 +1252,7 @@ export default function NurseProfile() {
                       )}
                     </Panel>
                   </div>
-                </div>
+                </>
               )}
             </div>
           )}
@@ -1264,13 +1357,12 @@ export default function NurseProfile() {
           {/* ═══ DOCUMENTS / KYC ═══ */}
           {tab === 'documents' && (() => {
             const KYC_SLOTS = [
-              { key: 'profilePhoto',   label: 'Profile Photo',    hint: 'Clear face photo (JPG/PNG)', isPhoto: true,  accent: '#45B6FE', accentBg: '#E8F4FE' },
               { key: 'idCard',         label: 'National ID Card', hint: 'Front & back scan (PDF/IMG)', isPhoto: false, accent: '#8b5cf6', accentBg: '#f3f0ff' },
               { key: 'passport',       label: 'Passport',         hint: 'Bio-data page (PDF/IMG)',    isPhoto: false, accent: '#3b82f6', accentBg: '#eff6ff' },
               { key: 'nursingLicense', label: 'Nursing License',  hint: 'Valid license document',    isPhoto: false, accent: '#10b981', accentBg: '#ecfdf5' },
               { key: 'dbsCertificate', label: 'DBS Certificate',  hint: 'Enhanced DBS check',        isPhoto: false, accent: '#f59e0b', accentBg: '#fffbeb' },
             ];
-            const uploadedCount = Object.values(kycDocs).filter(Boolean).length;
+            const uploadedCount = KYC_SLOTS.filter(({ key }) => Boolean(kycDocs[key])).length;
             const allVerified = uploadedCount === KYC_SLOTS.length;
 
             return (
@@ -1321,111 +1413,6 @@ export default function NurseProfile() {
                   </div>
                 </div>
 
-                {/* ── KYC Photo (prominent, top) ── */}
-                {(() => {
-                  const slot = KYC_SLOTS[0]; // profilePhoto
-                  const doc = kycDocs.profilePhoto;
-                  const photoSrc = doc?.url || avatarUrl;
-                  return (
-                    <div style={{
-                      background: '#fff', border: '1px solid #e5e7eb', borderRadius: 7,
-                      overflow: 'hidden', marginBottom: 16,
-                    }}>
-                      {/* Panel header */}
-                      <div style={{
-                        padding: '10px 16px', borderBottom: '1px solid #f3f4f6',
-                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                        borderLeft: `3px solid ${slot.accent}`,
-                      }}>
-                        <div className="d-flex align-items-center gap-2">
-                          <FiCamera size={14} style={{ color: slot.accent }} />
-                          <span style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>KYC Profile Photo</span>
-                          <span style={{
-                            fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 10,
-                            background: photoSrc ? '#ecfdf5' : '#fef2f2',
-                            color: photoSrc ? '#065f46' : '#991b1b',
-                            border: `1px solid ${photoSrc ? '#a7f3d0' : '#fecaca'}`,
-                          }}>
-                            {photoSrc ? '✓ Uploaded' : 'Required'}
-                          </span>
-                        </div>
-                        <input ref={kycInputRefs.profilePhoto} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleKycUpload('profilePhoto')} />
-                        <button
-                          onClick={() => kycInputRefs.profilePhoto.current?.click()}
-                          disabled={uploadingKey === 'profilePhoto'}
-                          style={{ background: 'var(--kh-primary)', border: 'none', borderRadius: 7, padding: '6px 14px', fontSize: 12, fontWeight: 700, color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
-                        >
-                          <FiCamera size={13} /> {uploadingKey === 'profilePhoto' ? 'Uploading...' : (photoSrc ? 'Replace Photo' : 'Upload Photo')}
-                        </button>
-                      </div>
-
-                      <div style={{ padding: '10px 16px', display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                        {/* Photo display */}
-                        <div
-                          onClick={() => kycInputRefs.profilePhoto.current?.click()}
-                          style={{
-                            width: 160, height: 160, borderRadius: '50%', flexShrink: 0, cursor: 'pointer',
-                            border: photoSrc ? '2px solid #e5e7eb' : '2px dashed #d1d5db',
-                            background: photoSrc ? 'transparent' : '#f8f9fa',
-                            overflow: 'hidden', position: 'relative',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            boxShadow: photoSrc ? '0 4px 16px rgba(69,182,254,0.2)' : 'none',
-                          }}
-                        >
-                          {photoSrc ? (
-                            <>
-                              <img src={photoSrc} alt="KYC Profile" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                              {/* Hover overlay */}
-                              <div style={{
-                                position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)',
-                                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4,
-                                opacity: 0, transition: 'opacity 0.18s',
-                              }}
-                                onMouseEnter={e => e.currentTarget.style.opacity = 1}
-                                onMouseLeave={e => e.currentTarget.style.opacity = 0}
-                              >
-                                <FiCamera size={22} color="#fff" />
-                                <span style={{ fontSize: 11, fontWeight: 700, color: '#fff' }}>Replace</span>
-                              </div>
-                            </>
-                          ) : (
-                            <div style={{ textAlign: 'center', padding: '0 12px' }}>
-                              <FiCamera size={28} style={{ color: '#9ca3af', marginBottom: 8 }} />
-                              <div style={{ fontSize: 11, fontWeight: 600, color: '#9ca3af' }}>Click to upload<br />KYC photo</div>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Info beside photo */}
-                        <div style={{ flex: 1, minWidth: 200 }}>
-                          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--kh-text)', marginBottom: 6 }}>
-                            {photoSrc ? 'Photo on file' : 'No photo uploaded'}
-                          </div>
-                          {doc?.fileName && (
-                            <div style={{ fontSize: 12, color: 'var(--kh-text-muted)', marginBottom: 4 }}>
-                              <span style={{ fontWeight: 600 }}>File:</span> {doc.fileName}
-                            </div>
-                          )}
-                          {doc?.uploadedAt && (
-                            <div style={{ fontSize: 12, color: 'var(--kh-text-muted)', marginBottom: 10 }}>
-                              <span style={{ fontWeight: 600 }}>Uploaded:</span> {doc.uploadedAt}
-                            </div>
-                          )}
-                          {!doc && avatarUrl && (
-                            <div style={{ fontSize: 12, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 6, padding: '6px 10px', marginBottom: 10 }}>
-                              ⚠ Using profile avatar — upload a dedicated KYC photo for verification purposes.
-                            </div>
-                          )}
-                          <div style={{ fontSize: 11.5, color: 'var(--kh-text-muted)', lineHeight: 1.7 }}>
-                            <div>• Formats accepted: <strong>JPG, PNG</strong></div>
-                            <div>• Max file size: <strong>5 MB</strong></div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })()}
-
                 {/* ── Other KYC document slots ── */}
                 <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 7, overflow: 'hidden' }}>
                   <div style={{
@@ -1438,13 +1425,13 @@ export default function NurseProfile() {
                       <span style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Identity & Compliance Documents</span>
                     </div>
                     <span style={{ fontSize: 11, fontWeight: 700, color: '#8b5cf6' }}>
-                      {Object.entries(kycDocs).filter(([k, v]) => k !== 'profilePhoto' && v).length}/{KYC_SLOTS.length - 1} uploaded
+                      {uploadedCount}/{KYC_SLOTS.length} uploaded
                     </span>
                   </div>
 
                   <div style={{ padding: '16px' }}>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12 }}>
-                      {KYC_SLOTS.slice(1).map(slot => {
+                      {KYC_SLOTS.map(slot => {
                         const doc = kycDocs[slot.key];
                         return (
                           <div key={slot.key} style={{
@@ -1524,6 +1511,7 @@ export default function NurseProfile() {
           })()}
 
         </div>
+      </div>
       </div>
 
       {/* ═══ DOCUMENT PREVIEW MODAL ═══ */}

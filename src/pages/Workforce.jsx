@@ -12,20 +12,105 @@ const markNurseComplete = (id) => { const s = getCompletedNurseIds(); s.add(id);
 
 const ROWS_OPTIONS = [5, 10, 15];
 
+const NURSE_ENDPOINTS = {
+  list: '/nurses',
+  deleteById: '/nurses',
+  createPersonal: '/nurses/create/personal-info',
+  createDiversity: '/nurses/create/diversity-info',
+  createEducation: '/nurses/create/education-info',
+  createSupporting: '/nurses/create/supporting-info',
+  addDocuments: '/nurses/add/documents',
+};
+
 const STEPS = [
-  { key: 'personal', label: 'Personal Info', endpoint: '/nurses/create/personal-info' },
-  { key: 'diversity', label: 'Diversity Info', endpoint: '/nurses/create/diversity-info' },
-  { key: 'education', label: 'Education & Employment', endpoint: '/nurses/create/education-info' },
-  { key: 'supporting', label: 'Supporting Info', endpoint: '/nurses/create/supporting-info' },
+  { key: 'personal',   label: 'Personal Info',          endpoint: NURSE_ENDPOINTS.createPersonal },
+  { key: 'diversity',  label: 'Diversity Info',           endpoint: NURSE_ENDPOINTS.createDiversity },
+  { key: 'education',  label: 'Education & Employment',   endpoint: NURSE_ENDPOINTS.createEducation },
+  { key: 'supporting', label: 'Supporting Info',          endpoint: NURSE_ENDPOINTS.createSupporting },
+  { key: 'documents',  label: 'Documents',                endpoint: NURSE_ENDPOINTS.addDocuments },
 ];
+
+const DOCUMENT_TYPES = [
+  { key: 'cv',          label: 'CV / Resume',                  required: false },
+  { key: 'nationalId',  label: 'National ID / Passport',       required: false },
+  { key: 'certificate', label: 'Professional Certificate',     required: false },
+  { key: 'training',    label: 'Training Certificate',         required: false },
+  { key: 'reference',   label: 'Reference Letter',             required: false },
+  { key: 'dbs',         label: 'DBS / Criminal Record Check',  required: false },
+];
+
+const DOCUMENT_TYPE_MAP = {
+  cv: 'Other',
+  nationalId: 'ID',
+  certificate: 'Certificate',
+  training: 'Certificate',
+  reference: 'Other',
+  dbs: 'Certificate',
+};
 
 const emptyQualification = { name: '', institution: '', result: '', year: '' };
 const emptyEmployment = { employerName: '', address: '', businessType: '', jobTitle: '', startDate: '', grade: '', reportingOfficer: '', reasonForLeaving: '', descriptionOfDuties: '', contactPerson: '' };
 const emptyReferee = { name: '', address: '', telephone: '' };
 
+const extractUrlFromPayload = (payload) => {
+  if (!payload) return null;
+
+  const url =
+    payload?.url
+    || payload?.link?.url
+    || payload?.data?.url
+    || payload?.data?.link?.url
+    || payload?.media?.link?.url
+    || payload?.media?.url
+    || payload?.downloadUrl
+    || payload?.signedUrl
+    || payload?.presignedUrl
+    || null;
+
+  return typeof url === 'string' && url.trim() ? url.trim() : null;
+};
+
+const extractNurseProfileImage = (nurse) => {
+  const profileImage = nurse?.profileImage || nurse?.profilePicture || nurse?.image || nurse?.photo || {};
+  const documents = Array.isArray(nurse?.documents) ? nurse.documents : [];
+
+  const profileDoc = documents.find((doc) => {
+    const documentType = String(doc?.documentType || '').toLowerCase();
+    return documentType.includes('profile') || documentType.includes('photo') || documentType.includes('avatar');
+  }) || null;
+
+  return {
+    url:
+      profileImage?.link?.url
+      || profileImage?.url
+      || nurse?.profileImageUrl
+      || nurse?.profilePictureUrl
+      || nurse?.imageUrl
+      || nurse?.photoUrl
+      || nurse?.avatarUrl
+      || profileDoc?.link?.url
+      || profileDoc?.url
+      || null,
+    objectKey:
+      profileImage?.objectKey
+      || nurse?.profileImageObjectKey
+      || nurse?.profilePictureObjectKey
+      || profileDoc?.objectKey
+      || null,
+    mediaId:
+      profileImage?.mediaId
+      || profileImage?.media?.id
+      || nurse?.profileImageMediaId
+      || nurse?.profilePictureMediaId
+      || profileDoc?.mediaId
+      || profileDoc?.media?.id
+      || null,
+  };
+};
+
 const initialFormState = {
   // Step 1 — Personal Info
-  title: '', lastName: '', firstName: '', gender: '', email: '', address: '', mmcPinNo: '', phone: '', homeTelephone: '', jobReference: '', jobTitle: '', citizenship: 'Ghana', role: 'field_nurse', password: '',
+  title: '', lastName: '', firstName: '', gender: '', email: '', address: '', mmcPinNo: '', phone: '', homeTelephone: '', dateOfBirh: '', jobReference: '', jobTitle: '', citizenship: 'Ghana', role: 'field_nurse', password: '',
   // Step 2 — Diversity Info
   race: '', religion: '', disability: 'No', disability_detail: '', criminal_records: 'No', criminal_record_detail: '',
   // Step 3 — Education & Employment
@@ -35,6 +120,8 @@ const initialFormState = {
   // Step 4 — Supporting Info
   staffRelation: 'No', staffRelationDetail: '', vacancyAdvertised: '', vacancyDetail: {},
   referees: [{ ...emptyReferee }, { ...emptyReferee }],
+  // Step 5 — Documents
+  documents: {},  // { [docKey]: File }
 };
 
 export default function Workforce() {
@@ -48,23 +135,126 @@ export default function Workforce() {
   const [rowsPerPage, setRowsPerPage] = useState(5);
   const [nurses, setNurses] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [avatarLoadErrors, setAvatarLoadErrors] = useState({});
+
+  const resolveStoredMediaUrl = useCallback(async ({ mediaId, objectKey }) => {
+    const normalizedMediaId = String(mediaId || '').trim();
+    const normalizedObjectKey = String(objectKey || '').trim();
+
+    if (!normalizedMediaId && !normalizedObjectKey) return null;
+
+    const requestCandidates = [
+      {
+        path: '/media/b2/view-url',
+        method: 'POST',
+        body: {
+          ...(normalizedMediaId ? { mediaId: normalizedMediaId } : {}),
+          ...(normalizedObjectKey ? { objectKey: normalizedObjectKey } : {}),
+        },
+      },
+      {
+        path: '/media/b2/download-url',
+        method: 'POST',
+        body: {
+          ...(normalizedMediaId ? { mediaId: normalizedMediaId } : {}),
+          ...(normalizedObjectKey ? { objectKey: normalizedObjectKey } : {}),
+        },
+      },
+      ...(normalizedMediaId
+        ? [
+            { path: `/media/${normalizedMediaId}`, method: 'GET' },
+            { path: `/media/${normalizedMediaId}/link`, method: 'GET' },
+          ]
+        : []),
+    ];
+
+    for (const candidate of requestCandidates) {
+      try {
+        const response = await apiFetch(candidate.path, {
+          method: candidate.method,
+          ...(candidate.body ? { body: JSON.stringify(candidate.body) } : {}),
+        });
+
+        const responseText = await response.text().catch(() => '');
+        let payload = {};
+        if (responseText) {
+          try {
+            payload = JSON.parse(responseText);
+          } catch {
+            payload = { url: responseText };
+          }
+        }
+
+        if (!response.ok) continue;
+
+        const resolvedUrl = extractUrlFromPayload(payload);
+        if (resolvedUrl) return resolvedUrl;
+      } catch {
+      }
+    }
+
+    return null;
+  }, []);
+
+  const resolveNurseProfilePhotoUrl = useCallback(async (nurseSummary) => {
+    const directProfileImage = extractNurseProfileImage(nurseSummary);
+    const directUrl = directProfileImage.url || await resolveStoredMediaUrl({
+      mediaId: directProfileImage.mediaId,
+      objectKey: directProfileImage.objectKey,
+    });
+
+    if (directUrl) return directUrl;
+
+    const nurseId = nurseSummary?._id || nurseSummary?.id;
+    if (!nurseId) return null;
+
+    try {
+      const detailResponse = await apiFetch(`/nurses/${nurseId}`);
+      if (!detailResponse.ok) return null;
+
+      const detailPayload = await detailResponse.json().catch(() => null);
+      const detailedNurse = detailPayload?.personal || detailPayload?.nurse || detailPayload;
+      const detailedProfileImage = extractNurseProfileImage({
+        ...detailPayload,
+        ...(detailedNurse ? { personal: detailedNurse } : {}),
+        documents: detailPayload?.documents || detailedNurse?.documents || [],
+      });
+
+      return detailedProfileImage.url || await resolveStoredMediaUrl({
+        mediaId: detailedProfileImage.mediaId,
+        objectKey: detailedProfileImage.objectKey,
+      });
+    } catch {
+      return null;
+    }
+  }, [resolveStoredMediaUrl]);
 
   // ── Fetch nurses from API ──
   const fetchNurses = useCallback(async () => {
+    if (!NURSE_ENDPOINTS.list) {
+      setNurses([]);
+      setLoading(false);
+      return;
+    }
     try {
       setLoading(true);
-      const res = await apiFetch('/nurses');
+      const res = await apiFetch(NURSE_ENDPOINTS.list);
       const data = await res.json();
       const list = Array.isArray(data) ? data : data.nurses || data.data || [];
       const completedIds = getCompletedNurseIds();
-      const mapped = list.map((n) => {
+      const mapped = await Promise.all(list.map(async (n) => {
         const id = n._id || n.id;
+        const profilePhotoUrl = await resolveNurseProfilePhotoUrl(n);
         // Trust API-provided flag first, then localStorage, then assume incomplete
         const isComplete = n.registrationComplete === true || n.isComplete === true || completedIds.has(id);
         const completedStep = isComplete ? 4 : (n.registrationStep ?? 1);
         return {
           id,
           name: [n.firstName, n.lastName].filter(Boolean).join(' ') || n.name || '—',
+          initials: ([n.firstName, n.lastName].filter(Boolean).join(' ') || n.name || '—') !== '—'
+            ? ([n.firstName, n.lastName].filter(Boolean).join(' ') || n.name || '—').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
+            : '?',
+          profilePhotoUrl,
           license: n.mmcPinNo || '—',
           role: ROLE_LABELS[n.role] || n.role || n.jobTitle || '—',
           phone: n.phone || '—',
@@ -75,14 +265,15 @@ export default function Workforce() {
           completedStep,
           isComplete,
         };
-      });
+      }));
       setNurses(mapped);
+      setAvatarLoadErrors({});
     } catch (err) {
       console.error('Failed to fetch nurses:', err);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [resolveNurseProfilePhotoUrl]);
 
   useEffect(() => { fetchNurses(); }, [fetchNurses]);
 
@@ -93,6 +284,7 @@ export default function Workforce() {
   const [completedSteps, setCompletedSteps] = useState([]);
   const [saving, setSaving] = useState(false);
   const [apiError, setApiError] = useState('');
+  const [debugInfo, setDebugInfo] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null); // nurse to delete
   const [deleting, setDeleting] = useState(false);
@@ -111,7 +303,7 @@ export default function Workforce() {
   const startRow = (page - 1) * rowsPerPage + 1;
   const endRow = Math.min(page * rowsPerPage, sorted.length);
   const paged = sorted.slice(startRow - 1, endRow);
-  const pgBtn = (onClick, disabled, children) => (<button onClick={onClick} disabled={disabled} style={{ padding: '6px 10px', border: '1px solid var(--kh-border-light)', borderRadius: 2, background: disabled ? 'var(--kh-off-white)' : '#fff', cursor: disabled ? 'default' : 'pointer', color: disabled ? 'var(--kh-text-muted)' : 'var(--kh-text)', fontSize: 13, display: 'flex', alignItems: 'center' }}>{children}</button>);
+  const pgBtn = (onClick, disabled, children) => (<button onClick={onClick} disabled={disabled} style={{ minWidth: 36, height: 36, padding: '0 12px', border: '1px solid #e6ebf1', borderRadius: 999, background: disabled ? '#f5f7fa' : '#fff', cursor: disabled ? 'default' : 'pointer', color: disabled ? '#9aa5b1' : '#304353', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: disabled ? 'none' : '0 8px 16px rgba(15, 23, 42, 0.04)' }}>{children}</button>);
 
   const removeEmptyValues = (value) => {
     if (Array.isArray(value)) {
@@ -161,9 +353,48 @@ export default function Workforce() {
     }
   };
 
+  const uploadAndRegisterDocument = useCallback(async ({ file, resolvedNurseId, documentType }) => {
+    const uploadFormData = new FormData();
+    uploadFormData.append('file', file);
+
+    const uploadResponse = await apiFetch('/media/b2/upload/direct', {
+      method: 'POST',
+      body: uploadFormData,
+    });
+
+    const uploadResult = await uploadResponse.json().catch(() => ({}));
+    if (!uploadResponse.ok) {
+      throw new Error(uploadResult.error || uploadResult.message || `Upload failed (HTTP ${uploadResponse.status})`);
+    }
+
+    const objectKey = uploadResult.upload?.objectKey;
+    const mediaId = uploadResult.media?.id;
+
+    if (!objectKey || !mediaId) {
+      throw new Error('Upload response missing objectKey or mediaId.');
+    }
+
+    const registerResponse = await apiFetch(NURSE_ENDPOINTS.addDocuments, {
+      method: 'POST',
+      body: JSON.stringify({
+        nurseId: resolvedNurseId,
+        documentType,
+        objectKey,
+        mediaId,
+      }),
+    });
+
+    const registerResult = await registerResponse.json().catch(() => ({}));
+    if (!registerResponse.ok) {
+      throw new Error(registerResult.error || registerResult.message || `Registration failed (HTTP ${registerResponse.status})`);
+    }
+
+    return registerResult;
+  }, []);
+
   const resetAll = () => {
     setStep(0); setForm({ ...initialFormState, qualifications: [{ ...emptyQualification }], trainingCourses: [''], employmentHistory: [{ ...emptyEmployment }], referees: [{ ...emptyReferee }, { ...emptyReferee }] });
-    setNurseId(null); setCompletedSteps([]); setSaving(false); setApiError(''); setPhotoPreview(null);
+    setNurseId(null); setCompletedSteps([]); setSaving(false); setApiError(''); setDebugInfo(null); setPhotoPreview(null);
   };
 
   const handleDeleteNurse = async (nurse, e) => {
@@ -173,9 +404,14 @@ export default function Workforce() {
 
   const confirmDelete = async () => {
     if (!deleteTarget) return;
+    if (!NURSE_ENDPOINTS.deleteById) {
+      setApiError('Nurse delete endpoint is cleared. Reconnect endpoints before deleting records.');
+      setDeleteTarget(null);
+      return;
+    }
     setDeleting(true);
     try {
-      const res = await apiFetch(`/nurses/${deleteTarget.id}`, { method: 'DELETE' });
+      const res = await apiFetch(`${NURSE_ENDPOINTS.deleteById}/${deleteTarget.id}`, { method: 'DELETE' });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || data.message || `Delete failed (HTTP ${res.status})`);
@@ -216,6 +452,7 @@ export default function Workforce() {
     setSaving(true); setApiError('');
     try {
       let body;
+      let requestBodies = [];
       if (step === 0) {
         const requiredStep0 = {
           title: form.title,
@@ -224,7 +461,10 @@ export default function Workforce() {
           gender: form.gender,
           email: form.email,
           address: form.address,
+          mmcPinNo: form.mmcPinNo,
           phone: form.phone,
+          homeTelephone: form.homeTelephone,
+          citizenship: form.citizenship,
           role: form.role,
           password: form.password,
           jobReference: form.jobReference,
@@ -239,23 +479,44 @@ export default function Workforce() {
           return;
         }
 
+        const normalizedEmail = form.email.trim().toLowerCase();
+        const normalizedMmcPin = form.mmcPinNo.trim().toLowerCase();
+        const duplicateByEmail = nurses.find((n) => String(n.email || '').trim().toLowerCase() === normalizedEmail);
+        if (duplicateByEmail) {
+          setApiError('A nurse with this email already exists. Please use a different email address.');
+          return;
+        }
+
+        const duplicateByMmcPin = nurses.find((n) => String(n.license || '').trim().toLowerCase() === normalizedMmcPin);
+        if (normalizedMmcPin && duplicateByMmcPin) {
+          setApiError('A nurse with this MMC Pin No. already exists. Please use a different pin.');
+          return;
+        }
+
         const step0Body = {
-          title: form.title,
-          firstName: form.firstName,
-          lastName: form.lastName,
+          title: form.title.trim(),
+          firstName: form.firstName.trim(),
+          lastName: form.lastName.trim(),
           gender: form.gender,
-          email: form.email,
-          address: form.address,
-          phone: form.phone,
-          homeTelephone: form.homeTelephone?.trim() || form.phone.trim(),
+          email: form.email.trim(),
+          address: form.address.trim(),
+          phone: form.phone.trim(),
+          homeTelephone: form.homeTelephone.trim(),
+          dateOfBirh: form.dateOfBirh,
+          dateOfBirth: form.dateOfBirh,
+          mmcPinNo: form.mmcPinNo.trim(),
+          citizenship: form.citizenship.trim(),
           role: form.role,
           password: form.password,
           jobReference: form.jobReference.trim(),
           jobTitle: form.jobTitle.trim(),
         };
-        if (form.mmcPinNo?.trim()) step0Body.mmcPinNo = form.mmcPinNo.trim();
-        if (form.citizenship?.trim()) step0Body.citizenship = form.citizenship.trim();
         body = step0Body;
+        const { dateOfBirth, ...step0TypoOnlyBody } = step0Body;
+        const { dateOfBirh, ...step0StandardBirthBody } = step0Body;
+        requestBodies = [step0Body, step0TypoOnlyBody, step0StandardBirthBody]
+          .filter(candidate => Object.keys(candidate).length > 0)
+          .filter((candidate, index, arr) => index === arr.findIndex(item => JSON.stringify(item) === JSON.stringify(candidate)));
       } else if (step === 1) {
         if (!nurseId) {
           setApiError('Nurse profile ID is missing. Please complete Personal Info first.');
@@ -290,24 +551,129 @@ export default function Workforce() {
           vacancyAdvertised: form.vacancyAdvertised,
           referees: form.referees.filter(r => r.name),
         });
+      } else if (step === 4) {
+        if (!nurseId) {
+          setApiError('Nurse profile ID is missing. Please complete Personal Info first.');
+          return;
+        }
+        const docEntries = Object.entries(form.documents).filter(([, file]) => file instanceof File);
+        if (docEntries.length === 0) {
+          // No files — skip upload and just advance
+          setCompletedSteps(prev => [...new Set([...prev, step])]);
+          markNurseComplete(nurseId);
+          setSaving(false);
+          return;
+        }
+
+        setDebugInfo({
+          step,
+          endpoint: '/media/b2/upload/direct → /nurses/add/documents',
+          method: 'POST',
+          attempt: `0/${docEntries.length}`,
+          requestBody: JSON.stringify(docEntries.map(([key, file]) => ({
+            slot: key,
+            documentType: DOCUMENT_TYPE_MAP[key] || 'Other',
+            fileName: file.name,
+            size: file.size,
+            mimeType: file.type || 'unknown',
+          })), null, 2),
+          responseStatus: null,
+          responseBody: 'Uploading selected nurse documents…',
+        });
+
+        for (let index = 0; index < docEntries.length; index += 1) {
+          const [key, file] = docEntries[index];
+          const documentType = DOCUMENT_TYPE_MAP[key] || 'Other';
+
+          setDebugInfo({
+            step,
+            endpoint: '/media/b2/upload/direct → /nurses/add/documents',
+            method: 'POST',
+            attempt: `${index + 1}/${docEntries.length}`,
+            requestBody: JSON.stringify({
+              nurseId,
+              slot: key,
+              documentType,
+              fileName: file.name,
+              size: file.size,
+              mimeType: file.type || 'unknown',
+            }, null, 2),
+            responseStatus: null,
+            responseBody: `Uploading ${file.name}…`,
+          });
+
+          await uploadAndRegisterDocument({
+            file,
+            resolvedNurseId: nurseId,
+            documentType,
+          });
+        }
+
+        setDebugInfo({
+          step,
+          endpoint: '/media/b2/upload/direct → /nurses/add/documents',
+          method: 'POST',
+          attempt: `${docEntries.length}/${docEntries.length}`,
+          requestBody: JSON.stringify(docEntries.map(([key, file]) => ({
+            slot: key,
+            documentType: DOCUMENT_TYPE_MAP[key] || 'Other',
+            fileName: file.name,
+          })), null, 2),
+          responseStatus: 200,
+          responseBody: `Uploaded and registered ${docEntries.length} document${docEntries.length === 1 ? '' : 's'} successfully.`,
+        });
+
+        setCompletedSteps(prev => [...new Set([...prev, step])]);
+        markNurseComplete(nurseId);
+        return;
       }
-      console.log('[saveStep] endpoint:', STEPS[step].endpoint);
-      console.log('[saveStep] payload:', JSON.stringify(body, null, 2));
-      // Copy curl command to clipboard for direct testing
-      if (step === 0) {
-        const token = localStorage.getItem('token');
-        const curlCmd = `curl -s -X POST 'https://care-sense-backend.onrender.com/api/nurses/create/personal-info' -H 'Content-Type: application/json' -H 'Authorization: Bearer ${token}' -d '${JSON.stringify(body)}'`;
-        navigator.clipboard?.writeText(curlCmd).catch(() => {});
-        console.log('[CURL TEST]', curlCmd);
+      if (requestBodies.length === 0) requestBodies = [body];
+      if (!STEPS[step].endpoint) {
+        setApiError('Nurse registration endpoint not configured for this step.');
+        return;
       }
-      const res = await apiFetch(STEPS[step].endpoint, { method: 'POST', body: JSON.stringify(body) });
-      const rawText = await res.text();
+      let res;
+      let rawText = '';
+      let activeBody = body;
+      let activeAttempt = 1;
+      for (let index = 0; index < requestBodies.length; index += 1) {
+        activeBody = requestBodies[index];
+        activeAttempt = index + 1;
+        const fetchBody = activeBody instanceof FormData ? activeBody : JSON.stringify(activeBody);
+        setDebugInfo({
+          step,
+          endpoint: STEPS[step].endpoint,
+          method: 'POST',
+          attempt: `${activeAttempt}/${requestBodies.length}`,
+          requestBody: activeBody instanceof FormData
+            ? '[FormData payload – see selected files in the form]'
+            : JSON.stringify(activeBody, null, 2),
+          responseStatus: null,
+          responseBody: '',
+        });
+        console.log(`[saveStep] STEP ${step} → POST ${STEPS[step].endpoint} (attempt ${activeAttempt}/${requestBodies.length})`);
+        if (!(activeBody instanceof FormData)) console.log('[saveStep] payload:', JSON.stringify(activeBody, null, 2));
+        res = await apiFetch(STEPS[step].endpoint, { method: 'POST', body: fetchBody });
+        rawText = await res.text();
+        setDebugInfo({
+          step,
+          endpoint: STEPS[step].endpoint,
+          method: 'POST',
+          attempt: `${activeAttempt}/${requestBodies.length}`,
+          requestBody: activeBody instanceof FormData
+            ? '[FormData payload – see selected files in the form]'
+            : JSON.stringify(activeBody, null, 2),
+          responseStatus: res.status,
+          responseBody: rawText,
+        });
+        if (!(step === 0 && res.status >= 500 && index < requestBodies.length - 1)) break;
+      }
       console.log('[saveStep] response status:', res.status, 'body:', rawText);
       let data;
       try { data = JSON.parse(rawText); } catch { data = { message: rawText }; }
 
       // Resolve the nurse id — prefer body.nurseId (always fresh) over stale state
-      const resolvedId = body?.nurseId || nurseId;
+      const resolvedId = activeBody?.nurseId || nurseId;
 
       if (!res.ok) {
         const msg = (data.error || data.message || '').toLowerCase();
@@ -338,8 +704,17 @@ export default function Workforce() {
       }
     } catch (err) {
       const message = String(err?.message || 'Failed to save');
-      if (message.toLowerCase().includes('failed to fetch')) {
-        setApiError('Cannot connect to the server right now. Please check your network and try again.');
+      setDebugInfo(prev => prev ? { ...prev, responseStatus: prev.responseStatus ?? 'NETWORK_ERROR', responseBody: message } : {
+        step,
+        endpoint: STEPS[step]?.endpoint || 'Unknown endpoint',
+        method: 'POST',
+        attempt: '1/1',
+        requestBody: '',
+        responseStatus: 'NETWORK_ERROR',
+        responseBody: message,
+      });
+      if (message.toLowerCase().includes('cannot reach') || message.toLowerCase().includes('failed to fetch') || message.toLowerCase().includes('network')) {
+        setApiError('Cannot reach the server. It may be starting up (this can take ~15 seconds on the free tier) — please wait a moment and try again.');
       } else {
         setApiError(`Error: ${message}`);
       }
@@ -349,39 +724,40 @@ export default function Workforce() {
   };
 
   // ── Styles ──
-  const sectionTitleStyle = { fontSize: 11.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#2E7DB8', marginBottom: 14 };
-  const fieldLabelStyle = { fontSize: 12.5, fontWeight: 600, color: 'var(--kh-text-secondary)', marginBottom: 6 };
-  const sectionCardStyle = { padding: 18, border: '1px solid var(--kh-border-light)', borderRadius: 12, background: '#fff' };
-  const inp = 'form-control form-control-kh';
-  const sel = 'form-select form-control-kh';
+  const sectionTitleStyle = { fontSize: 11.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#1e5d53', marginBottom: 16 };
+  const fieldLabelStyle = { fontSize: 12, fontWeight: 700, color: '#415463', marginBottom: 7 };
+  const sectionCardStyle = { padding: 22, border: '1px solid #edf1f5', borderRadius: 24, background: '#fff', boxShadow: '0 12px 30px rgba(148, 163, 184, 0.08)' };
+  const passportCardStyle = { ...sectionCardStyle, padding: 16 };
+  const inp = 'form-control form-control-kh workforce-form-input';
+  const sel = 'form-select form-control-kh workforce-form-input';
 
   // ── Step content renderers ──
   const renderStep0 = () => (
     <div className="d-grid" style={{ gap: 18 }}>
-      <div style={sectionCardStyle}>
+      <div style={passportCardStyle}>
         <div style={sectionTitleStyle}>Passport Photo</div>
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 24 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <div style={{ position: 'relative', flexShrink: 0 }}>
             {photoPreview ? (
               <div style={{ position: 'relative' }}>
-                <img src={photoPreview} alt="Preview" loading="lazy" style={{ width: 130, height: 130, objectFit: 'cover', borderRadius: '50%', border: '3px solid #D6ECFC', boxShadow: '0 4px 12px rgba(45,127,184,0.12)' }} />
+                <img src={photoPreview} alt="Preview" loading="lazy" style={{ width: 104, height: 104, objectFit: 'cover', borderRadius: '50%', border: '3px solid #D6ECFC', boxShadow: '0 4px 12px rgba(45,127,184,0.12)' }} />
                 <button onClick={() => setPhotoPreview(null)} style={{ position: 'absolute', top: -8, right: -8, width: 24, height: 24, borderRadius: '50%', background: '#e74c3c', color: '#fff', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 6px rgba(0,0,0,0.15)' }}><FiX size={13} /></button>
               </div>
             ) : (
-              <label htmlFor="nurse-photo-upload" style={{ width: 130, height: 130, borderRadius: '50%', cursor: 'pointer', border: '2px dashed #B8D9F0', background: '#F0F7FE', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                <div style={{ width: 44, height: 44, borderRadius: '50%', background: '#D6ECFC', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><FiCamera size={20} color="#2E7DB8" /></div>
+              <label htmlFor="nurse-photo-upload" style={{ width: 104, height: 104, borderRadius: '50%', cursor: 'pointer', border: '2px dashed #B8D9F0', background: '#F0F7FE', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                <div style={{ width: 38, height: 38, borderRadius: '50%', background: '#D6ECFC', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><FiCamera size={18} color="#2E7DB8" /></div>
                 <span style={{ fontSize: 11, fontWeight: 600, color: '#2E7DB8' }}>Upload</span>
               </label>
             )}
             <input id="nurse-photo-upload" type="file" accept="image/png,image/jpeg,image/webp" onChange={handlePhotoUpload} style={{ display: 'none' }} />
           </div>
-          <div style={{ flex: 1, paddingTop: 4 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--kh-text)', marginBottom: 6 }}>Upload a passport-style photo</div>
-            <ul style={{ fontSize: 12, color: 'var(--kh-text-muted)', margin: 0, paddingLeft: 16, lineHeight: 1.8 }}>
+          <div style={{ flex: 1, paddingTop: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--kh-text)', marginBottom: 4 }}>Upload a passport-style photo</div>
+            <ul style={{ fontSize: 11.5, color: 'var(--kh-text-muted)', margin: 0, paddingLeft: 16, lineHeight: 1.55 }}>
               <li>Clear, front-facing headshot</li><li>JPG, PNG, or WebP — Max 5 MB</li>
             </ul>
-            {!photoPreview && <label htmlFor="nurse-photo-upload" className="btn" style={{ marginTop: 12, fontSize: 12, fontWeight: 700, padding: '7px 18px', background: '#F0F7FE', color: '#2E7DB8', border: '1px solid #D6ECFC', borderRadius: 8, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}><FiUpload size={13} /> Choose File</label>}
-            {photoPreview && <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8 }}><div style={{ width: 8, height: 8, borderRadius: '50%', background: '#27ae60' }} /><span style={{ fontSize: 12, color: '#27ae60', fontWeight: 600 }}>Photo uploaded</span></div>}
+            {!photoPreview && <label htmlFor="nurse-photo-upload" className="btn" style={{ marginTop: 9, fontSize: 11.5, fontWeight: 700, padding: '6px 14px', background: '#F0F7FE', color: '#2E7DB8', border: '1px solid #D6ECFC', borderRadius: 999, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}><FiUpload size={12} /> Choose File</label>}
+            {photoPreview && <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8 }}><div style={{ width: 7, height: 7, borderRadius: '50%', background: '#27ae60' }} /><span style={{ fontSize: 11.5, color: '#27ae60', fontWeight: 600 }}>Photo uploaded</span></div>}
           </div>
         </div>
       </div>
@@ -389,22 +765,24 @@ export default function Workforce() {
       <div style={sectionCardStyle}>
         <div style={sectionTitleStyle}>Personal Details</div>
         <div className="row g-3">
-          <div className="col-md-3"><label className="form-label" style={fieldLabelStyle}>Title</label><select className={inp} value={form.title} onChange={e => u('title', e.target.value)}><option value="">Select title</option><option value="Mr">Mr</option><option value="Mrs">Mrs</option><option value="Ms">Ms</option><option value="Miss">Miss</option><option value="Dr">Dr</option><option value="Prof">Prof</option><option value="Rev">Rev</option></select></div>
+          <div className="col-md-4"><label className="form-label" style={fieldLabelStyle}>Title *</label><input className={inp} value={form.title} onChange={e => u('title', e.target.value)} placeholder="e.g. Care Nurse" /></div>
           <div className="col-md-4"><label className="form-label" style={fieldLabelStyle}>First Name *</label><input className={inp} value={form.firstName} onChange={e => u('firstName', e.target.value)} placeholder="First name" /></div>
-          <div className="col-md-5"><label className="form-label" style={fieldLabelStyle}>Last Name *</label><input className={inp} value={form.lastName} onChange={e => u('lastName', e.target.value)} placeholder="Last name" /></div>
+          <div className="col-md-4"><label className="form-label" style={fieldLabelStyle}>Last Name *</label><input className={inp} value={form.lastName} onChange={e => u('lastName', e.target.value)} placeholder="Last name" /></div>
           <div className="col-md-4"><label className="form-label" style={fieldLabelStyle}>Gender *</label>
             <select className={sel} value={form.gender} onChange={e => u('gender', e.target.value)}>
               <option value="">Select gender</option><option value="Male">Male</option><option value="Female">Female</option>
             </select>
           </div>
           <div className="col-md-4"><label className="form-label" style={fieldLabelStyle}>Email *</label><input type="email" className={inp} value={form.email} onChange={e => u('email', e.target.value)} placeholder="nurse@email.com" /></div>
-          <div className="col-md-4"><label className="form-label" style={fieldLabelStyle}>MMC Pin No.</label><input className={inp} value={form.mmcPinNo} onChange={e => u('mmcPinNo', e.target.value)} placeholder="License pin number" /></div>
+          <div className="col-md-4"><label className="form-label" style={fieldLabelStyle}>MMC Pin No. *</label><input className={inp} value={form.mmcPinNo} onChange={e => u('mmcPinNo', e.target.value)} placeholder="License pin number" /></div>
           <div className="col-12"><label className="form-label" style={fieldLabelStyle}>Address *</label><input className={inp} value={form.address} onChange={e => u('address', e.target.value)} placeholder="Residential address" /></div>
           <div className="col-md-4"><label className="form-label" style={fieldLabelStyle}>Phone *</label><input className={inp} value={form.phone} onChange={e => u('phone', e.target.value)} placeholder="024 XXX XXXX" /></div>
           <div className="col-md-4"><label className="form-label" style={fieldLabelStyle}>Home Telephone</label><input className={inp} value={form.homeTelephone} onChange={e => u('homeTelephone', e.target.value)} placeholder="Optional" /></div>
+          <div className="col-md-4"><label className="form-label" style={fieldLabelStyle}>Date of Birth</label><input type="date" className={inp} value={form.dateOfBirh} onChange={e => u('dateOfBirh', e.target.value)} /></div>
           <div className="col-md-4"><label className="form-label" style={fieldLabelStyle}>Citizenship</label><input className={inp} value={form.citizenship} onChange={e => u('citizenship', e.target.value)} placeholder="Ghana" /></div>
           <div className="col-md-6"><label className="form-label" style={fieldLabelStyle}>Role *</label>
             <select className={sel} value={form.role} onChange={e => u('role', e.target.value)}>
+              <option value="">Select role</option>
               <option value="head_nurse">Head Nurse</option><option value="supervising_nurse">Supervising Nurse</option>
               <option value="office_nurse">Office Nurse</option><option value="field_nurse">Field Nurse</option>
             </select>
@@ -417,15 +795,7 @@ export default function Workforce() {
         <div style={sectionTitleStyle}>Job Details</div>
         <div className="row g-3">
           <div className="col-md-6"><label className="form-label" style={fieldLabelStyle}>Job Reference *</label><input className={inp} value={form.jobReference} onChange={e => u('jobReference', e.target.value)} placeholder="e.g. REF-001" /></div>
-          <div className="col-md-6"><label className="form-label" style={fieldLabelStyle}>Job Title *</label>
-            <select className={inp} value={form.jobTitle} onChange={e => u('jobTitle', e.target.value)}>
-              <option value="">Select job title</option>
-              <option value="head_nurse">Head Nurse</option>
-              <option value="supervising_nurse">Supervising Nurse</option>
-              <option value="office_nurse">Office Nurse</option>
-              <option value="field_nurse">Field Nurse</option>
-            </select>
-          </div>
+          <div className="col-md-6"><label className="form-label" style={fieldLabelStyle}>Job Title *</label><input className={inp} value={form.jobTitle} onChange={e => u('jobTitle', e.target.value)} placeholder="e.g. Care Nurse" /></div>
         </div>
       </div>
     </div>
@@ -630,73 +1000,139 @@ export default function Workforce() {
     </div>
   );
 
-  const stepRenderers = [renderStep0, renderStep1, renderStep2, renderStep3];
+  const renderStep4 = () => (
+    <div style={sectionCardStyle}>
+      <div style={sectionTitleStyle}>Upload Documents</div>
+      <div style={{ fontSize: 13, color: 'var(--kh-text-muted)', marginBottom: 20, lineHeight: 1.6 }}>
+        Upload any relevant supporting documents for this nurse. All fields are optional — you can skip and complete later.
+      </div>
+      <div className="row g-3">
+        {DOCUMENT_TYPES.map(({ key, label }) => {
+          const file = form.documents[key];
+          return (
+            <div className="col-md-6" key={key}>
+              <label style={fieldLabelStyle}>{label}</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 8, border: `1px solid ${file ? '#86efac' : 'var(--kh-border-light)'}`, background: file ? '#f0fdf4' : '#fafbfc', transition: 'all 0.15s' }}>
+                {file ? (
+                  <>
+                    <div style={{ flex: 1, fontSize: 12.5, color: '#15803d', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <FiCheck size={12} style={{ marginRight: 6, color: '#16a34a' }} />{file.name}
+                    </div>
+                    <button onClick={() => u('documents', { ...form.documents, [key]: undefined })} style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' }}>
+                      <FiX size={14} />
+                    </button>
+                  </>
+                ) : (
+                  <label htmlFor={`doc-${key}`} style={{ flex: 1, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: 'var(--kh-text-muted)', margin: 0 }}>
+                    <FiUpload size={13} style={{ color: '#2E7DB8', flexShrink: 0 }} />
+                    <span>Click to upload</span>
+                    <input
+                      id={`doc-${key}`}
+                      type="file"
+                      accept="*/*"
+                      style={{ display: 'none' }}
+                      onChange={e => {
+                        const f = e.target.files[0];
+                        if (f) u('documents', { ...form.documents, [key]: f });
+                        e.target.value = '';
+                      }}
+                    />
+                  </label>
+                )}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--kh-text-muted)', marginTop: 4 }}>Any file type supported — max 10 MB</div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  const stepRenderers = [renderStep0, renderStep1, renderStep2, renderStep3, renderStep4];
   const isLastStep = step === STEPS.length - 1;
   const allCompleted = completedSteps.length === STEPS.length;
 
   return (
-    <div className="page-wrapper">
-
-      {/* ── Info Banner ── */}
-      <div style={{
-        background: 'linear-gradient(135deg, #EBF5FF 0%, #F0F9FF 100%)',
-        border: '1px solid #BFDBFE',
-        borderRadius: 12,
-        padding: '14px 20px',
-        marginBottom: 16,
-        display: 'flex',
-        alignItems: 'flex-start',
-        gap: 14,
-      }}>
-        <div style={{ flexShrink: 0, width: 36, height: 36, borderRadius: 8, background: '#45B6FE', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <FiUsers size={18} color="#fff" />
-        </div>
-        <div>
-          <div style={{ fontSize: 14, fontWeight: 700, color: '#1e3a5f', marginBottom: 3 }}>Workforce Management</div>
-          <div style={{ fontSize: 12.5, color: '#4b6a8a', lineHeight: 1.6 }}>
-            Register and manage all nurses on the CareSense platform. Use <strong>Register Nurse</strong> to onboard new staff through a 4-step process covering personal info, diversity data, education &amp; employment history, and supporting information. Nurses with incomplete registrations are flagged under <strong>Incomplete</strong> and can be continued at any time.
+    <div className="page-wrapper workforce-page">
+      <div className="workforce-shell">
+        <div className="workforce-page-header">
+          <div>
+            <div className="workforce-eyebrow">Workforce Management</div>
+            <h2 className="workforce-title">Nurse Directory</h2>
+            <p className="workforce-subtitle">Manage nurse registrations, continue incomplete applications, and review staffing records in one clean workspace.</p>
+          </div>
+          <div className="workforce-header-badge">
+            <span className="workforce-header-badge__icon"><FiUsers size={16} /></span>
+            <span>{filtered.length} active records</span>
           </div>
         </div>
-      </div>
 
-      <div className="kh-card">
-        <div style={{ background: '#45B6FE', padding: '14px 20px', display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-          <div className="d-flex gap-2 align-items-center">
-            <div style={{ position: 'relative' }}>
-              <FiSearch size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.6)' }} />
-              <input className="form-control form-control-kh" placeholder="Search nurses..." value={search}
-                onChange={e => { setSearch(e.target.value); setPage(1); }} style={{ paddingLeft: 34, width: 240, fontSize: 13, background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.25)', color: '#fff' }} />
-            </div>
-            <div className="d-flex gap-1">
-              {['All', 'Incomplete'].map(f => (
-                <button key={f} onClick={() => { setFilter(f); setPage(1); }} style={{ padding: '6px 16px', borderRadius: 2, fontSize: 12, fontWeight: 700, border: 'none', cursor: 'pointer', background: filter === f ? '#fff' : 'rgba(255,255,255,0.15)', color: filter === f ? '#45B6FE' : '#fff', transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: 5 }}>
-                  {f}
+        <div className="workforce-board kh-card">
+          <div className="workforce-board__topbar">
+            <div className="workforce-tabs" role="tablist" aria-label="Nurse views">
+              {['All', 'Incomplete'].map((f) => (
+                <button
+                  key={f}
+                  type="button"
+                  className={`workforce-tab${filter === f ? ' active' : ''}`}
+                  onClick={() => { setFilter(f); setPage(1); }}
+                >
+                  <span>{f === 'All' ? 'All Nurses' : 'Incomplete'}</span>
                   {f === 'Incomplete' && incompleteNurses.length > 0 && (
-                    <span style={{ background: filter === 'Incomplete' ? '#f59e0b' : 'rgba(255,255,255,0.3)', color: filter === 'Incomplete' ? '#fff' : '#fff', fontSize: 10, fontWeight: 800, borderRadius: 10, padding: '1px 6px', minWidth: 18, textAlign: 'center', lineHeight: '16px' }}>{incompleteNurses.length}</span>
+                    <span className="workforce-tab__count">{incompleteNurses.length}</span>
                   )}
                 </button>
               ))}
             </div>
-          </div>
-          <div className="d-flex align-items-center gap-3">
-            <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.8)', fontWeight: 500 }}>{filtered.length} nurses</span>
-            <button className="btn d-flex align-items-center gap-2" onClick={() => setShowModal(true)} style={{ background: '#fff', color: '#45B6FE', fontSize: 13, fontWeight: 700, borderRadius: 2, padding: '7px 16px', border: 'none' }}>
-              <FiPlus size={15} /> Register Nurse
-            </button>
-          </div>
-        </div>
 
-        <div className="table-responsive">
-          <table className="table kh-table" style={{ marginBottom: 0 }}>
+            <div className="workforce-top-actions">
+              <button type="button" className="workforce-action-chip workforce-action-chip--ghost">
+                <FiClock size={14} /> This Month
+              </button>
+              <button type="button" className="workforce-action-chip workforce-action-chip--ghost">
+                <FiSave size={14} /> Export
+              </button>
+              <button type="button" className="workforce-action-chip workforce-action-chip--primary" onClick={() => setShowModal(true)}>
+                <span className="workforce-action-chip__icon"><FiPlus size={16} /></span>
+                Register Nurse
+              </button>
+            </div>
+          </div>
+
+          <div className="workforce-board__toolbar">
+            <div className="workforce-summary-pills">
+              <div className="workforce-summary-pill">
+                <span className="workforce-summary-pill__label">Total Nurses</span>
+                <strong>{nurses.length}</strong>
+              </div>
+              <div className="workforce-summary-pill workforce-summary-pill--highlight">
+                <span className="workforce-summary-pill__label">Pending Review</span>
+                <strong>{incompleteNurses.length}</strong>
+              </div>
+            </div>
+
+            <label className="workforce-searchbar">
+              <FiSearch size={16} />
+              <input
+                className="form-control form-control-kh"
+                placeholder="Search nurse, email or license"
+                value={search}
+                onChange={e => { setSearch(e.target.value); setPage(1); }}
+              />
+            </label>
+          </div>
+
+          <div className="workforce-table-wrap table-responsive">
+            <table className="table kh-table workforce-table" style={{ marginBottom: 0 }}>
             <thead><tr>
               <th className="col-num">#</th>
               <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('name')}>Nurse <SortIcon col="name" /></th>
               <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('role')}>Role <SortIcon col="role" /></th>
               <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('license')}>License <SortIcon col="license" /></th>
-              <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('gender')}>Gender <SortIcon col="gender" /></th>
-              <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('phone')}>Phone <SortIcon col="phone" /></th>
               <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('joined')}>Joined <SortIcon col="joined" /></th>
-              <th style={{ width: 110, textAlign: 'center' }}>Actions</th>
+              <th>Status</th>
+              <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('phone')}>Phone <SortIcon col="phone" /></th>
+              <th style={{ width: 180, textAlign: 'center' }}>Actions</th>
             </tr></thead>
             <tbody>
               {loading ? (
@@ -714,29 +1150,54 @@ export default function Workforce() {
                 <tr key={n.id} onClick={() => navigate(`/workforce/${n.id}`)} style={{ cursor: 'pointer' }}>
                   <td className="col-num">{startRow + i}</td>
                   <td><div className="d-flex align-items-center gap-2">
-                    <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'linear-gradient(135deg, #45B6FE, #2E8FD4)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
-                      {n.name !== '—' ? n.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() : '?'}
+                    <div className="workforce-avatar">
+                      {n.profilePhotoUrl && !avatarLoadErrors[n.id] ? (
+                        <img
+                          src={n.profilePhotoUrl}
+                          alt={n.name}
+                          loading="lazy"
+                          onError={() => setAvatarLoadErrors(prev => ({ ...prev, [n.id]: true }))}
+                        />
+                      ) : (
+                        n.initials
+                      )}
                     </div>
-                    <div><div style={{ fontWeight: 600, color: 'var(--kh-text)', fontSize: 13 }}>{n.name}</div><div style={{ fontSize: 11, color: 'var(--kh-text-muted)' }}>{n.email}</div></div>
+                    <div>
+                      <div className="workforce-person-name">{n.name}</div>
+                      <div className="workforce-person-email">{n.email}</div>
+                    </div>
                   </div></td>
-                  <td style={{ fontSize: 13 }}>{n.role}</td>
+                  <td><span className="workforce-role-chip">{n.role}</span></td>
                   <td style={{ fontSize: 13, fontWeight: 600, fontFamily: 'monospace', color: '#2E7DB8' }}>{n.license}</td>
-                  <td style={{ fontSize: 13 }}>{n.gender}</td>
+                  <td className="workforce-date-cell">{n.joined}</td>
+                  <td>
+                    <span className={`workforce-status-badge${n.isComplete ? ' is-complete' : ' is-pending'}`}>
+                      {n.isComplete ? 'Active' : 'In Progress'}
+                    </span>
+                  </td>
                   <td style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>{n.phone}</td>
-                  <td style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>{n.joined}</td>
                   <td style={{ textAlign: 'center' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                    <div className="workforce-row-actions">
+                      {!n.isComplete && (
+                        <button
+                          onClick={(e) => continueRegistration(n, e)}
+                          title="Continue registration"
+                          className="workforce-row-btn workforce-row-btn--continue"
+                        >
+                          Continue
+                        </button>
+                      )}
                       <button
                         onClick={(e) => { e.stopPropagation(); navigate(`/workforce/${n.id}`); }}
                         title="Edit nurse"
-                        style={{ background: '#f0f7fe', color: '#2E7DB8', border: '1px solid #d6ecfc', borderRadius: 6, padding: '5px 8px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 3 }}
+                        className="workforce-row-btn workforce-row-btn--edit"
                       >
                         <FiEdit size={11} /> Edit
                       </button>
                       <button
                         onClick={(e) => handleDeleteNurse(n, e)}
                         title="Delete nurse"
-                        style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', borderRadius: 6, padding: '5px 8px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 3 }}
+                        className="workforce-row-btn workforce-row-btn--delete"
                       >
                         <FiTrash2 size={11} /> Delete
                       </button>
@@ -748,25 +1209,26 @@ export default function Workforce() {
           </table>
         </div>
 
-        <div style={{ padding: '14px 22px', borderTop: '2px solid #D6ECFC', background: '#fafbfc', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div className="workforce-pagination-bar">
           <div className="d-flex align-items-center gap-2" style={{ fontSize: 12.5, color: 'var(--kh-text-muted)' }}>
             <span>Rows per page:</span>
-            <select value={rowsPerPage} onChange={e => { setRowsPerPage(Number(e.target.value)); setPage(1); }} style={{ border: '1px solid #d1d5db', borderRadius: 2, padding: '5px 10px', fontSize: 12.5, background: '#fff', color: 'var(--kh-text)', fontWeight: 600 }}>
+            <select value={rowsPerPage} onChange={e => { setRowsPerPage(Number(e.target.value)); setPage(1); }} className="workforce-pagination-select">
               {ROWS_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
             </select>
-            <span style={{ marginLeft: 8, fontWeight: 600, color: '#2E7DB8' }}>Showing {startRow}–{endRow} of {sorted.length}</span>
+            <span style={{ marginLeft: 8, fontWeight: 600, color: '#1c5b51' }}>Showing {startRow}–{endRow} of {sorted.length}</span>
           </div>
-          <div className="d-flex gap-1">
+          <div className="d-flex gap-1 workforce-pagination-actions">
             {pgBtn(() => setPage(1), page === 1, <FiChevronsLeft size={14} />)}
             {pgBtn(() => setPage(p => p - 1), page === 1, <FiChevronLeft size={14} />)}
             {Array.from({ length: totalPages }, (_, i) => i + 1).filter(p => p === 1 || p === totalPages || Math.abs(p - page) <= 1).map((p, idx, arr) => {
               const prev = arr[idx - 1]; const showEllipsis = prev && p - prev > 1;
-              return (<span key={p}>{showEllipsis && <span style={{ padding: '6px 4px', fontSize: 12, color: 'var(--kh-text-muted)' }}>…</span>}<button onClick={() => setPage(p)} style={{ padding: '6px 12px', border: '1px solid var(--kh-border-light)', borderRadius: 2, background: page === p ? '#45B6FE' : '#fff', color: page === p ? '#fff' : 'var(--kh-text)', cursor: 'pointer', fontSize: 12.5, fontWeight: page === p ? 700 : 400 }}>{p}</button></span>);
+              return (<span key={p}>{showEllipsis && <span style={{ padding: '6px 4px', fontSize: 12, color: 'var(--kh-text-muted)' }}>…</span>}<button onClick={() => setPage(p)} style={{ minWidth: 38, height: 38, padding: '0 14px', border: '1px solid #e6ebf1', borderRadius: 999, background: page === p ? '#145d52' : '#fff', color: page === p ? '#fff' : '#304353', cursor: 'pointer', fontSize: 12.5, fontWeight: page === p ? 700 : 500, boxShadow: page === p ? '0 12px 24px rgba(20, 93, 82, 0.18)' : '0 8px 16px rgba(15, 23, 42, 0.04)' }}>{p}</button></span>);
             })}
             {pgBtn(() => setPage(p => p + 1), page === totalPages, <FiChevronRight size={14} />)}
             {pgBtn(() => setPage(totalPages), page === totalPages, <FiChevronsRight size={14} />)}
           </div>
         </div>
+      </div>
       </div>
 
       {/* ── Delete Confirmation Modal ── */}
@@ -855,55 +1317,71 @@ export default function Workforce() {
 
       {/* ── Multi-step Registration Modal ── */}
       {showModal && (
-        <div className="modal modal-open" style={{ background: 'rgba(0,0,0,0.25)', backdropFilter: 'blur(4px)' }} onClick={closeModal}>
-          <div className="modal-dialog modal-dialog-centered modal-dialog-scrollable" style={{ maxWidth: 1060 }} onClick={e => e.stopPropagation()}>
-            <div className="modal-content kh-modal-panel" style={{ borderRadius: 12, border: 'none', boxShadow: '0 20px 60px rgba(0,0,0,0.12)' }}>
+        <div className="modal modal-open workforce-modal" style={{ background: 'rgba(15,23,42,0.18)', backdropFilter: 'blur(10px)' }} onClick={closeModal}>
+          <div className="modal-dialog modal-dialog-centered modal-dialog-scrollable workforce-modal-dialog" style={{ maxWidth: 1060 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-content kh-modal-panel workforce-modal-panel" style={{ border: 'none' }}>
 
               {/* Header */}
-              <div className="modal-header" style={{ borderBottom: '1px solid var(--kh-border-light)', padding: '20px 24px', background: '#F0F7FE' }}>
+              <div className="modal-header workforce-modal-header">
                 <div style={{ flex: 1 }}>
-                  <h6 className="modal-title" style={{ fontWeight: 700, fontSize: 16, marginBottom: 10 }}>Register Nurse</h6>
-                  <div style={{ fontSize: 12.5, color: '#2E7DB8', fontWeight: 600 }}>View and update the remaining nurse registration details.</div>
+                  <div className="workforce-modal-header__top">
+                    <div>
+                      <div className="workforce-modal-kicker">Nurse onboarding</div>
+                      <h6 className="modal-title workforce-modal-title">Register Nurse</h6>
+                    </div>
+                    <button type="button" className="workforce-modal-close" onClick={closeModal} aria-label="Close register nurse modal"><FiX size={16} /></button>
+                  </div>
+                  <div className="workforce-step-tabs">
+                    {STEPS.map((s, i) => {
+                      const isDone = completedSteps.includes(i);
+                      const isActive = step === i;
+                      return (
+                        <div key={s.key} className={`workforce-step-tab${isActive ? ' active' : ''}${isDone ? ' done' : ''}`}>
+                          <span className="workforce-step-tab__index">{isDone ? <FiCheck size={12} strokeWidth={3} /> : i + 1}</span>
+                          <span className="workforce-step-tab__label">{s.label}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-                <button className="btn btn-sm btn-ghost" onClick={closeModal}><FiX size={16} /></button>
               </div>
 
               {/* Body */}
-              <div className="modal-body" style={{ padding: 24, background: '#fafbfc' }}>
+              <div className="modal-body workforce-modal-body">
                 {apiError && (
-                  <div style={{ padding: '10px 14px', marginBottom: 16, borderRadius: 8, background: '#fef2f2', border: '1px solid #fca5a5', color: '#dc2626', fontSize: 13, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div className="workforce-modal-alert">
                     <FiAlertCircle size={15} /> {apiError}
                   </div>
                 )}
                 {allCompleted ? (
-                  <div style={{ textAlign: 'center', padding: '48px 24px' }}>
-                    <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'linear-gradient(135deg, #45B6FE, #2E8FD4)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 20, boxShadow: '0 6px 20px rgba(69,182,254,0.35)' }}>
+                  <div className="workforce-modal-success">
+                    <div className="workforce-modal-success__icon">
                       <FiCheck size={28} style={{ color: '#fff', strokeWidth: 3 }} />
                     </div>
-                    <div style={{ fontSize: 20, fontWeight: 700, color: '#111827', marginBottom: 8 }}>Nurse Registered Successfully!</div>
-                    <div style={{ fontSize: 14, color: '#6b7280', marginBottom: 24 }}>All steps have been completed. The nurse has been added to the system.</div>
-                    <button className="btn btn-primary" onClick={closeModal} style={{ padding: '10px 32px' }}>Close</button>
+                    <div className="workforce-modal-success__title">Nurse Registered Successfully!</div>
+                    <div className="workforce-modal-success__text">All steps have been completed. The nurse has been added to the system.</div>
+                    <button className="btn btn-primary workforce-modal-primary-btn" onClick={closeModal}>Close</button>
                   </div>
                 ) : (
-                  stepRenderers[step]()
+                  <div className="workforce-form-stage">{stepRenderers[step]()}</div>
                 )}
               </div>
 
               {/* Footer */}
               {!allCompleted && (
-                <div className="modal-footer" style={{ borderTop: '1px solid var(--kh-border-light)', padding: '16px 24px', background: '#fff', display: 'flex', justifyContent: 'space-between' }}>
+                <div className="modal-footer workforce-modal-footer">
                   <div>
                     {step > 0 && (
-                      <button className="btn btn-outline" onClick={() => setStep(step - 1)} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <button className="btn btn-outline workforce-modal-secondary-btn" onClick={() => setStep(step - 1)} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <FiChevronLeft size={14} /> Back
                       </button>
                     )}
                   </div>
-                  <div className="d-flex gap-2">
-                    <button className="btn btn-outline" onClick={closeModal}>
+                  <div className="d-flex gap-2 workforce-modal-footer__actions">
+                    <button className="btn btn-outline workforce-modal-secondary-btn" onClick={closeModal}>
                       <FiSave size={13} style={{ marginRight: 6 }} /> Save & Exit
                     </button>
-                    <button className="btn btn-primary" disabled={saving} onClick={saveStep} style={{ display: 'flex', alignItems: 'center', gap: 6, opacity: saving ? 0.7 : 1 }}>
+                    <button className="btn btn-primary workforce-modal-primary-btn" disabled={saving} onClick={saveStep} style={{ display: 'flex', alignItems: 'center', gap: 6, opacity: saving ? 0.7 : 1 }}>
                       {saving ? 'Saving…' : isLastStep ? <><FiCheck size={14} /> Complete Registration</> : <>Save & Continue <FiArrowRight size={14} /></>}
                     </button>
                   </div>

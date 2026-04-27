@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { FiPlus, FiSearch, FiX, FiChevronRight, FiChevronLeft, FiCheck, FiSave, FiChevronsLeft, FiChevronsRight, FiUserPlus } from '../icons/hugeicons-feather';
+import { FiPlus, FiSearch, FiX, FiChevronRight, FiChevronLeft, FiCheck, FiSave, FiChevronsLeft, FiChevronsRight, FiUserPlus, FiCheckCircle, FiInfo, FiDownload, FiMoreHorizontal } from '../icons/hugeicons-feather';
 import { apiFetch } from '../api';
 
 const patientsData = [
@@ -404,10 +404,18 @@ export default function Patients() {
   const [admissionForm, setAdmissionForm] = useState(initialAdmissionForm);
   const [savingAdmission, setSavingAdmission] = useState(false);
   const [admissionError, setAdmissionError] = useState('');
+  const [partialSaveAlert, setPartialSaveAlert] = useState('');
+  const [successModal, setSuccessModal] = useState(null);
   const [registrationCheck, setRegistrationCheck] = useState({ loading: false, exists: false, checkedValue: '', error: '' });
   const [patientsLoading, setPatientsLoading] = useState(false);
   const [patientsError, setPatientsError] = useState('');
   const [avatarLoadErrors, setAvatarLoadErrors] = useState({});
+
+  useEffect(() => {
+    if (!partialSaveAlert) return undefined;
+    const timeout = window.setTimeout(() => setPartialSaveAlert(''), 4000);
+    return () => window.clearTimeout(timeout);
+  }, [partialSaveAlert]);
 
   const readPatientPhotoCache = () => {
     try {
@@ -553,6 +561,11 @@ export default function Patients() {
   }, []);
 
   /* ── filtering ── */
+  const activeCount = patients.filter((patient) => patient.status === 'active').length;
+  const dischargedCount = patients.filter((patient) => patient.status === 'discharged').length;
+  const assignedCount = patients.filter((patient) => Array.isArray(patient.nurses) && patient.nurses.length > 0).length;
+  const filterCounts = { All: patients.length, Active: activeCount, Discharged: dischargedCount };
+
   const filtered = patients.filter(p => {
     const sl = search.toLowerCase();
     const sm = !search || p.name.toLowerCase().includes(sl) || p.id.toLowerCase().includes(sl) || p.nurses.some(n => n.toLowerCase().includes(sl));
@@ -588,9 +601,20 @@ export default function Patients() {
 
   /* ── modal helpers ── */
   const markComplete = (idx) => { if (!completedTabs.includes(idx)) setCompletedTabs([...completedTabs, idx]); };
-  const handleNext = () => { markComplete(activeTab); if (activeTab < TABS.length - 1) setActiveTab(activeTab + 1); };
+  const showPartialSaveMessage = (tabIndex = activeTab) => {
+    const completedCount = new Set([...completedTabs, tabIndex]).size;
+    setPartialSaveAlert(`${TABS[tabIndex].label} saved as partial progress. ${completedCount} of ${TABS.length} sections completed so far.`);
+  };
+  const handleNext = () => {
+    markComplete(activeTab);
+    showPartialSaveMessage(activeTab);
+    if (activeTab < TABS.length - 1) setActiveTab(activeTab + 1);
+  };
   const handlePrev = () => { if (activeTab > 0) setActiveTab(activeTab - 1); };
-  const handleSave = () => { markComplete(activeTab); };
+  const handleSave = () => {
+    markComplete(activeTab);
+    showPartialSaveMessage(activeTab);
+  };
   const setAdmissionField = (path, value) => {
     const keys = path.split('.');
     setAdmissionForm(prev => {
@@ -619,6 +643,7 @@ export default function Patients() {
     setActiveTab(0);
     setCompletedTabs([]);
     setAdmissionError('');
+    setPartialSaveAlert('');
     setAdmissionForm(initialAdmissionForm);
     setRegistrationCheck({ loading: false, exists: false, checkedValue: '', error: '' });
   };
@@ -692,12 +717,36 @@ export default function Patients() {
   const progress = Math.round((completedTabs.length / TABS.length) * 100);
 
   const pgBtn = (onClick, disabled, children) => (
-    <button onClick={onClick} disabled={disabled} style={{
-      padding: '6px 10px', border: '1px solid var(--kh-border-light)', borderRadius: 2,
-      background: disabled ? 'var(--kh-off-white)' : '#fff', cursor: disabled ? 'default' : 'pointer',
-      color: disabled ? 'var(--kh-text-muted)' : 'var(--kh-text)', fontSize: 13, display: 'flex', alignItems: 'center',
-    }}>{children}</button>
+    <button onClick={onClick} disabled={disabled} className="patients-page-btn">{children}</button>
   );
+
+  const handleExportPatients = () => {
+    const headers = ['Patient ID', 'Name', 'Age', 'Gender', 'Region', 'Assigned Nurses', 'Enrolled', 'Status'];
+    const rows = sorted.map((patient) => [
+      patient.id,
+      patient.name,
+      patient.age,
+      patient.gender,
+      patient.region,
+      patient.nurses.join('; '),
+      patient.enrolled,
+      patient.status,
+    ]);
+
+    const csv = [headers, ...rows]
+      .map((row) => row.map((value) => `"${String(value ?? '').replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `patients-${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  };
 
   const extractPatientId = (data) => (
     data?.patientId
@@ -950,8 +999,19 @@ export default function Patients() {
         ...prev,
       ]));
 
+      setSuccessModal({
+        patientId,
+        name: `${personalInfoPayload.firstName} ${personalInfoPayload.lastName}`.trim() || 'Patient',
+        registrationNumber: typedRegistrationNumber,
+      });
       markComplete(activeTab);
       setShowModal(false);
+      setActiveTab(0);
+      setCompletedTabs([]);
+      setAdmissionForm(initialAdmissionForm);
+      setPartialSaveAlert('');
+      setAdmissionError('');
+      setRegistrationCheck({ loading: false, exists: false, checkedValue: '', error: '' });
     } catch (error) {
       const message = String(error?.message || 'Unable to submit admission form.');
       const typedRegistrationNumber = String(admissionForm.personal.registrationNumber || '').trim();
@@ -966,40 +1026,87 @@ export default function Patients() {
   };
 
   return (
-    <motion.div className="page-wrapper" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.24 }}>
-
-      {/* Data Table Card */}
-      <motion.div className="kh-card" initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.28, ease: 'easeOut' }}>
-        {/* Tab bar with green background */}
-        <div style={{ background: '#45B6FE', padding: '14px 20px', display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-          <div className="d-flex gap-2 align-items-center">
-            <div style={{ position: 'relative' }}>
-              <FiSearch size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.6)' }} />
-              <input className="form-control form-control-kh" placeholder="Search patients..." value={search}
-                onChange={e => { setSearch(e.target.value); setPage(1); }} style={{ paddingLeft: 34, width: 240, fontSize: 13, background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.25)', color: '#fff' }} />
-            </div>
-            <div className="d-flex gap-1">
-              {['All', 'Active', 'Discharged'].map(f => (
-                <button key={f} onClick={() => { setFilter(f); setPage(1); }} style={{
-                  padding: '6px 16px', borderRadius: 2, fontSize: 12, fontWeight: 700, border: 'none', cursor: 'pointer',
-                  background: filter === f ? '#fff' : 'rgba(255,255,255,0.15)',
-                  color: filter === f ? '#45B6FE' : '#fff',
-                  transition: 'all 0.15s',
-                }}>{f}</button>
-              ))}
-            </div>
+    <motion.div className="page-wrapper patients-page" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.24 }}>
+      <div className="patients-board-shell">
+        <div className="patients-hero">
+          <div>
+            <div className="patients-kicker">Patient workspace</div>
+            <h2 className="patients-title">Manage admissions and follow-up care</h2>
+            <p className="patients-subtitle">A cleaner patient list with quick filters, export access, and rounded dashboard controls inspired by your selected reference.</p>
           </div>
-          <div className="d-flex align-items-center gap-3">
-            <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.8)', fontWeight: 500 }}>{filtered.length} patients</span>
-            <button className="btn d-flex align-items-center gap-2" onClick={openModal} style={{
-              background: '#fff', color: '#45B6FE', fontSize: 13, fontWeight: 700, borderRadius: 2, padding: '7px 16px', border: 'none',
-            }}>
-              <FiPlus size={15} /> Admit Client
+          <div className="patients-hero-actions">
+            <button type="button" className="patients-toolbar-btn" onClick={handleExportPatients}>
+              <FiDownload size={15} />
+              <span>Export</span>
+            </button>
+            <button type="button" className="patients-cta-btn" onClick={openModal}>
+              <span className="patients-cta-btn__icon"><FiPlus size={16} /></span>
+              <span>Admit Client</span>
             </button>
           </div>
         </div>
-        <div className="table-responsive">
-          <table className="table kh-table" style={{ marginBottom: 0 }}>
+
+        <motion.div className="kh-card patients-board-card" initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.28, ease: 'easeOut' }}>
+          <div className="patients-topbar">
+            <div className="patients-segmented-control">
+              {['All', 'Active', 'Discharged'].map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => { setFilter(item); setPage(1); }}
+                  className={`patients-segmented-control__item${filter === item ? ' is-active' : ''}`}
+                >
+                  <span>{item === 'All' ? 'All Patients' : item}</span>
+                  <span className="patients-segmented-control__count">{filterCounts[item]}</span>
+                </button>
+              ))}
+            </div>
+
+            <div className="patients-topbar-actions">
+              <div className="patients-meta-pill">
+                <span className="patients-meta-pill__label">Visible</span>
+                <strong>{filtered.length}</strong>
+              </div>
+              <div className="patients-meta-pill">
+                <span className="patients-meta-pill__label">Assigned</span>
+                <strong>{assignedCount}</strong>
+              </div>
+            </div>
+          </div>
+
+          <div className="patients-subtoolbar">
+            <div className="patients-searchbox">
+              <FiSearch className="patients-searchbox__icon" size={16} />
+              <input
+                className="form-control form-control-kh patients-searchbox__input"
+                placeholder="Search patients, IDs, or assigned nurses"
+                value={search}
+                onChange={e => { setSearch(e.target.value); setPage(1); }}
+              />
+            </div>
+
+            <div className="patients-subtoolbar-actions">
+              <label className="patients-meta-pill patients-meta-pill--select">
+                <span className="patients-meta-pill__label">Rows</span>
+                <select value={rowsPerPage} onChange={e => { setRowsPerPage(Number(e.target.value)); setPage(1); }} className="patients-rows-select">
+                  {ROWS_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </label>
+
+              <button type="button" className="patients-toolbar-btn" onClick={handleExportPatients}>
+                <FiDownload size={15} />
+                <span>Export</span>
+              </button>
+
+              <button type="button" className="patients-cta-btn patients-cta-btn--compact" onClick={openModal}>
+                <span className="patients-cta-btn__icon"><FiPlus size={15} /></span>
+                <span>Admit Client</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="table-responsive patients-table-wrap">
+            <table className="table kh-table patients-table" style={{ marginBottom: 0 }}>
             <thead>
               <tr>
                 <th className="col-num">#</th>
@@ -1010,7 +1117,7 @@ export default function Patients() {
                 <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('nurse')}>Assigned Nurse <SortIcon col="nurse" /></th>
                 <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('enrolled')}>Enrolled <SortIcon col="enrolled" /></th>
                 <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('status')}>Status <SortIcon col="status" /></th>
-                <th style={{ width: 40 }}></th>
+                <th style={{ width: 56, textAlign: 'right' }}>Action</th>
               </tr>
             </thead>
             <tbody>
@@ -1021,15 +1128,15 @@ export default function Patients() {
                 <tr><td colSpan={9} className="text-center py-4" style={{ color: '#dc2626', fontSize: 13, fontWeight: 600 }}>{patientsError}</td></tr>
               )}
               {!patientsLoading && !patientsError && paged.map((p, i) => (
-                <tr key={p.id} onClick={() => navigate(`/patients/${p.id}`)} style={{ cursor: 'pointer' }}>
+                <tr key={p.id} className="patients-row-card" onClick={() => navigate(`/patients/${p.id}`)} style={{ cursor: 'pointer' }}>
                   <td className="col-num">{startRow + i}</td>
                   <td>
-                    <div className="d-flex align-items-center gap-2">
+                    <div className="d-flex align-items-center gap-2 patients-name-cell">
                       {(() => {
                         const avatarKey = `${p.id}::${p.profileImageUrl || ''}`;
                         const showImage = Boolean(p.profileImageUrl) && !avatarLoadErrors[avatarKey];
                         return (
-                      <div className="avatar sm" style={{
+                      <div className="avatar sm patients-avatar" style={{
                         background: showImage ? '#fff' : (i % 2 === 0 ? '#45B6FE' : '#2E7DB8'),
                         overflow: 'hidden',
                         borderRadius: '50%',
@@ -1047,50 +1154,41 @@ export default function Patients() {
                         );
                       })()}
                       <div>
-                        <div style={{ fontWeight: 600, color: 'var(--kh-text)', fontSize: 13 }}>{p.name}</div>
-                        <div style={{ fontSize: 11, color: 'var(--kh-text-muted)' }}>{p.id}</div>
+                        <div className="patients-name-primary">{p.name}</div>
+                        <div className="patients-name-secondary">{p.id}</div>
                       </div>
                     </div>
                   </td>
-                  <td style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>{p.age}</td>
-                  <td style={{ fontSize: 13 }}>{p.gender}</td>
-                  <td style={{ fontSize: 13 }}>{p.region}</td>
-                  <td style={{ fontSize: 13 }}>
-                    <div className="d-flex flex-wrap align-items-center gap-1">
+                  <td className="patients-table-value">{p.age}</td>
+                  <td className="patients-table-value">{p.gender}</td>
+                  <td className="patients-table-value">{p.region}</td>
+                  <td className="patients-table-value">
+                    <div className="d-flex flex-wrap align-items-center gap-1 patients-nurse-stack">
                       {p.nurses.map((name, ni) => (
-                        <span key={ni} style={{
-                          display: 'inline-flex', alignItems: 'center', gap: 4,
-                          background: '#D6ECFC', color: '#1565A0', border: '1px solid #BAE0FD',
-                          borderRadius: 2, padding: '2px 8px', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap',
-                        }}>
+                        <span key={ni} className="patient-nurse-chip">
                           {name}
                           <span
                             onClick={e => { e.stopPropagation(); setPatients(prev => prev.map(pt => pt.id === p.id ? { ...pt, nurses: pt.nurses.filter((_, idx) => idx !== ni) } : pt)); }}
-                            style={{ cursor: 'pointer', marginLeft: 2, color: '#1565A0', fontWeight: 700, fontSize: 13, lineHeight: 1 }}
+                            className="patient-nurse-chip__remove"
                             title={`Remove ${name}`}
                           >×</span>
                         </span>
                       ))}
                       <button
                         onClick={e => { e.stopPropagation(); setAssignModal(p); setNurseSearch(''); }}
-                        style={{
-                          display: 'inline-flex', alignItems: 'center', gap: 4,
-                          background: p.nurses.length === 0 ? '#fff4ed' : '#f0f0f0',
-                          color: p.nurses.length === 0 ? '#ea580c' : '#6b7280',
-                          border: `1px solid ${p.nurses.length === 0 ? '#fed7aa' : '#d1d5db'}`,
-                          borderRadius: 2, padding: '2px 8px', fontSize: 11, fontWeight: 700,
-                          cursor: 'pointer', transition: 'all 0.15s', whiteSpace: 'nowrap',
-                        }}
-                        onMouseEnter={e => { e.currentTarget.style.background = '#45B6FE'; e.currentTarget.style.color = '#fff'; e.currentTarget.style.borderColor = '#45B6FE'; }}
-                        onMouseLeave={e => { e.currentTarget.style.background = p.nurses.length === 0 ? '#fff4ed' : '#f0f0f0'; e.currentTarget.style.color = p.nurses.length === 0 ? '#ea580c' : '#6b7280'; e.currentTarget.style.borderColor = p.nurses.length === 0 ? '#fed7aa' : '#d1d5db'; }}
+                        className={`patient-assign-btn${p.nurses.length === 0 ? ' is-empty' : ''}`}
                       >
                         <FiUserPlus size={11} /> {p.nurses.length === 0 ? 'Assign' : '+'}
                       </button>
                     </div>
                   </td>
-                  <td style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>{p.enrolled}</td>
-                  <td><span className={`badge-kh ${p.status === 'active' ? 'completed' : 'scheduled'}`}>{p.status}</span></td>
-                  <td style={{ textAlign: 'center' }}><FiChevronRight size={14} style={{ color: '#45B6FE' }} /></td>
+                  <td className="patients-table-date">{p.enrolled}</td>
+                  <td><span className={`patients-status-pill ${p.status === 'active' ? 'is-active' : 'is-discharged'}`}>{p.status}</span></td>
+                  <td style={{ textAlign: 'right' }}>
+                    <button className="patients-row-action" onClick={(e) => { e.stopPropagation(); navigate(`/patients/${p.id}`); }}>
+                      <FiMoreHorizontal size={16} />
+                    </button>
+                  </td>
                 </tr>
               ))}
               {!patientsLoading && !patientsError && paged.length === 0 && (
@@ -1101,19 +1199,14 @@ export default function Patients() {
         </div>
 
         {/* Pagination footer */}
-        <div style={{ padding: '14px 22px', borderTop: '2px solid #D6ECFC', background: '#fafbfc', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div className="d-flex align-items-center gap-2" style={{ fontSize: 12.5, color: 'var(--kh-text-muted)' }}>
-            <span>Rows per page:</span>
-            <select
-              value={rowsPerPage}
-              onChange={e => { setRowsPerPage(Number(e.target.value)); setPage(1); }}
-              style={{ border: '1px solid #d1d5db', borderRadius: 2, padding: '5px 10px', fontSize: 12.5, background: '#fff', color: 'var(--kh-text)', fontWeight: 600 }}
-            >
-              {ROWS_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
-            </select>
-            <span style={{ marginLeft: 8, fontWeight: 600, color: '#2E7DB8' }}>Showing {startRow}–{endRow} of {sorted.length}</span>
+        <div className="patients-pagination-footer">
+          <div className="patients-pagination-summary">
+            <span>Showing</span>
+            <strong>{startRow}–{endRow}</strong>
+            <span>of</span>
+            <strong>{sorted.length}</strong>
           </div>
-          <div className="d-flex gap-1">
+          <div className="d-flex gap-1 patients-pagination-actions">
             {pgBtn(() => setPage(1), page === 1, <FiChevronsLeft size={14} />)}
             {pgBtn(() => setPage(p => p - 1), page === 1, <FiChevronLeft size={14} />)}
             {Array.from({ length: totalPages }, (_, i) => i + 1).filter(p => p === 1 || p === totalPages || Math.abs(p - page) <= 1).map((p, idx, arr) => {
@@ -1121,12 +1214,8 @@ export default function Patients() {
               const showEllipsis = prev && p - prev > 1;
               return (
                 <span key={p}>
-                  {showEllipsis && <span style={{ padding: '6px 4px', fontSize: 12, color: 'var(--kh-text-muted)' }}>…</span>}
-                  <button onClick={() => setPage(p)} style={{
-                    padding: '6px 12px', border: '1px solid var(--kh-border-light)', borderRadius: 2,
-                    background: page === p ? '#45B6FE' : '#fff', color: page === p ? '#fff' : 'var(--kh-text)',
-                    cursor: 'pointer', fontSize: 12.5, fontWeight: page === p ? 700 : 400,
-                  }}>{p}</button>
+                  {showEllipsis && <span className="patients-pagination-ellipsis">…</span>}
+                  <button onClick={() => setPage(p)} className={`patients-page-number${page === p ? ' active' : ''}`}>{p}</button>
                 </span>
               );
             })}
@@ -1134,7 +1223,8 @@ export default function Patients() {
             {pgBtn(() => setPage(totalPages), page === totalPages, <FiChevronsRight size={14} />)}
           </div>
         </div>
-      </motion.div>
+        </motion.div>
+      </div>
 
       {/* ═══ ASSIGN NURSE MODAL ═══ */}
       {assignModal && (() => {
@@ -1283,6 +1373,20 @@ export default function Patients() {
                   </div>
                   <button onClick={() => setShowModal(false)} className="btn btn-sm btn-ghost" style={{ color: 'var(--kh-text-muted)' }}><FiX size={20} /></button>
                 </div>
+                {partialSaveAlert && (
+                  <div style={{ padding: '14px 28px 0', flexShrink: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 14px', borderRadius: 10, background: '#FFF7ED', border: '1px solid #FED7AA', color: '#9A3412' }}>
+                      <div style={{ width: 20, height: 20, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 1 }}>
+                        <FiInfo size={16} />
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 2 }}>Partial save recorded</div>
+                        <div style={{ fontSize: 12.5, lineHeight: 1.5 }}>{partialSaveAlert}</div>
+                      </div>
+                      <button onClick={() => setPartialSaveAlert('')} className="btn btn-xs btn-ghost" style={{ color: '#9A3412', padding: 0, minHeight: 'auto', height: 'auto' }}><FiX size={16} /></button>
+                    </div>
+                  </div>
+                )}
                 <div style={{ flex: 1, overflowY: 'auto', padding: '24px 28px' }}><ActiveTabComponent form={admissionForm} setField={setAdmissionField} onRegistrationBlur={handleRegistrationBlur} registrationCheck={registrationCheck} /></div>
                 <div style={{ padding: '14px 28px', borderTop: '1px solid var(--kh-border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
                   <div>{activeTab > 0 && <button onClick={handlePrev} className="btn btn-kh-outline d-flex align-items-center gap-1" style={{ fontSize: 13 }}><FiChevronLeft size={15} /> Previous</button>}</div>
@@ -1302,6 +1406,35 @@ export default function Patients() {
                     {admissionError}
                   </div>
                 )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {successModal && (
+        <div className="modal modal-open" style={{ background: 'rgba(0,0,0,0.3)', backdropFilter: 'blur(4px)', zIndex: 1070 }} onClick={() => setSuccessModal(null)}>
+          <div className="modal-dialog modal-dialog-centered" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-content kh-modal-panel" style={{ borderRadius: 16, border: 'none', boxShadow: '0 24px 80px rgba(0,0,0,0.18)', overflow: 'hidden' }}>
+              <div style={{ padding: '28px 28px 20px', background: 'linear-gradient(135deg, #ECFDF3 0%, #F0FDF4 100%)', borderBottom: '1px solid #D1FAE5', textAlign: 'center' }}>
+                <div style={{ width: 64, height: 64, margin: '0 auto 14px', borderRadius: '50%', background: '#10B981', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>
+                  <FiCheckCircle size={28} />
+                </div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: '#065F46', marginBottom: 6 }}>Patient created successfully</div>
+                <div style={{ fontSize: 13, color: '#047857', lineHeight: 1.6 }}>
+                  <strong>{successModal.name}</strong> has been added to the patient list and the full admission form has been submitted.
+                </div>
+              </div>
+              <div style={{ padding: '20px 28px', background: '#fff' }}>
+                <div style={{ borderRadius: 12, background: '#F8FAFC', border: '1px solid #E2E8F0', padding: '14px 16px', marginBottom: 18 }}>
+                  <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--kh-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Admission Summary</div>
+                  <div style={{ fontSize: 13, color: 'var(--kh-text)', marginBottom: 6 }}><strong>Patient ID:</strong> {successModal.patientId}</div>
+                  <div style={{ fontSize: 13, color: 'var(--kh-text)' }}><strong>Registration No:</strong> {successModal.registrationNumber}</div>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                  <button onClick={() => setSuccessModal(null)} className="btn btn-kh-outline" style={{ fontSize: 13 }}>Close</button>
+                  <button onClick={() => { navigate(`/patients/${successModal.patientId}`); setSuccessModal(null); }} className="btn btn-kh-primary" style={{ fontSize: 13, fontWeight: 700 }}>View Patient</button>
+                </div>
               </div>
             </div>
           </div>

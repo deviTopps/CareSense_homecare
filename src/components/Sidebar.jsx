@@ -1,36 +1,52 @@
 import { NavLink } from 'react-router-dom';
-import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  FiGrid, FiCalendar, FiFileText, FiUsers, FiClock,
-  FiSettings, FiLogOut, FiChevronDown, FiChevronRight, FiList, FiUserMinus, FiActivity, FiAlertCircle,
-  FiMessageSquare, FiMessageCircle, FiRepeat, FiUser, FiCreditCard, FiSmartphone
+  FiGrid,
+  FiCalendar,
+  FiUsers,
+  FiClock,
+  FiSettings,
+  FiLogOut,
+  FiChevronRight,
+  FiChevronLeft,
+  FiActivity,
+  FiAlertCircle,
+  FiMessageSquare,
+  FiMessageCircle,
+  FiRepeat,
+  FiCreditCard,
+  FiSmartphone,
+  FiHelpCircle,
 } from '../icons/hugeicons-feather';
 
-const navItems = [
-  { label: 'OVERVIEW', type: 'section' },
-  { to: '/dashboard',  icon: <FiGrid />,     label: 'Dashboard' },
-  { to: '/patients',   icon: <FiActivity />, label: 'Patients' },
-  { to: '/workforce',  icon: <FiUsers />,    label: 'Nurses' },
-  { label: 'OPERATIONS', type: 'section' },
-  { to: '/scheduling', icon: <FiCalendar />, label: 'Care Visits' },
-  { to: '/nurse-scheduling', icon: <FiRepeat />, label: 'Scheduling' },
-  { to: '/clinical',   icon: <FiAlertCircle />, label: 'Emergency Cases' },
-  { to: '/attendance', icon: <FiClock />,    label: 'Attendance' },
-  { label: 'SUPPORT', type: 'section' },
-  { to: '/complaints', icon: <FiMessageSquare />, label: 'Complaints' },
-  { to: '/feedback',   icon: <FiMessageCircle />, label: 'Feedback' },
-  { label: 'SETTINGS', type: 'section' },
-  { to: '/account',  icon: <FiUser />,       label: 'Account' },
-  { to: '/billing',  icon: <FiCreditCard />, label: 'Billing' },
+const sidebarGroups = [
+  {
+    title: 'Menu',
+    items: [
+      { to: '/dashboard', icon: FiGrid, label: 'Dashboard' },
+      { to: '/patients', icon: FiActivity, label: 'Patients' },
+      { to: '/workforce', icon: FiUsers, label: 'Nurses' },
+      { to: '/scheduling', icon: FiCalendar, label: 'Care Visits' },
+      { to: '/nurse-scheduling', icon: FiRepeat, label: 'Scheduling' },
+      { to: '/clinical', icon: FiAlertCircle, label: 'Emergency Cases' },
+      { to: '/attendance', icon: FiClock, label: 'Attendance' },
+    ],
+  },
+  {
+    title: 'Account',
+    items: [
+      { to: '/account', icon: FiSettings, label: 'Settings' },
+      { to: '/billing', icon: FiCreditCard, label: 'Billing' },
+      { to: '/feedback', icon: FiHelpCircle, label: 'Help & Support' },
+      { to: '/complaints', icon: FiMessageSquare, label: 'Complaints' },
+      { to: '/feedback', icon: FiMessageCircle, label: 'Feedback' },
+    ],
+  },
 ];
 
-export default function Sidebar({ isOpen, onClose, onLogout, user }) {
-  const [openDropdown, setOpenDropdown] = useState(null);
-
-  const displayName = user ? `${user.firstName} ${user.lastName}` : 'User';
-  const displayRole = user?.role ? user.role.charAt(0).toUpperCase() + user.role.slice(1) : 'Admin';
-  const initials = user ? `${(user.firstName?.[0] || '')}${(user.lastName?.[0] || '')}`.toUpperCase() : 'U';
+export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleCollapse, onLogout, user }) {
+  const displayName = user ? `${user.firstName} ${user.lastName}` : 'Kulobal Care';
+  const initials = user ? `${(user.firstName?.[0] || '')}${(user.lastName?.[0] || '')}`.toUpperCase() : 'KC';
 
   return (
     <>
@@ -46,113 +62,87 @@ export default function Sidebar({ isOpen, onClose, onLogout, user }) {
           />
         )}
       </AnimatePresence>
+
       <motion.aside
-        className={`sidebar${isOpen ? ' open' : ''}`}
+        className={`sidebar${isOpen ? ' open' : ''}${isCollapsed ? ' collapsed' : ''}`}
         initial={{ x: -16, opacity: 0 }}
         animate={{ x: 0, opacity: 1 }}
         transition={{ duration: 0.24, ease: 'easeOut' }}
       >
-        {/* Brand */}
-        <div className="sidebar-brand">
-          <img src="/Blue_Logo.png" alt="Kulobal Homecare" className="brand-logo" />
-        </div>
-
-        {/* Navigation */}
-        <nav className="sidebar-nav">
-          {navItems.map((item, i) =>
-            item.type === 'section' ? (
-              <div key={i} className="sidebar-section-label">{item.label}</div>
-            ) : item.type === 'dropdown' ? (
-              <div key={item.key}>
-                <button
-                  onClick={() => setOpenDropdown(openDropdown === item.key ? null : item.key)}
-                  className={`sidebar-link${openDropdown === item.key ? ' active' : ''}`}
-                  style={{
-                    width: '100%', background: 'none', border: 'none', cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', textAlign: 'left',
-                    padding: '10px 20px', fontSize: 15, fontWeight: 500,
-                    color: openDropdown === item.key ? '#45B6FE' : 'var(--kh-text-muted)',
-                    transition: 'all 0.15s',
-                  }}
-                >
-                  <span className="icon">{item.icon}</span>
-                  <span style={{ flex: 1 }}>{item.label}</span>
-                  <FiChevronRight size={14} style={{
-                    transition: 'transform 0.2s',
-                    transform: openDropdown === item.key ? 'rotate(90deg)' : 'rotate(0deg)',
-                  }} />
-                </button>
-                {openDropdown === item.key && (
-                  <div style={{ paddingLeft: 20 }}>
-                    {item.children.map(child => (
-                      <NavLink
-                        key={child.to}
-                        to={child.to}
-                        className={({ isActive }) =>
-                          `sidebar-link${isActive ? ' active' : ''}`
-                        }
-                        onClick={onClose}
-                        style={{ fontSize: 14, padding: '8px 20px' }}
-                      >
-                        <span className="icon" style={{ fontSize: 15 }}>{child.icon}</span>
-                        {child.label}
-                      </NavLink>
-                    ))}
-                  </div>
-                )}
+        <div className="sidebar-panel">
+          <div className="sidebar-brand">
+            {!isCollapsed && (
+              <div className="sidebar-brand__identity">
+                <span className="sidebar-brand__mark">
+                  <span />
+                  <span />
+                </span>
+                <div className="sidebar-brand__copy">
+                  <small>CareSense</small>
+                  <strong>{displayName}</strong>
+                </div>
               </div>
-            ) : (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.to === '/'}
-                className={({ isActive }) =>
-                  `sidebar-link${isActive ? ' active' : ''}`
-                }
-                onClick={onClose}
-              >
-                <span className="icon">{item.icon}</span>
-                {item.label}
-              </NavLink>
-            )
-          )}
-        </nav>
+            )}
 
-        {/* Upgrade */}
-        <div className="card bg-base-100 border border-primary/30 shadow-sm" style={{ margin: '0 14px 16px', borderRadius: 10, overflow: 'hidden' }}>
-          {/* Top accent strip */}
-          <div className="bg-primary text-primary-content" style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'rgba(255,255,255,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <FiSmartphone size={14} color="#fff" />
-            </div>
-            <span style={{ fontSize: 12.5, fontWeight: 800, color: '#fff', letterSpacing: '0.2px' }}>Nurse Mobile App</span>
-          </div>
-          {/* Body */}
-          <div style={{ padding: '12px 14px', background: '#fff' }}>
-            <div style={{ fontSize: 11.5, color: 'var(--kh-text-muted)', lineHeight: 1.6, marginBottom: 12 }}>
-              Give nurses access to <strong style={{ color: 'var(--kh-text)' }}>schedules, visits &amp; reports</strong> on the go.
-            </div>
-            <NavLink
-              to="/billing"
-              className="btn btn-sm btn-primary"
-              style={{ width: '100%', fontSize: 12, fontWeight: 700 }}
+            <button
+              type="button"
+              className="sidebar-collapse-btn"
+              onClick={onToggleCollapse}
+              title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             >
-              Download Nurse App →
-            </NavLink>
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="sidebar-footer">
-          <div className="user-info" style={{ cursor: 'pointer' }}>
-            <div className="user-avatar">{initials}</div>
-            <div style={{ flex: 1 }}>
-              <div className="user-name">{displayName}</div>
-              <div className="user-role">{displayRole}</div>
-            </div>
-            <button onClick={onLogout} title="Logout" className="btn btn-ghost btn-xs" style={{ color: 'var(--kh-text-muted)' }}>
-              <FiLogOut size={15} />
+              {isCollapsed ? <FiChevronRight size={16} /> : <FiChevronLeft size={16} />}
             </button>
+          </div>
+
+          <nav className="sidebar-nav">
+            {sidebarGroups.map((group) => (
+              <div key={group.title} className="sidebar-group">
+                {!isCollapsed && <div className="sidebar-group__title">{group.title}</div>}
+                <div className="sidebar-group__items">
+                  {group.items.map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <NavLink
+                        key={`${group.title}-${item.to}-${item.label}`}
+                        to={item.to}
+                        className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`}
+                        onClick={onClose}
+                        title={item.label}
+                      >
+                        <span className="icon"><Icon size={18} /></span>
+                        <span className="sidebar-link-label">{item.label}</span>
+                      </NavLink>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+
+            <div className="sidebar-group sidebar-group--logout">
+              {!isCollapsed && <div className="sidebar-group__title">Session</div>}
+              <button type="button" className="sidebar-link sidebar-link--button" onClick={onLogout} title="Log out">
+                <span className="icon"><FiLogOut size={18} /></span>
+                <span className="sidebar-link-label">Log out</span>
+              </button>
+            </div>
+          </nav>
+
+          <div className="sidebar-upgrade-card">
+            <div className="sidebar-upgrade-card__icon">
+              <div>
+                <FiSmartphone size={16} />
+              </div>
+            </div>
+            <div className="sidebar-upgrade-card__content">
+              <span className="sidebar-upgrade-card__eyebrow">Current plan :</span>
+              <strong>Free trial</strong>
+              <p>Collaborate on your finances. Upgrade to Shared Budget.</p>
+            </div>
+            <NavLink to="/billing" className="sidebar-upgrade-card__action" title="Upgrade plan">
+              <span className="sidebar-link-label">Upgrade 50 $</span>
+            </NavLink>
+            {isCollapsed && <span className="sidebar-upgrade-card__initials">{initials}</span>}
           </div>
         </div>
       </motion.aside>

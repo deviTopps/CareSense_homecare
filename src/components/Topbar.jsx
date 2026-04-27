@@ -59,14 +59,17 @@ export default function Topbar({ onToggleSidebar, onLogout }) {
 
         <div style={{ width: 1, height: 24, background: '#e5e7eb', margin: '0 4px' }} />
 
-        <button className="btn btn-sm btn-outline">
-          <FiHelpCircle size={13} /> Help
+        <button className="topbar-text-btn">
+          <FiHelpCircle size={14} />
+          <span>Help</span>
         </button>
-        <button className="btn btn-sm btn-outline">
-          <FiShield size={13} /> Policy
+        <button className="topbar-text-btn">
+          <FiShield size={14} />
+          <span>Policy</span>
         </button>
-        <button className="btn btn-sm btn-error btn-outline" onClick={onLogout}>
-          <FiLogOut size={13} /> Logout
+        <button className="topbar-text-btn topbar-text-btn--danger" onClick={onLogout}>
+          <FiLogOut size={14} />
+          <span>Logout</span>
         </button>
       </div>
     </motion.header>

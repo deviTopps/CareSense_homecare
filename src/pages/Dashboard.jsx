@@ -1,12 +1,21 @@
 import { useState } from 'react';
 import { motion } from 'motion/react';
 import {
-  FiUsers, FiCalendar, FiActivity, FiClock,
-  FiCheckCircle, FiAlertTriangle, FiHeart, FiX,
-  FiUser, FiMapPin, FiPhone, FiThermometer, FiFileText
+  FiUsers,
+  FiCalendar,
+  FiActivity,
+  FiCheckCircle,
+  FiAlertTriangle,
+  FiHeart,
+  FiX,
+  FiMapPin,
+  FiPhone,
+  FiFileText,
+  FiTrendingUp,
+  FiBell,
+  FiMoreHorizontal,
 } from '../icons/hugeicons-feather';
 
-/* ── Flagged Issues Data ── */
 const flaggedIssues = [
   {
     id: 'FL-001', patientId: 'P-1001', patient: 'Kwame Boateng', age: 72, gender: 'Male',
@@ -17,7 +26,7 @@ const flaggedIssues = [
       { time: '08:30', action: 'Morning vitals check', note: 'BP 158/98 — flagged for review', status: 'alert' },
       { time: '09:00', action: 'Medication administered', note: 'Amlodipine 5mg given as scheduled', status: 'done' },
       { time: '09:45', action: 'Nurse escalation', note: 'Contacted Dr. Kwesi Asare for BP review', status: 'alert' },
-      { time: '10:15', action: 'Doctor callback', note: 'Increase Amlodipine to 10mg, recheck in 2hrs', status: 'pending' },
+      { time: '10:15', action: 'Doctor callback', note: 'Increase Amlodipine to 10mg, recheck in 2hrs', status: 'alert' },
       { time: '12:30', action: 'Follow-up vitals', note: 'Pending — scheduled recheck', status: 'pending' },
     ],
     vitals: { bp: '158/98', sugar: '7.8 mmol/L', pulse: '88', temp: '36.7°C', spo2: '96%' },
@@ -100,355 +109,426 @@ const severityStyle = {
   medium: { bg: '#fefce8', color: '#ca8a04', border: '#fef08a' },
 };
 
+const summaryCards = [
+  { label: "Today's Visits", value: '128', delta: '+17.8%', detail: '14 waiting for check-in', Icon: FiCalendar, tone: 'green' },
+  { label: 'Care Revenue', value: '$43,000', delta: '-3.9%', detail: 'This month billing progress', Icon: FiTrendingUp, tone: 'rose' },
+  { label: 'Time Saved', value: '56 hrs', delta: '+12.4%', detail: 'Saved by automation this month', Icon: FiCheckCircle, tone: 'lime' },
+];
+
+const quickActions = [
+  { label: 'Admit', Icon: FiUsers },
+  { label: 'Schedule', Icon: FiCalendar },
+  { label: 'Vitals', Icon: FiHeart },
+  { label: 'History', Icon: FiFileText },
+];
+
+const visitFlow = [
+  { month: 'Jan', completed: 62, missed: 28 },
+  { month: 'Feb', completed: 48, missed: 22 },
+  { month: 'Mar', completed: 54, missed: 20 },
+  { month: 'Apr', completed: 70, missed: 16 },
+  { month: 'May', completed: 51, missed: 25 },
+  { month: 'Jun', completed: 57, missed: 14 },
+  { month: 'Jul', completed: 43, missed: 19 },
+  { month: 'Aug', completed: 49, missed: 24 },
+  { month: 'Sep', completed: 72, missed: 20 },
+  { month: 'Oct', completed: 58, missed: 18 },
+  { month: 'Nov', completed: 39, missed: 26 },
+  { month: 'Dec', completed: 53, missed: 17 },
+];
+
+const carePrograms = [
+  { name: 'Chronic Care', current: '$18,400', target: '$24,000', progress: 76 },
+  { name: 'Post-Surgery Recovery', current: '$9,800', target: '$15,000', progress: 65 },
+  { name: 'Palliative Support', current: '$12,250', target: '$20,000', progress: 61 },
+];
+
+const activityFeed = [
+  { title: 'Jamie Smith updated wound dressing notes', time: '16:05', accent: 'green' },
+  { title: 'Alex Johnson logged in for a new care visit', time: '13:05', accent: 'lime' },
+  { title: 'Morgan Lee added a new diabetes monitoring plan', time: '12:05', accent: 'teal' },
+  { title: 'Taylor Green reviewed missed visit escalations', time: '21:05', accent: 'gold' },
+  { title: 'Wilson Baptista reassigned an emergency visit', time: '09:05', accent: 'green' },
+];
+
+const statisticBreakdown = [
+  { label: 'Routine Visits', value: '$2,100', percent: 60, tone: 'green' },
+  { label: 'Critical Care', value: '$525', percent: 15, tone: 'lime' },
+  { label: 'Education', value: '$420', percent: 12, tone: 'gray' },
+  { label: 'Nutrition', value: '$280', percent: 8, tone: 'slate' },
+  { label: 'Medication', value: '$175', percent: 5, tone: 'light' },
+];
+
+const donutStyle = {
+  background: 'conic-gradient(#1f5e59 0 60%, #b7ff5a 60% 75%, #d6dde6 75% 87%, #eef2f6 87% 95%, #f7f9fb 95% 100%)',
+};
+
 export default function Dashboard() {
   const [flagTab, setFlagTab] = useState('all');
   const [selectedFlag, setSelectedFlag] = useState(null);
 
-  const filtered = flagTab === 'all' ? flaggedIssues : flaggedIssues.filter(f => f.type === flagTab);
+  const filtered = flagTab === 'all' ? flaggedIssues : flaggedIssues.filter((flag) => flag.type === flagTab);
+  const criticalCount = flaggedIssues.filter((flag) => flag.severity === 'critical').length;
 
   return (
-    <motion.div className="page-wrapper" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25 }}>
-      {/* Welcome Banner */}
-      <motion.div style={{
-        background: '#f3f4f6',
-        borderRadius: 2, padding: '16px 32px', marginBottom: 20,
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        border: '1px solid #e5e7eb',
-      }} initial={{ y: 12, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.3, ease: 'easeOut' }}>
-        <div>
-          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--kh-text-muted)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 6 }}>
-            Dashboard Overview
+    <motion.div className="page-wrapper dashboard-page" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25 }}>
+      <div className="dashboard-shell">
+        <div className="dashboard-top-grid">
+          <div className="dashboard-primary-column">
+            <motion.div className="dashboard-agency-card" initial={{ y: 12, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.28 }}>
+              <div className="dashboard-agency-card__header">
+                <div className="dashboard-agency-brand">
+                  <span className="dashboard-agency-brand__icon"><FiActivity size={16} /></span>
+                  <span>Agency Pulse</span>
+                </div>
+                <FiBell size={16} />
+              </div>
+              <div className="dashboard-agency-card__body">
+                <div className="dashboard-agency-card__eyebrow">Kulobal Homecare</div>
+                <h2>Ama Asante</h2>
+                <p>Executive overview of patients, nurses, flagged cases, and operational health across the agency.</p>
+              </div>
+              <div className="dashboard-agency-card__stats">
+                <div>
+                  <span>Active Patients</span>
+                  <strong>248</strong>
+                </div>
+                <div>
+                  <span>Critical Flags</span>
+                  <strong>{criticalCount}</strong>
+                </div>
+                <div>
+                  <span>Active Nurses</span>
+                  <strong>36</strong>
+                </div>
+              </div>
+              <div className="dashboard-quick-actions">
+                {quickActions.map(({ label, Icon }) => (
+                  <button key={label} type="button" className="dashboard-quick-actions__item">
+                    <span><Icon size={15} /></span>
+                    <small>{label}</small>
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+
+            <div className="dashboard-summary-cluster">
+              <div className="dashboard-summary-grid">
+                {summaryCards.map(({ label, value, delta, detail, Icon, tone }, index) => (
+                  <motion.div key={label} className={`dashboard-summary-card tone-${tone}`} initial={{ y: 12, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.28, delay: 0.04 * index }}>
+                    <div className="dashboard-summary-card__top">
+                      <span className="dashboard-summary-card__icon"><Icon size={16} /></span>
+                      <button type="button" className="dashboard-icon-ghost"><FiMoreHorizontal size={15} /></button>
+                    </div>
+                    <div className="dashboard-summary-card__delta">{delta}</div>
+                    <div className="dashboard-summary-card__value">{value}</div>
+                    <div className="dashboard-summary-card__label">{label}</div>
+                    <div className="dashboard-summary-card__detail">{detail}</div>
+                  </motion.div>
+                ))}
+              </div>
+
+              <motion.div className="dashboard-limit-card" initial={{ y: 12, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.28, delay: 0.16 }}>
+                <div className="dashboard-section-header compact">
+                  <div>
+                    <h4>Care Capacity</h4>
+                    <p>Visits completed vs monthly target</p>
+                  </div>
+                  <button type="button" className="dashboard-icon-ghost"><FiMoreHorizontal size={15} /></button>
+                </div>
+                <div className="dashboard-limit-card__numbers">
+                  <span>$2,500.00 spent of $20,000.00</span>
+                  <strong>12.5%</strong>
+                </div>
+                <div className="dashboard-progress"><span style={{ width: '12.5%' }} /></div>
+              </motion.div>
+            </div>
           </div>
-          <h5 style={{ fontSize: 24, fontWeight: 900, letterSpacing: '-0.03em', marginBottom: 4, color: 'var(--kh-text)' }}>
-            Good morning, Ama 👋
-          </h5>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#F0F7FE', border: '1px solid #bfe0fd', borderRadius: 10, padding: '3px 12px', marginBottom: 6 }}>
-            <span style={{ fontSize: 12, fontWeight: 700, color: '#1565A0' }}>Kulobal Homecare Agency</span>
+
+          <div className="dashboard-sidebar-column">
+            <motion.div className="dashboard-stat-card" initial={{ y: 12, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.28, delay: 0.12 }}>
+              <div className="dashboard-section-header compact">
+                <div>
+                  <h4>Statistic</h4>
+                  <p>This Month</p>
+                </div>
+                <button type="button" className="dashboard-filter-chip">This Month</button>
+              </div>
+              <div className="dashboard-stat-card__legend">
+                <span>Income ($4,800)</span>
+                <span>Expense ($3,500)</span>
+              </div>
+              <div className="dashboard-donut" style={donutStyle}>
+                <div className="dashboard-donut__inner">
+                  <small>Total Expenses</small>
+                  <strong>$3,500</strong>
+                </div>
+              </div>
+              <div className="dashboard-breakdown-list">
+                {statisticBreakdown.map((item) => (
+                  <div key={item.label} className="dashboard-breakdown-item">
+                    <div className="dashboard-breakdown-item__left">
+                      <span className={`dashboard-breakdown-item__badge tone-${item.tone}`}>{item.percent}%</span>
+                      <span>{item.label}</span>
+                    </div>
+                    <strong>{item.value}</strong>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+
+            <motion.div className="dashboard-activity-card" initial={{ y: 12, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.28, delay: 0.22 }}>
+              <div className="dashboard-section-header compact">
+                <div>
+                  <h4>Recent Activity</h4>
+                  <p>Today</p>
+                </div>
+                <button type="button" className="dashboard-icon-ghost"><FiMoreHorizontal size={15} /></button>
+              </div>
+              <div className="dashboard-activity-list">
+                {activityFeed.map((activity) => (
+                  <div key={`${activity.title}-${activity.time}`} className="dashboard-activity-item">
+                    <div className={`dashboard-activity-item__avatar tone-${activity.accent}`}>{activity.title.split(' ')[0][0]}</div>
+                    <div className="dashboard-activity-item__content">
+                      <strong>{activity.title}</strong>
+                      <span>{activity.time}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
           </div>
-          <p style={{ fontSize: 13.5, color: 'var(--kh-text-muted)', margin: 0 }}>
-            Here's what's happening across your homecare operations today.
-          </p>
         </div>
-        <div className="d-flex align-items-center gap-3">
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--kh-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Today</div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--kh-text)' }}>{new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</div>
-          </div>
-          <div style={{ width: 1, height: 36, background: '#d1d5db' }} />
-          <div style={{
-            width: 48, height: 48, borderRadius: '50%', background: '#45B6FE',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <span style={{ fontSize: 18, fontWeight: 800, color: '#fff' }}>AA</span>
-          </div>
+
+        <div className="dashboard-main-grid">
+          <motion.div className="dashboard-flow-card" initial={{ y: 12, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.28, delay: 0.18 }}>
+            <div className="dashboard-section-header">
+              <div>
+                <h4>Visit Flow</h4>
+                <p>Total balance</p>
+              </div>
+              <button type="button" className="dashboard-filter-chip">This Year</button>
+            </div>
+            <div className="dashboard-flow-card__summary">
+              <div>
+                <span>Total Balance</span>
+                <strong>$562,000</strong>
+              </div>
+              <div className="dashboard-flow-card__insight">
+                <div>
+                  <span>June 2026</span>
+                  <strong>Income $6,000</strong>
+                </div>
+                <div>
+                  <span>Expense</span>
+                  <strong>$4,000</strong>
+                </div>
+              </div>
+              <div className="dashboard-flow-card__keys">
+                <span><i className="tone-green" />Income</span>
+                <span><i className="tone-lime" />Expense</span>
+              </div>
+            </div>
+            <div className="dashboard-bar-chart">
+              {visitFlow.map((item) => (
+                <div key={item.month} className="dashboard-bar-chart__item">
+                  <div className="dashboard-bar-chart__bars">
+                    <span className="bar-positive" style={{ height: `${item.completed}%` }} />
+                    <span className="bar-negative" style={{ height: `${item.missed}%` }} />
+                  </div>
+                  <small>{item.month}</small>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+
+          <motion.div className="dashboard-programs-card dashboard-programs-card--tall" initial={{ y: 12, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.28, delay: 0.2 }}>
+            <div className="dashboard-section-header compact">
+              <div>
+                <h4>Care Programs</h4>
+                <p>Total savings</p>
+              </div>
+              <button type="button" className="dashboard-link-btn">+ Add Plan</button>
+            </div>
+            <div className="dashboard-programs-total">$84,500</div>
+            <div className="dashboard-program-list">
+              {carePrograms.map((program) => (
+                <div key={program.name} className="dashboard-program-item">
+                  <div className="dashboard-program-item__head">
+                    <div className="dashboard-program-item__label">
+                      <span className="dashboard-program-item__dot" />
+                      <strong>{program.name}</strong>
+                    </div>
+                    <button type="button" className="dashboard-icon-ghost"><FiMoreHorizontal size={14} /></button>
+                  </div>
+                  <div className="dashboard-progress small"><span style={{ width: `${program.progress}%` }} /></div>
+                  <div className="dashboard-program-item__meta">
+                    <span>{program.current} · {program.progress}%</span>
+                    <span>Target: {program.target}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+
+          <motion.div className="dashboard-watchlist-card" initial={{ y: 12, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.28, delay: 0.26 }}>
+            <div className="dashboard-section-header">
+              <div>
+                <h4>Critical Watchlist</h4>
+                <p>Flagged patient exceptions and operational alerts</p>
+              </div>
+              <div className="dashboard-watchlist-card__filters">
+                {FLAG_TABS.map((tab) => {
+                  const count = tab.key === 'all' ? flaggedIssues.length : flaggedIssues.filter((issue) => issue.type === tab.key).length;
+                  return (
+                    <button
+                      key={tab.key}
+                      type="button"
+                      onClick={() => setFlagTab(tab.key)}
+                      className={`dashboard-tab-pill${flagTab === tab.key ? ' active' : ''}`}
+                    >
+                      <span>{tab.label}</span>
+                      <small>{count}</small>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="dashboard-watchlist-table">
+              <div className="dashboard-watchlist-table__head">
+                <span>Patient</span>
+                <span>Concern</span>
+                <span>Severity</span>
+                <span>Region</span>
+                <span>Date</span>
+                <span>Action</span>
+              </div>
+              <div className="dashboard-watchlist-table__body">
+                {filtered.map((flag) => {
+                  const sev = severityStyle[flag.severity];
+                  return (
+                    <button key={flag.id} type="button" className="dashboard-watchlist-row" onClick={() => setSelectedFlag(flag)}>
+                      <span>
+                        <strong>{flag.patient}</strong>
+                        <small>{flag.patientId}</small>
+                      </span>
+                      <span>
+                        <strong>{flag.type}</strong>
+                        <small>{flag.reason}</small>
+                      </span>
+                      <span>
+                        <em style={{ background: sev.bg, color: sev.color, borderColor: sev.border }}>{flag.severity}</em>
+                      </span>
+                      <span>{flag.region}</span>
+                      <span>{flag.flaggedDate}</span>
+                      <span className="dashboard-watchlist-row__action">View</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </motion.div>
         </div>
-      </motion.div>
-
-      {/* Big Overview Cards */}
-      <div className="row g-3 mb-4">
-        {/* Current Patients */}
-        <motion.div className="col-lg-3" initial={{ y: 14, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.02, duration: 0.28 }}>
-          <div style={{ background: 'linear-gradient(135deg, #E8F4FE 0%, #A8D8FC 50%, #45B6FE 100%)', border: '1px solid #A8D8FC', borderRadius: 2, padding: '32px 24px', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
-            <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'rgba(255,255,255,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
-              <FiUsers size={26} style={{ color: '#1A7ABF' }} />
-            </div>
-            <div style={{ fontSize: 48, fontWeight: 900, color: '#1a2d3c', lineHeight: 1, marginBottom: 6, fontVariantNumeric: 'tabular-nums' }}>248</div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: '#1a2d3c', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 8 }}>Current Patients</div>
-            <div style={{ fontSize: 12.5, color: '#2d5a7a', lineHeight: 1.5 }}>Enrolled across all regions</div>
-          </div>
-        </motion.div>
-
-        {/* Emergency Issues */}
-        <motion.div className="col-lg-3" initial={{ y: 14, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.06, duration: 0.28 }}>
-          <div style={{ background: 'linear-gradient(135deg, #fca5a5 0%, #ef4444 50%, #b91c1c 100%)', borderRadius: 2, padding: '32px 24px', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
-            <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
-              <FiAlertTriangle size={26} style={{ color: '#fff' }} />
-            </div>
-            <div style={{ fontSize: 48, fontWeight: 900, color: '#fff', lineHeight: 1, marginBottom: 6, fontVariantNumeric: 'tabular-nums' }}>2</div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: '#fff', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 8 }}>Emergency Issues</div>
-            <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.8)', lineHeight: 1.5 }}>Requires immediate attention</div>
-          </div>
-        </motion.div>
-
-        {/* Pending Care Visits */}
-        <motion.div className="col-lg-3" initial={{ y: 14, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.1, duration: 0.28 }}>
-          <div style={{ background: 'linear-gradient(135deg, #fde68a 0%, #f59e0b 50%, #d97706 100%)', borderRadius: 2, padding: '32px 24px', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
-            <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
-              <FiClock size={26} style={{ color: '#fff' }} />
-            </div>
-            <div style={{ fontSize: 48, fontWeight: 900, color: '#fff', lineHeight: 1, marginBottom: 6, fontVariantNumeric: 'tabular-nums' }}>14</div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: '#fff', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 8 }}>Pending Care Visits</div>
-            <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.8)', lineHeight: 1.5 }}>Scheduled today · awaiting check-in</div>
-          </div>
-        </motion.div>
-
-        {/* Active Nurses */}
-        <motion.div className="col-lg-3" initial={{ y: 14, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.14, duration: 0.28 }}>
-          <div style={{ background: 'linear-gradient(135deg, #7EC8FE 0%, #45B6FE 50%, #1565A0 100%)', borderRadius: 2, padding: '32px 24px', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
-            <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
-              <FiUsers size={26} style={{ color: '#fff' }} />
-            </div>
-            <div style={{ fontSize: 48, fontWeight: 900, color: '#fff', lineHeight: 1, marginBottom: 6, fontVariantNumeric: 'tabular-nums' }}>36</div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: '#fff', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 8 }}>Active Nurses</div>
-            <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.8)', lineHeight: 1.5 }}>32 on duty · 4 on leave</div>
-          </div>
-        </motion.div>
       </div>
 
-      {/* ── Emergency Issues Data Table ── */}
-      <motion.div className="kh-card" style={{ overflow: 'hidden' }} initial={{ y: 12, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.18, duration: 0.28 }}>
-        <div className="card-header-custom" style={{ borderBottom: 'none', paddingBottom: 0 }}>
-          <h6 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <FiAlertTriangle size={16} style={{ color: '#ef4444' }} />
-            Emergency Issues
-          </h6>
-          <span style={{ fontSize: 11, fontWeight: 600, color: '#ef4444', background: '#fef2f2', padding: '3px 10px', borderRadius: 10 }}>
-            {flaggedIssues.length} active
-          </span>
-        </div>
-        {/* Tab bar */}
-        <div style={{ display: 'flex', borderBottom: '2px solid #f3f4f6', padding: '0 16px' }}>
-          {FLAG_TABS.map(t => {
-            const count = t.key === 'all' ? flaggedIssues.length : flaggedIssues.filter(f => f.type === t.key).length;
-            return (
-              <button key={t.key} onClick={() => setFlagTab(t.key)} style={{
-                display: 'flex', alignItems: 'center', gap: 6, padding: '12px 16px', fontSize: 12.5,
-                fontWeight: flagTab === t.key ? 700 : 500, border: 'none', cursor: 'pointer',
-                background: 'transparent',
-                color: flagTab === t.key ? '#ef4444' : 'var(--kh-text-muted)',
-                borderBottom: flagTab === t.key ? '2px solid #ef4444' : '2px solid transparent',
-                marginBottom: -2, transition: 'all 0.15s',
-              }}>
-                {t.label}
-                <span style={{
-                  fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 8,
-                  background: flagTab === t.key ? '#fef2f2' : '#f3f4f6',
-                  color: flagTab === t.key ? '#ef4444' : '#6b7280',
-                }}>{count}</span>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Table */}
-        <div className="table-responsive">
-          <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #e5e7eb' }}>
-            <thead>
-              <tr style={{ background: '#fef2f2' }}>
-                {['Flag ID', 'Patient', 'Type', 'Severity', 'Reason', 'Flagged By', 'Date', ''].map((h, i) => (
-                  <th key={i} style={{
-                    padding: '10px 14px', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase',
-                    letterSpacing: '0.5px', color: '#ef4444', borderBottom: '2px solid #ef4444',
-                    border: '1px solid #e5e7eb', textAlign: 'left', whiteSpace: 'nowrap',
-                  }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(f => {
-                const sev = severityStyle[f.severity];
-                return (
-                  <tr key={f.id}
-                    onClick={() => setSelectedFlag(f)}
-                    style={{ cursor: 'pointer', transition: 'background 0.15s' }}
-                    onMouseEnter={e => e.currentTarget.style.background = '#fef2f2'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                  >
-                    <td style={{ padding: '12px 14px', fontSize: 12.5, fontWeight: 700, color: '#ef4444', border: '1px solid #e5e7eb' }}>{f.id}</td>
-                    <td style={{ padding: '12px 14px', border: '1px solid #e5e7eb' }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--kh-text)' }}>{f.patient}</div>
-                      <div style={{ fontSize: 11, color: 'var(--kh-text-muted)' }}>{f.patientId} · {f.region}</div>
-                    </td>
-                    <td style={{ padding: '12px 14px', border: '1px solid #e5e7eb' }}>
-                      <span style={{
-                        fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 2,
-                        background: '#fef2f2', color: '#ef4444', border: '1px solid #fecaca',
-                      }}>{f.type}</span>
-                    </td>
-                    <td style={{ padding: '12px 14px', border: '1px solid #e5e7eb' }}>
-                      <span style={{
-                        fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 2,
-                        background: sev.bg, color: sev.color, border: `1px solid ${sev.border}`,
-                        textTransform: 'uppercase', letterSpacing: '0.3px',
-                      }}>{f.severity}</span>
-                    </td>
-                    <td style={{ padding: '12px 14px', fontSize: 12.5, color: 'var(--kh-text)', maxWidth: 280, border: '1px solid #e5e7eb' }}>{f.reason}</td>
-                    <td style={{ padding: '12px 14px', fontSize: 12.5, color: 'var(--kh-text-muted)', border: '1px solid #e5e7eb' }}>{f.flaggedBy}</td>
-                    <td style={{ padding: '12px 14px', fontSize: 12.5, color: 'var(--kh-text-muted)', whiteSpace: 'nowrap', border: '1px solid #e5e7eb' }}>{f.flaggedDate}</td>
-                    <td style={{ padding: '12px 14px', border: '1px solid #e5e7eb' }}>
-                      <span style={{ fontSize: 11, fontWeight: 600, color: '#ef4444', whiteSpace: 'nowrap' }}>View →</span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </motion.div>
-
-      {/* ═══ Flagged Alert Portal (Modal) ═══ */}
       {selectedFlag && (
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 2000,
-          background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-          padding: 20,
-        }} onClick={() => setSelectedFlag(null)}>
-          <div onClick={e => e.stopPropagation()} style={{
-            background: '#fff', borderRadius: 2, width: '100%', maxWidth: 860,
-            maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
-          }}>
-            {/* Portal header */}
-            <div style={{
-              padding: '16px 24px', borderBottom: '1px solid #f3f4f6',
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              background: '#fef2f2',
-            }}>
+        <div className="kh-modal-overlay" style={{ zIndex: 2000 }} onClick={() => setSelectedFlag(null)}>
+          <div onClick={(event) => event.stopPropagation()} style={{ background: '#fff', borderRadius: 24, width: '100%', maxWidth: 920, maxHeight: '90vh', overflow: 'auto', boxShadow: '0 24px 80px rgba(15, 23, 42, 0.24)' }}>
+            <div style={{ padding: '18px 24px', borderBottom: '1px solid #eef2f7', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#f8fafc' }}>
               <div className="d-flex align-items-center gap-3">
-                <div style={{
-                  width: 40, height: 40, borderRadius: '50%', background: '#ef4444',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>
+                <div style={{ width: 44, height: 44, borderRadius: '50%', background: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <FiAlertTriangle size={18} style={{ color: '#fff' }} />
                 </div>
                 <div>
-                  <div style={{ fontSize: 15, fontWeight: 800, color: '#dc2626' }}>Flagged Alert — {selectedFlag.id}</div>
-                  <div style={{ fontSize: 12, color: '#ef4444' }}>{selectedFlag.type} · {selectedFlag.severity.toUpperCase()}</div>
+                  <div style={{ fontSize: 16, fontWeight: 800, color: '#111827' }}>Flagged Alert — {selectedFlag.id}</div>
+                  <div style={{ fontSize: 12.5, color: '#6b7280' }}>{selectedFlag.type} · {selectedFlag.severity.toUpperCase()}</div>
                 </div>
               </div>
-              <button onClick={() => setSelectedFlag(null)} style={{
-                background: 'none', border: '1px solid #fecaca', borderRadius: 2, padding: '6px 8px',
-                cursor: 'pointer', color: '#ef4444', display: 'flex',
-              }}><FiX size={16} /></button>
+              <button onClick={() => setSelectedFlag(null)} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '8px 10px', cursor: 'pointer', color: '#6b7280', display: 'flex' }}><FiX size={16} /></button>
             </div>
 
-            {/* Patient banner */}
-            <div style={{ padding: '16px 24px', borderBottom: '1px solid #f3f4f6', background: '#fafbfc' }}>
+            <div style={{ padding: '18px 24px', borderBottom: '1px solid #f3f4f6', background: '#fcfcfd' }}>
               <div className="d-flex align-items-center gap-3">
-                <div style={{
-                  width: 48, height: 48, borderRadius: '50%', background: '#ef4444',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: '#fff', fontWeight: 800, fontSize: 16,
-                }}>
-                  {selectedFlag.patient.split(' ').map(n => n[0]).join('')}
+                <div style={{ width: 52, height: 52, borderRadius: '50%', background: '#1f5e59', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: 16 }}>
+                  {selectedFlag.patient.split(' ').map((name) => name[0]).join('')}
                 </div>
                 <div style={{ flex: 1 }}>
                   <div className="d-flex align-items-center gap-2">
-                    <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--kh-text)' }}>{selectedFlag.patient}</span>
-                    <span style={{
-                      fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 2,
-                      background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca',
-                      textTransform: 'uppercase', letterSpacing: '0.5px',
-                    }}>FLAGGED</span>
+                    <span style={{ fontSize: 17, fontWeight: 800, color: 'var(--kh-text)' }}>{selectedFlag.patient}</span>
+                    <span style={{ fontSize: 10.5, fontWeight: 700, padding: '3px 9px', borderRadius: 999, background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Flagged</span>
                   </div>
-                  <div style={{ fontSize: 12, color: 'var(--kh-text-muted)', marginTop: 2 }}>
-                    <span style={{ fontWeight: 600, color: 'var(--kh-text)' }}>{selectedFlag.patientId}</span>
-                    <span style={{ margin: '0 6px', color: '#d1d5db' }}>|</span>
-                    {selectedFlag.gender}, {selectedFlag.age} yrs
-                    <span style={{ margin: '0 6px', color: '#d1d5db' }}>|</span>
-                    <FiMapPin size={11} style={{ marginRight: 3 }} />{selectedFlag.region}
-                    <span style={{ margin: '0 6px', color: '#d1d5db' }}>|</span>
-                    Nurse: <span style={{ fontWeight: 600 }}>{selectedFlag.nurse}</span>
+                  <div style={{ fontSize: 12.5, color: 'var(--kh-text-muted)', marginTop: 2, display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+                    <span><FiMapPin size={11} style={{ marginRight: 4 }} />{selectedFlag.region}</span>
+                    <span><FiPhone size={11} style={{ marginRight: 4 }} />Assigned Nurse: {selectedFlag.nurse}</span>
+                    <span>Patient ID: <strong>{selectedFlag.patientId}</strong></span>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Reason */}
-            <div style={{ padding: '14px 24px', background: '#fef2f2', borderBottom: '1px solid #fecaca' }}>
-              <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#dc2626', marginBottom: 4 }}>Flag Reason</div>
-              <div style={{ fontSize: 13.5, fontWeight: 600, color: '#991b1b' }}>{selectedFlag.reason}</div>
+            <div style={{ padding: '14px 24px', background: '#fff7ed', borderBottom: '1px solid #fed7aa' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#c2410c', marginBottom: 5 }}>Flag Reason</div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: '#9a3412' }}>{selectedFlag.reason}</div>
             </div>
 
-            <div style={{ padding: '20px 24px' }}>
-              <div className="row g-3">
-                {/* Left — Activities timeline */}
+            <div style={{ padding: '22px 24px' }}>
+              <div className="row g-4">
                 <div className="col-lg-7">
-                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text-muted)', marginBottom: 12 }}>
-                    Patient Activity Timeline
-                  </div>
-                  {selectedFlag.activities.map((a, i) => (
-                    <div key={i} className="d-flex gap-3" style={{ marginBottom: i < selectedFlag.activities.length - 1 ? 0 : 0 }}>
-                      {/* Timeline line */}
+                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--kh-text-muted)', marginBottom: 14 }}>Patient Activity Timeline</div>
+                  {selectedFlag.activities.map((activity, index) => (
+                    <div key={`${activity.time}-${activity.action}`} className="d-flex gap-3">
                       <div className="d-flex flex-column align-items-center" style={{ width: 20 }}>
-                        <div style={{
-                          width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
-                          background: a.status === 'alert' ? '#ef4444' : a.status === 'done' ? '#45B6FE' : '#d97706',
-                          border: `2px solid ${a.status === 'alert' ? '#fecaca' : a.status === 'done' ? '#BAE0FD' : '#fde68a'}`,
-                        }} />
-                        {i < selectedFlag.activities.length - 1 && (
-                          <div style={{ width: 2, flex: 1, background: '#e5e7eb', minHeight: 30 }} />
-                        )}
+                        <div style={{ width: 11, height: 11, borderRadius: '50%', background: activity.status === 'alert' ? '#ef4444' : activity.status === 'done' ? '#1f5e59' : '#ca8a04', border: `2px solid ${activity.status === 'alert' ? '#fecaca' : activity.status === 'done' ? '#bbf7d0' : '#fde68a'}` }} />
+                        {index < selectedFlag.activities.length - 1 && <div style={{ width: 2, flex: 1, background: '#e5e7eb', minHeight: 32 }} />}
                       </div>
                       <div style={{ paddingBottom: 16, flex: 1 }}>
                         <div className="d-flex align-items-center gap-2">
-                          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--kh-text-muted)', fontVariantNumeric: 'tabular-nums' }}>{a.time}</span>
-                          <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--kh-text)' }}>{a.action}</span>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--kh-text-muted)', fontVariantNumeric: 'tabular-nums' }}>{activity.time}</span>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--kh-text)' }}>{activity.action}</span>
                         </div>
-                        <div style={{ fontSize: 12, color: 'var(--kh-text-muted)', marginTop: 2 }}>{a.note}</div>
+                        <div style={{ fontSize: 12.5, color: 'var(--kh-text-muted)', marginTop: 3 }}>{activity.note}</div>
                       </div>
                     </div>
                   ))}
                 </div>
 
-                {/* Right — Vitals & Meds */}
                 <div className="col-lg-5">
-                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text-muted)', marginBottom: 12 }}>
-                    Current Vitals
-                  </div>
-                  <div className="row g-2 mb-3">
-                    {Object.entries(selectedFlag.vitals).map(([key, val]) => {
+                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--kh-text-muted)', marginBottom: 14 }}>Current Vitals</div>
+                  <div className="row g-2 mb-4">
+                    {Object.entries(selectedFlag.vitals).map(([key, value]) => {
                       const labels = { bp: 'Blood Pressure', sugar: 'Blood Sugar', pulse: 'Pulse', temp: 'Temperature', spo2: 'SPO2' };
-                      const isFlag = (key === 'bp' && parseInt(val) >= 140) || (key === 'sugar' && parseFloat(val) > 7) || (key === 'spo2' && parseInt(val) < 95);
+                      const isFlag = (key === 'bp' && parseInt(value, 10) >= 140) || (key === 'sugar' && parseFloat(value) > 7) || (key === 'spo2' && parseInt(value, 10) < 95);
                       return (
                         <div key={key} className="col-6">
-                          <div style={{
-                            padding: '10px 12px', border: '1px solid #e5e7eb', borderRadius: 2,
-                            background: isFlag ? '#fef2f2' : '#fafbfc',
-                            borderLeft: isFlag ? '3px solid #ef4444' : '3px solid #e5e7eb',
-                          }}>
-                            <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text-muted)' }}>{labels[key] || key}</div>
-                            <div style={{ fontSize: 16, fontWeight: 800, color: isFlag ? '#ef4444' : 'var(--kh-text)', fontVariantNumeric: 'tabular-nums', marginTop: 2 }}>{val}</div>
+                          <div style={{ padding: '12px 14px', border: '1px solid #e5e7eb', borderRadius: 16, background: isFlag ? '#fef2f2' : '#fafbfc' }}>
+                            <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--kh-text-muted)' }}>{labels[key] || key}</div>
+                            <div style={{ fontSize: 16, fontWeight: 800, color: isFlag ? '#dc2626' : 'var(--kh-text)', marginTop: 4 }}>{value}</div>
                           </div>
                         </div>
                       );
                     })}
                   </div>
 
-                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text-muted)', marginBottom: 8 }}>
-                    Active Medications
-                  </div>
-                  {selectedFlag.medications.map((med, i) => (
-                    <div key={i} className="d-flex align-items-center gap-2" style={{ padding: '7px 0', borderBottom: '1px solid #f3f4f6' }}>
-                      <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#8b5cf6', flexShrink: 0 }} />
-                      <span style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--kh-text)' }}>{med}</span>
+                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--kh-text-muted)', marginBottom: 10 }}>Active Medications</div>
+                  {selectedFlag.medications.map((medication) => (
+                    <div key={medication} className="d-flex align-items-center gap-2" style={{ padding: '8px 0', borderBottom: '1px solid #f3f4f6' }}>
+                      <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#84cc16', flexShrink: 0 }} />
+                      <span style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--kh-text)' }}>{medication}</span>
                     </div>
                   ))}
 
-                  <div style={{ marginTop: 16, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text-muted)', marginBottom: 8 }}>
-                    Diagnosis
-                  </div>
+                  <div style={{ marginTop: 16, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--kh-text-muted)', marginBottom: 8 }}>Diagnosis</div>
                   <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--kh-text)' }}>{selectedFlag.diagnosis}</div>
                 </div>
               </div>
             </div>
 
-            {/* Footer */}
-            <div style={{
-              padding: '14px 24px', borderTop: '1px solid #f3f4f6', background: '#fafbfc',
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            }}>
-              <div style={{ fontSize: 11.5, color: 'var(--kh-text-muted)' }}>
-                Flagged by <span style={{ fontWeight: 600 }}>{selectedFlag.flaggedBy}</span> on {selectedFlag.flaggedDate}
-              </div>
+            <div style={{ padding: '16px 24px', borderTop: '1px solid #f3f4f6', background: '#fafbfc', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ fontSize: 12, color: 'var(--kh-text-muted)' }}>Flagged by <strong>{selectedFlag.flaggedBy}</strong> on {selectedFlag.flaggedDate}</div>
               <div className="d-flex gap-2">
-                <button onClick={() => setSelectedFlag(null)} style={{
-                  background: 'none', border: '1px solid #e5e7eb', borderRadius: 2,
-                  padding: '8px 16px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', color: 'var(--kh-text)',
-                }}>Close</button>
-                <button style={{
-                  background: '#ef4444', border: 'none', borderRadius: 2,
-                  padding: '8px 16px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', color: '#fff',
-                }}>Resolve Flag</button>
+                <button onClick={() => setSelectedFlag(null)} className="btn btn-kh-outline" style={{ fontSize: 12.5 }}>Close</button>
+                <button className="btn btn-kh-primary" style={{ fontSize: 12.5, background: '#ef4444', borderColor: '#ef4444' }}>Resolve Flag</button>
               </div>
             </div>
           </div>
