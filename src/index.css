@@ -2651,6 +2651,226 @@ button, input, select, textarea {
   color: #172033;
 }
 
+.patient-medications-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.patient-medications-panel__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.patient-medications-panel__count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: rgba(69, 182, 254, 0.12);
+  color: #1580c9;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.patient-medications-panel__add-btn {
+  border: none;
+  border-radius: 14px;
+  padding: 10px 16px;
+  background: linear-gradient(135deg, #45b6fe 0%, #289ff0 100%);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 14px 32px rgba(69, 182, 254, 0.22);
+  cursor: pointer;
+}
+
+
+.patient-medications-table-wrap {
+  border: 1px solid #e5e7eb;
+  border-radius: 18px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.patient-medications-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.patient-medications-table thead tr {
+  background: #f8fafc;
+}
+
+.patient-medications-table th {
+  padding: 12px 14px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #64748b;
+  border-bottom: 1px solid #e5e7eb;
+  white-space: nowrap;
+}
+
+.patient-medications-table td {
+  padding: 14px;
+  font-size: 12.5px;
+  color: #172033;
+  border-bottom: 1px solid #eef2f7;
+  vertical-align: middle;
+}
+
+.patient-medications-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.patient-medications-table tbody tr:nth-child(even) {
+  background: #fcfdff;
+}
+
+.patient-medications-table__name-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.patient-medications-table__name-cell strong {
+  font-size: 13px;
+  font-weight: 700;
+  color: #172033;
+}
+
+.patient-medications-table__name-cell span {
+  font-size: 11.5px;
+  color: #64748b;
+  line-height: 1.4;
+}
+
+.patient-medications-table__status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #2563eb;
+  font-size: 10.5px;
+  font-weight: 800;
+}
+
+.patient-medications-table__status--new {
+  background: #ecfeff;
+  border-color: #a5f3fc;
+  color: #0f766e;
+}
+
+.patient-medications-table__reminder {
+  display: inline-flex;
+  font-size: 11.5px;
+  color: #b45309;
+  line-height: 1.4;
+}
+
+.patient-medications-table__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.patient-medications-table__badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  color: #b45309;
+  font-size: 10.5px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.patient-medications-table__badge--soft {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+  color: #64748b;
+}
+
+.patient-medications-table__reminder.is-muted {
+  color: #94a3b8;
+}
+
+.patient-medications-table__action {
+  border: 1px solid #fde68a;
+  background: #fffbeb;
+  color: #b45309;
+  border-radius: 10px;
+  padding: 7px 10px;
+  font-size: 11.5px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.patient-medications-table__action--secondary {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.patient-medications-table__action--danger {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.patient-medications-table__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 1199px) {
+  .patient-medications-panel__action {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+
+@media (max-width: 767px) {
+  .patient-medications-panel__action {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .patient-medications-panel__add-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .patient-medications-table th,
+  .patient-medications-table td {
+    padding: 12px 10px;
+  }
+}
+
 .patients-topbar,
 .patients-subtoolbar {
   padding: 18px 22px;
@@ -3134,6 +3354,446 @@ button, input, select, textarea {
 .patient-update-modal__action-btn--primary:hover:not(:disabled) {
   box-shadow: 0 18px 34px rgba(69, 182, 254, 0.28);
 }
+
+.patient-medication-modal__header {
+  background: linear-gradient(180deg, #f8fbff 0%, #f3f8fd 100%);
+}
+
+.patient-medication-modal__header-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.patient-medication-modal__eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #45B6FE;
+}
+
+.patient-medication-modal__title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.patient-medication-modal__status {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(69, 182, 254, 0.12);
+  color: #1565A0;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.patient-medication-modal__status.is-warning {
+  background: rgba(245, 158, 11, 0.14);
+  color: #b45309;
+}
+
+.patient-medication-modal__header-text {
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: #526072;
+  max-width: 620px;
+}
+
+.patient-medication-modal__body {
+  background: linear-gradient(180deg, #fbfdff 0%, #f7faff 100%);
+}
+
+.patient-medication-modal__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(260px, 0.9fr);
+  gap: 18px;
+}
+
+.patient-medication-modal__main,
+.patient-medication-modal__aside {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.patient-medication-modal__section,
+.patient-medication-modal__summary-card {
+  background: #fff;
+  border: 1px solid #e4ebf3;
+  border-radius: 18px;
+  padding: 16px;
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.06);
+}
+
+.patient-medication-modal__summary-card--soft {
+  background: #f8fbff;
+}
+
+.patient-medication-modal__section-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.patient-medication-modal__section-header--compact {
+  align-items: center;
+}
+
+.patient-medication-modal__section-title,
+.patient-medication-modal__summary-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.patient-medication-modal__section-copy,
+.patient-medication-modal__summary-copy {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #64748b;
+}
+
+.patient-medication-modal__pill,
+.patient-medication-modal__required-note {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #526072;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.patient-medication-modal__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.patient-medication-modal__label {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.patient-medication-modal__input,
+.patient-medication-modal__search-input {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid #d7e0ea;
+  border-radius: 12px;
+  background: #fff;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 500;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.patient-medication-modal__input:focus,
+.patient-medication-modal__search-input:focus {
+  border-color: rgba(69, 182, 254, 0.75);
+  box-shadow: 0 0 0 4px rgba(69, 182, 254, 0.12);
+}
+
+.patient-medication-modal__search-wrap {
+  position: relative;
+}
+
+.patient-medication-modal__search-input {
+  padding-left: 38px;
+  padding-right: 34px;
+}
+
+.patient-medication-modal__search-icon,
+.patient-medication-modal__search-caret {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #94a3b8;
+  pointer-events: none;
+}
+
+.patient-medication-modal__search-icon {
+  left: 14px;
+}
+
+.patient-medication-modal__search-caret {
+  right: 12px;
+}
+
+.patient-medication-modal__search-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  max-height: 240px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #d7e0ea;
+  border-radius: 14px;
+  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.12);
+}
+
+.patient-medication-modal__search-option {
+  width: 100%;
+  padding: 11px 12px;
+  border: none;
+  border-bottom: 1px solid #eef2f7;
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  text-align: left;
+}
+
+.patient-medication-modal__search-option:last-child {
+  border-bottom: none;
+}
+
+.patient-medication-modal__search-option:hover {
+  background: #f0f7fe;
+}
+
+.patient-medication-modal__search-option span {
+  font-size: 13px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.patient-medication-modal__search-option small,
+.patient-medication-modal__search-empty {
+  font-size: 11.5px;
+  color: #64748b;
+}
+
+.patient-medication-modal__search-empty {
+  padding: 12px;
+  font-weight: 600;
+}
+
+.patient-medication-modal__search-miss {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #dc2626;
+}
+
+.patient-medication-modal__custom-trigger,
+.patient-medication-modal__inline-btn {
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid #d7e0ea;
+  background: #fff;
+  color: #526072;
+  font-size: 12px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  cursor: pointer;
+}
+
+.patient-medication-modal__custom-trigger {
+  width: 100%;
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #dc2626;
+}
+
+.patient-medication-modal__inline-btn--primary {
+  background: linear-gradient(135deg, #45B6FE 0%, #2E7DB8 100%);
+  border-color: transparent;
+  color: #fff;
+}
+
+.patient-medication-modal__inline-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.patient-medication-modal__selected-chip {
+  margin-top: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: #eef7ff;
+  border: 1px solid #bae0fd;
+  color: #1565A0;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.patient-medication-modal__selected-chip-icon {
+  display: inline-flex;
+  align-items: center;
+}
+
+.patient-medication-modal__selected-chip button,
+.patient-medication-modal__time-chip button {
+  border: none;
+  background: transparent;
+  color: inherit;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  padding: 0;
+}
+
+.patient-medication-modal__custom-card {
+  margin-top: 12px;
+  padding: 14px;
+  border-radius: 14px;
+  background: #fff8f1;
+  border: 1px solid #fed7aa;
+}
+
+.patient-medication-modal__custom-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #c2410c;
+}
+
+.patient-medication-modal__custom-copy {
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: #9a3412;
+}
+
+.patient-medication-modal__custom-actions {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 10px;
+}
+
+.patient-medication-modal__checkboxes {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 0 4px;
+}
+
+.patient-medication-modal__checkboxes label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  color: #0f172a;
+}
+
+.patient-medication-modal__time-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.patient-medication-modal__time-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: #f8fbff;
+  border: 1px solid #d7e0ea;
+}
+
+.patient-medication-modal__time-chip input {
+  width: 92px;
+  border: none;
+  background: transparent;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 600;
+  outline: none;
+}
+
+.patient-medication-modal__summary-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.patient-medication-modal__summary-list div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #eef2f7;
+}
+
+.patient-medication-modal__summary-list div:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.patient-medication-modal__summary-list span {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+
+.patient-medication-modal__summary-list strong {
+  font-size: 13px;
+  color: #0f172a;
+}
+
+.patient-medication-modal__footer {
+  background: #fbfdff;
+}
+
+@media (max-width: 991px) {
+  .patient-medication-modal__layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 767px) {
+  .patient-medication-modal__title-row,
+  .patient-medication-modal__section-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .patient-medication-modal__custom-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .patient-medication-modal__checkboxes {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 6px 0;
+  }
+}
+
 .dashboard-page {
   background: linear-gradient(180deg, #f6f8fb 0%, #eef2f6 100%);
 }

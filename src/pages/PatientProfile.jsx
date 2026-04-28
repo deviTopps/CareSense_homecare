@@ -128,6 +128,49 @@ const DataRow = ({ label, children }) => (
   </div>
 );
 
+const NoDataState = ({ text = 'No data available for this section.' }) => (
+  <div style={{ fontSize: 12.5, color: 'var(--kh-text-muted)', lineHeight: 1.6 }}>{text}</div>
+);
+
+function hasMeaningfulSectionData(value) {
+  if (value === null || value === undefined) return false;
+  if (typeof value === 'boolean' || typeof value === 'number') return true;
+  if (typeof value === 'string') return value.trim().length > 0;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'object') {
+    return Object.entries(value).some(([key, item]) => {
+      if (['id', 'createdAt', 'updatedAt', '__typename'].includes(key)) return false;
+      return hasMeaningfulSectionData(item);
+    });
+  }
+  return false;
+}
+
+function formatStatusLabel(value) {
+  const normalized = String(value || '').trim();
+  if (!normalized) return 'No status';
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
+const FlagItem = ({ label, detail }) => (
+  <div className="d-flex align-items-center gap-2" style={{ padding: '6px 0', borderBottom: '1px solid #f3f4f6' }}>
+    <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--kh-text)', flex: 1 }}>{label}</span>
+    <span style={{ fontSize: 11, color: 'var(--kh-text-muted)' }}>{detail}</span>
+  </div>
+);
+
+const TABS = [
+  { key: 'chart', label: 'Chart Summary', icon: <FiClipboard size={14} /> },
+  { key: 'clinical', label: 'Clinical Assessment', icon: <FiActivity size={14} /> },
+  { key: 'vitals', label: 'Vitals', icon: <FiThermometer size={14} /> },
+  { key: 'medications', label: 'Medications', icon: <FiFileText size={14} /> },
+  { key: 'care', label: 'Lifestyle Records', icon: <FiHeart size={14} /> },
+  { key: 'notes', label: 'Nurse Notes', icon: <FiEdit2 size={14} /> },
+  { key: 'incidents', label: 'Incident Reports', icon: <FiAlertTriangle size={14} /> },
+  { key: 'careplan', label: 'Care Plan', icon: <FiCheckCircle size={14} /> },
+  { key: 'checkliststatus', label: 'Checklist Status', icon: <FiBarChart2 size={14} /> },
+];
+
 const Panel = ({ title, icon, accent, children, action, variant = 'default', bodyClassName = '' }) => {
   const isSummary = variant === 'summary';
 
@@ -178,63 +221,9 @@ const Panel = ({ title, icon, accent, children, action, variant = 'default', bod
   );
 };
 
-const VitalTile = ({ label, value, flag, showFlagBorder = true }) => (
-  <div style={{
-    padding: '12px 14px', border: '1px solid #e5e7eb', borderRadius: 5,
-    background: flag ? '#fef2f2' : '#fafbfc', borderLeft: showFlagBorder && flag ? '3px solid #ef4444' : '3px solid #e5e7eb',
-  }}>
-    <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text-muted)', marginBottom: 4 }}>{label}</div>
-    <div style={{ fontSize: 18, fontWeight: 800, color: flag ? '#ef4444' : 'var(--kh-text)', fontVariantNumeric: 'tabular-nums' }}>
-      {value === null || value === undefined || value === '' ? 'No data' : value}
-    </div>
-  </div>
-);
-
-const NoDataState = ({ text = 'No data available for this section.' }) => (
-  <div style={{ fontSize: 12.5, color: 'var(--kh-text-muted)', lineHeight: 1.6 }}>{text}</div>
-);
-
-function hasMeaningfulSectionData(value) {
-  if (value === null || value === undefined) return false;
-  if (typeof value === 'boolean' || typeof value === 'number') return true;
-  if (typeof value === 'string') return value.trim().length > 0;
-  if (Array.isArray(value)) return value.length > 0;
-  if (typeof value === 'object') {
-    return Object.entries(value).some(([key, item]) => {
-      if (['id', 'createdAt', 'updatedAt', '__typename'].includes(key)) return false;
-      return hasMeaningfulSectionData(item);
-    });
-  }
-  return false;
-}
-
-function formatStatusLabel(value) {
-  const normalized = String(value || '').trim();
-  if (!normalized) return 'No status';
-  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
-}
-
-const FlagItem = ({ label, detail }) => (
-  <div className="d-flex align-items-center gap-2" style={{ padding: '6px 0', borderBottom: '1px solid #f3f4f6' }}>
-    <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--kh-text)', flex: 1 }}>{label}</span>
-    <span style={{ fontSize: 11, color: 'var(--kh-text-muted)' }}>{detail}</span>
-  </div>
-);
-
-const TABS = [
-  { key: 'chart', label: 'Chart Summary', icon: <FiClipboard size={14} /> },
-  { key: 'clinical', label: 'Clinical Assessment', icon: <FiActivity size={14} /> },
-  { key: 'vitals', label: 'Vitals', icon: <FiThermometer size={14} /> },
-  { key: 'medications', label: 'Medications', icon: <FiFileText size={14} /> },
-  { key: 'care', label: 'Lifestyle Records', icon: <FiHeart size={14} /> },
-  { key: 'notes', label: 'Nurse Notes', icon: <FiEdit2 size={14} /> },
-  { key: 'incidents', label: 'Incident Reports', icon: <FiAlertTriangle size={14} /> },
-  { key: 'careplan', label: 'Care Plan', icon: <FiCheckCircle size={14} /> },
-  { key: 'checkliststatus', label: 'Checklist Status', icon: <FiBarChart2 size={14} /> },
-];
-
 const FALLBACK_PATIENT_ID = 'e426444d-02a0-4f90-90d4-930b1745f199';
 const PATIENT_PHOTO_CACHE_KEY = 'patientProfilePhotoCache';
+const PATIENT_MEDICATION_CACHE_KEY = 'patientProfileMedicationCache';
 
 function readPatientPhotoCache() {
   try {
@@ -273,6 +262,41 @@ function setCachedPatientPhoto(patientId, photoData) {
     updatedAt: new Date().toISOString(),
   };
   writePatientPhotoCache(cache);
+}
+
+function readPatientMedicationCache() {
+  try {
+    const raw = localStorage.getItem(PATIENT_MEDICATION_CACHE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writePatientMedicationCache(cache) {
+  try {
+    localStorage.setItem(PATIENT_MEDICATION_CACHE_KEY, JSON.stringify(cache || {}));
+  } catch {
+  }
+}
+
+function getCachedPatientMedications(patientId) {
+  const normalizedId = String(patientId || '').trim();
+  if (!normalizedId) return [];
+
+  const cache = readPatientMedicationCache();
+  const entry = cache[normalizedId];
+  return Array.isArray(entry) ? entry : [];
+}
+
+function setCachedPatientMedications(patientId, medications) {
+  const normalizedId = String(patientId || '').trim();
+  if (!normalizedId) return;
+
+  const cache = readPatientMedicationCache();
+  cache[normalizedId] = Array.isArray(medications) ? medications : [];
+  writePatientMedicationCache(cache);
 }
 
 function resolveAgencyId(user) {
@@ -914,6 +938,182 @@ function createPatientUpdateForm(profile, fallbackId) {
   };
 }
 
+function toTitleCase(value) {
+  return String(value || '')
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(chunk => chunk.charAt(0).toUpperCase() + chunk.slice(1))
+    .join(' ');
+}
+
+function normalizeMedicationTimeValue(value) {
+  const rawValue = String(value || '').trim();
+  if (!rawValue) return '';
+
+  const meridiemMatch = rawValue.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (meridiemMatch) {
+    const [, rawHours, rawMinutes, period] = meridiemMatch;
+    let hours = Number(rawHours);
+    const minutes = rawMinutes;
+    const normalizedPeriod = period.toUpperCase();
+
+    if (normalizedPeriod === 'AM' && hours === 12) hours = 0;
+    if (normalizedPeriod === 'PM' && hours < 12) hours += 12;
+
+    return `${String(hours).padStart(2, '0')}:${minutes}`;
+  }
+
+  const standardMatch = rawValue.match(/^(\d{1,2}):(\d{2})$/);
+  if (standardMatch) {
+    const [, rawHours, rawMinutes] = standardMatch;
+    return `${String(Number(rawHours)).padStart(2, '0')}:${rawMinutes}`;
+  }
+
+  return rawValue;
+}
+
+function formatMedicationApiTime(value) {
+  const normalizedValue = normalizeMedicationTimeValue(value);
+  const match = normalizedValue.match(/^(\d{2}):(\d{2})$/);
+  if (!match) return normalizedValue;
+
+  const [, rawHours, minutes] = match;
+  let hours = Number(rawHours);
+  const suffix = hours >= 12 ? 'PM' : 'AM';
+  hours %= 12;
+  if (hours === 0) hours = 12;
+  return `${hours}:${minutes}${suffix}`;
+}
+
+function createMedicationReminderState(source = {}) {
+  const reminderSource = source?.reminders || {};
+  const times = Array.isArray(source?.time)
+    ? source.time
+    : Array.isArray(reminderSource?.times)
+      ? reminderSource.times
+      : ['08:00'];
+
+  return {
+    times: times.filter(Boolean).map(normalizeMedicationTimeValue),
+    startDate: source?.startDate || reminderSource?.startDate || new Date().toISOString().slice(0, 10),
+    endDate: source?.endDate || reminderSource?.endDate || '',
+    reminderType: source?.reminderType || reminderSource?.reminderType || 'daily',
+    notifyNurse: source?.notifyNurse ?? reminderSource?.notifyNurse ?? true,
+    notifyPatient: source?.notifyPatient ?? reminderSource?.notifyPatient ?? false,
+  };
+}
+
+function normalizeMedicationRecord(rawMedication, fallback = {}) {
+  const raw = rawMedication && typeof rawMedication === 'object' ? rawMedication : {};
+  const fallbackTimes = Array.isArray(fallback?.time) ? fallback.time.filter(Boolean) : [];
+  const times = Array.isArray(raw?.time) ? raw.time.filter(Boolean) : fallbackTimes;
+  const patientId = raw?.patientId || raw?.patientID || raw?.patient_id || raw?.patient?.id || raw?.patient?._id || raw?.patient?.patientId || fallback?.patientId || '';
+
+  return {
+    id: raw?.id || raw?.medicationId || fallback?.id || fallback?.medicationId || Date.now(),
+    patientId,
+    drug: raw?.drug || fallback?.drug || '',
+    dosage: raw?.dosage || fallback?.dosage || '',
+    frequency: raw?.frequency || fallback?.frequency || (times.length > 0 ? `${times.length} time${times.length > 1 ? 's' : ''}/day` : 'Scheduled'),
+    route: toTitleCase(raw?.intake || fallback?.intake || fallback?.route || 'Oral'),
+    notes: raw?.notes || fallback?.notes || '',
+    reminders: times.length > 0 ? {
+      reminderType: fallback?.reminderType || 'daily',
+      times,
+      notifyNurse: fallback?.notifyNurse ?? true,
+      notifyPatient: fallback?.notifyPatient ?? false,
+      startDate: raw?.startDate || fallback?.startDate || new Date().toISOString().slice(0, 10),
+      endDate: raw?.endDate || fallback?.endDate || '',
+    } : null,
+    active: raw?.active ?? fallback?.active ?? true,
+    startDate: raw?.startDate || fallback?.startDate || new Date().toISOString().slice(0, 10),
+    endDate: raw?.endDate || fallback?.endDate || '',
+    prescribedBy: raw?.prescribedBy || fallback?.prescribedBy || 'external',
+    source: 'api',
+  };
+}
+
+function extractMedicationList(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.medications)) return payload.medications;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.data?.medications)) return payload.data.medications;
+  if (Array.isArray(payload?.results)) return payload.results;
+  if (payload?.medication && typeof payload.medication === 'object') return [payload.medication];
+  if (payload?.data?.medication && typeof payload.data.medication === 'object') return [payload.data.medication];
+  if ((payload?.medicationId || payload?.id) && typeof payload === 'object') return [payload];
+  return [];
+}
+
+function medicationBelongsToPatient(medication, patientId) {
+  const directPatientId = medication?.patientId || medication?.patientID || medication?.patient_id;
+  const nestedPatientId = medication?.patient?.id || medication?.patient?._id || medication?.patient?.patientId;
+  return String(directPatientId || nestedPatientId || '').trim() === String(patientId || '').trim();
+}
+
+function buildMedicationSignature(medication) {
+  return [
+    String(medication?.drug || '').trim().toLowerCase(),
+    String(medication?.dosage || '').trim().toLowerCase(),
+    String(medication?.frequency || '').trim().toLowerCase(),
+    String(medication?.route || '').trim().toLowerCase(),
+  ].join('|');
+}
+
+function mergeMedicationRecords(records) {
+  const result = [];
+  const seenIds = new Set();
+  const seenSignatures = new Set();
+
+  records.forEach(record => {
+    if (!record || !record.drug) return;
+    const normalized = normalizeMedicationRecord(record, record);
+    const idKey = String(normalized.id || '').trim();
+    const signature = buildMedicationSignature(normalized);
+
+    if ((idKey && seenIds.has(idKey)) || seenSignatures.has(signature)) {
+      return;
+    }
+
+    if (idKey) seenIds.add(idKey);
+    seenSignatures.add(signature);
+    result.push(normalized);
+  });
+
+  return result;
+}
+
+function normalizeDrugOption(rawDrug) {
+  const raw = rawDrug && typeof rawDrug === 'object' ? rawDrug : {};
+  const name = String(
+    raw?.name
+    || raw?.drug
+    || raw?.drugName
+    || raw?.genericName
+    || raw?.brandName
+    || ''
+  ).trim();
+
+  return {
+    id: raw?.id || raw?.drugId || raw?._id || name,
+    name,
+    category: String(raw?.category || raw?.class || raw?.type || raw?.group || 'Drug').trim() || 'Drug',
+    commonDose: String(raw?.commonDose || raw?.strength || raw?.dose || raw?.defaultDose || '').trim(),
+  };
+}
+
+function extractDrugList(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.drugs)) return payload.drugs;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.data?.drugs)) return payload.data.drugs;
+  if (Array.isArray(payload?.results)) return payload.results;
+  if (payload?.drug && typeof payload.drug === 'object') return [payload.drug];
+  if (payload?.data?.drug && typeof payload.data.drug === 'object') return [payload.data.drug];
+  return [];
+}
+
 export default function PatientProfile() {
   const { patientId } = useParams();
   const effectivePatientId = patientId || FALLBACK_PATIENT_ID;
@@ -934,6 +1134,8 @@ export default function PatientProfile() {
   const [profileUpdateError, setProfileUpdateError] = useState('');
   const [profileUpdateSuccess, setProfileUpdateSuccess] = useState('');
   const [showProfileSaveAlert, setShowProfileSaveAlert] = useState(false);
+  const [medicationSaveSuccess, setMedicationSaveSuccess] = useState('');
+  const [showMedicationSaveAlert, setShowMedicationSaveAlert] = useState(false);
   const [profileUpdateForm, setProfileUpdateForm] = useState(() => createPatientUpdateForm(null, effectivePatientId));
 
   const setProfileUpdateField = (path, value) => {
@@ -987,6 +1189,68 @@ export default function PatientProfile() {
     loadPatientProfile();
   }, [loadPatientProfile]);
 
+  const loadMedicationRecords = useCallback(async () => {
+    const patientIdValue = String(effectivePatientId || '').trim();
+    if (!patientIdValue) {
+      setAddedMeds([]);
+      return;
+    }
+
+    const cachedItems = mergeMedicationRecords(
+      getCachedPatientMedications(patientIdValue).map(item => normalizeMedicationRecord(item, { patientId: patientIdValue, source: 'cache' }))
+    );
+
+    try {
+      const patientMedicationResponse = await apiFetch(`/medications/detail/${encodeURIComponent(patientIdValue)}`, { method: 'GET' });
+
+      let patientMedicationPayload = {};
+      try {
+        patientMedicationPayload = await patientMedicationResponse.json();
+      } catch {
+        patientMedicationPayload = {};
+      }
+
+      if (patientMedicationResponse.ok) {
+        const patientMedicationItems = extractMedicationList(patientMedicationPayload)
+          .map(item => normalizeMedicationRecord(item, { patientId: patientIdValue }))
+          .filter(item => item.drug);
+        const mergedItems = mergeMedicationRecords([...patientMedicationItems, ...cachedItems]);
+        setAddedMeds(mergedItems);
+        setCachedPatientMedications(patientIdValue, mergedItems);
+        return;
+      }
+
+      const listResponse = await apiFetch('/medications', { method: 'GET' });
+
+      let listPayload = {};
+      try {
+        listPayload = await listResponse.json();
+      } catch {
+        listPayload = {};
+      }
+
+      if (!listResponse.ok) {
+        setAddedMeds(cachedItems);
+        return;
+      }
+
+      const listItems = extractMedicationList(listPayload)
+        .filter(item => medicationBelongsToPatient(item, patientIdValue))
+        .map(item => normalizeMedicationRecord(item, { patientId: patientIdValue }))
+        .filter(item => item.drug);
+
+      const mergedItems = mergeMedicationRecords([...listItems, ...cachedItems]);
+      setAddedMeds(mergedItems);
+      setCachedPatientMedications(patientIdValue, mergedItems);
+    } catch {
+      setAddedMeds(cachedItems);
+    }
+  }, [effectivePatientId]);
+
+  useEffect(() => {
+    loadMedicationRecords();
+  }, [loadMedicationRecords]);
+
   /* Medication database */
   const MEDICATION_DB = [
     { name: 'Metformin', category: 'Antidiabetic', commonDose: '500mg' },
@@ -1032,10 +1296,18 @@ export default function PatientProfile() {
   ];
 
   /* Medication state */
+  const [drugCatalog, setDrugCatalog] = useState(MEDICATION_DB);
+  const [drugCatalogLoading, setDrugCatalogLoading] = useState(false);
+  const [drugCatalogError, setDrugCatalogError] = useState('');
   const [addedMeds, setAddedMeds] = useState([]);
   const [deletedExistingMeds, setDeletedExistingMeds] = useState([]);
   const [confirmDelete, setConfirmDelete] = useState(null); // { type: 'existing'|'added', id: number, name: string }
   const [showMedForm, setShowMedForm] = useState(false);
+  const [editingMedicationId, setEditingMedicationId] = useState(null);
+  const [medicationSaveError, setMedicationSaveError] = useState('');
+  const [medicationDeleteError, setMedicationDeleteError] = useState('');
+  const [savingMedication, setSavingMedication] = useState(false);
+  const [deletingMedication, setDeletingMedication] = useState(false);
   const [medForm, setMedForm] = useState({ drug: '', dosage: '', frequency: '', route: 'Oral', notes: '' });
   const [drugSearch, setDrugSearch] = useState('');
   const [showDrugDropdown, setShowDrugDropdown] = useState(false);
@@ -1057,7 +1329,7 @@ export default function PatientProfile() {
 
   /* Reminder state */
   const [showReminderForm, setShowReminderForm] = useState(null); // med id
-  const [reminderForm, setReminderForm] = useState({ times: ['08:00'], startDate: new Date().toISOString().slice(0, 10), endDate: '', reminderType: 'daily', notifyNurse: true, notifyPatient: false });
+  const [reminderForm, setReminderForm] = useState(createMedicationReminderState());
 
   /* Nurse Notes state */
   const [nurseNotes, setNurseNotes] = useState([
@@ -1074,8 +1346,62 @@ export default function PatientProfile() {
   const FREQ_OPTIONS = ['OD', 'BD', 'TDS', 'QDS', 'PRN', 'ON', 'Weekly', 'Stat'];
   const ROUTE_OPTIONS = ['Oral', 'IV', 'IM', 'SC', 'Topical', 'Inhaled', 'Rectal', 'Sublingual'];
 
+  const loadDrugCatalog = useCallback(async () => {
+    setDrugCatalogLoading(true);
+    setDrugCatalogError('');
+
+    try {
+      const response = await apiFetch('/drugs', { method: 'GET' });
+      const responseText = await response.text().catch(() => '');
+      let payload = {};
+
+      if (responseText) {
+        try {
+          payload = JSON.parse(responseText);
+        } catch {
+          payload = { message: responseText };
+        }
+      }
+
+      if (!response.ok) {
+        throw new Error(payload?.message || payload?.error || 'Unable to load the drug list.');
+      }
+
+      const items = extractDrugList(payload)
+        .map(normalizeDrugOption)
+        .filter(item => item.name)
+        .reduce((result, item) => {
+          if (result.some(existing => existing.name.toLowerCase() === item.name.toLowerCase())) {
+            return result;
+          }
+
+          result.push(item);
+          return result;
+        }, []);
+
+      if (items.length > 0) {
+        setDrugCatalog(items);
+        setDrugCatalogError('');
+      } else {
+        setDrugCatalog(MEDICATION_DB);
+        setDrugCatalogError('No drugs were returned from `/drugs`.');
+      }
+    } catch (error) {
+      setDrugCatalog(MEDICATION_DB);
+      setDrugCatalogError(error?.message || 'Unable to load the drug list.');
+    } finally {
+      setDrugCatalogLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (showMedForm) {
+      loadDrugCatalog();
+    }
+  }, [showMedForm, loadDrugCatalog]);
+
   /* Filtered drug list */
-  const filteredDrugs = MEDICATION_DB.filter(d =>
+  const filteredDrugs = drugCatalog.filter(d =>
     d.name.toLowerCase().includes(drugSearch.toLowerCase()) ||
     d.category.toLowerCase().includes(drugSearch.toLowerCase())
   );
@@ -1096,38 +1422,269 @@ export default function PatientProfile() {
     setShowDrugDropdown(false);
   };
 
-  const handleAddMed = () => {
-    if (!medForm.drug || !medForm.dosage || !medForm.frequency) return;
-    const newMed = { ...medForm, id: Date.now(), addedDate: new Date().toISOString().slice(0, 10), reminders: null };
-    setAddedMeds(prev => [...prev, newMed]);
+  const resetMedicationComposer = () => {
+    setShowMedForm(false);
+    setEditingMedicationId(null);
+    setMedicationSaveError('');
+    setDrugCatalogError('');
     setMedForm({ drug: '', dosage: '', frequency: '', route: 'Oral', notes: '' });
     setDrugSearch('');
+    setShowDrugDropdown(false);
     setShowCustomDrug(false);
-    setShowMedForm(false);
-    /* Auto-open reminder form for the new med */
-    setShowReminderForm(newMed.id);
-    setReminderForm({ times: ['08:00'], startDate: new Date().toISOString().slice(0, 10), endDate: '', reminderType: 'daily', notifyNurse: true, notifyPatient: false });
+    setCustomDrugName('');
+    setReminderForm(createMedicationReminderState());
+  };
+
+  const openMedicationEditor = (medication) => {
+    if (!medication) return;
+
+    setEditingMedicationId(medication.id);
+    setMedicationSaveError('');
+    setShowMedForm(true);
+    setMedForm({
+      drug: medication.drug || '',
+      dosage: medication.dosage || '',
+      frequency: medication.frequency || '',
+      route: medication.route || 'Oral',
+      notes: medication.notes || '',
+    });
+    setDrugSearch(medication.drug || '');
+    setShowDrugDropdown(false);
+    setShowCustomDrug(false);
+    setCustomDrugName('');
+    setReminderForm(createMedicationReminderState(medication));
+  };
+
+  const handleAddMed = async () => {
+    if (!medForm.drug || !medForm.dosage || !medForm.frequency) return;
+    setSavingMedication(true);
+    setMedicationSaveError('');
+
+    const currentUser = getUser();
+    const addedBy = currentUser?.id || currentUser?._id || currentUser?.userId || currentUser?.staffId || undefined;
+    const defaultReminder = createMedicationReminderState(editingMedicationId ? reminderForm : {});
+    const medicationPayload = {
+      patientId: effectivePatientId,
+      prescribedBy: 'external',
+      drug: medForm.drug,
+      dosage: medForm.dosage,
+      intake: medForm.route.toLowerCase(),
+      startDate: defaultReminder.startDate,
+      endDate: defaultReminder.endDate || null,
+      active: true,
+      time: defaultReminder.times.filter(Boolean).map(formatMedicationApiTime),
+      ...(addedBy ? { addedBy } : {}),
+    };
+
+    try {
+      const response = await apiFetch(
+        editingMedicationId ? `/medications/${encodeURIComponent(editingMedicationId)}` : '/medications',
+        {
+        method: editingMedicationId ? 'PATCH' : 'POST',
+        body: JSON.stringify(medicationPayload),
+      });
+
+      const responseText = await response.text().catch(() => '');
+      let data = {};
+      if (responseText) {
+        try {
+          data = JSON.parse(responseText);
+        } catch {
+          data = { message: responseText };
+        }
+      }
+
+      if (!response.ok) {
+        throw new Error(data?.message || data?.error || 'Unable to save medication.');
+      }
+
+      const savedMedication = normalizeMedicationRecord(data?.medication || data?.data || data, {
+        id: editingMedicationId || undefined,
+        ...medForm,
+        ...medicationPayload,
+        reminderType: defaultReminder.reminderType,
+        notifyNurse: defaultReminder.notifyNurse,
+        notifyPatient: defaultReminder.notifyPatient,
+        startDate: defaultReminder.startDate,
+        endDate: defaultReminder.endDate,
+      });
+
+      setAddedMeds(prev => {
+        const next = editingMedicationId
+          ? mergeMedicationRecords([...prev.filter(item => item.id !== editingMedicationId), savedMedication])
+          : mergeMedicationRecords([...prev, savedMedication]);
+        setCachedPatientMedications(effectivePatientId, next);
+        return next;
+      });
+      setMedicationSaveSuccess(`${savedMedication.drug || 'Medication'} ${editingMedicationId ? 'updated' : 'added'} successfully.`);
+      resetMedicationComposer();
+      if (!editingMedicationId) {
+        setShowReminderForm(savedMedication.id);
+        setReminderForm(createMedicationReminderState(savedMedication));
+      }
+    } catch (error) {
+      setMedicationSaveError(error?.message || 'Unable to save medication.');
+    } finally {
+      setSavingMedication(false);
+    }
   };
 
   const handleRemoveMed = (id) => {
-    setAddedMeds(prev => prev.filter(m => m.id !== id));
+    setAddedMeds(prev => {
+      const next = prev.filter(m => m.id !== id);
+      setCachedPatientMedications(effectivePatientId, next);
+      return next;
+    });
     if (showReminderForm === id) setShowReminderForm(null);
   };
 
-  const confirmDeleteMed = () => {
-    if (!confirmDelete) return;
+  const confirmDeleteMed = async () => {
+    if (!confirmDelete || deletingMedication) return;
+
     if (confirmDelete.type === 'existing') {
       setDeletedExistingMeds(prev => [...prev, confirmDelete.id]);
-    } else {
-      handleRemoveMed(confirmDelete.id);
+      setConfirmDelete(null);
+      return;
     }
+
+    const medicationToDelete = addedMeds.find(item => String(item.id) === String(confirmDelete.id));
+    if (!medicationToDelete) {
+      handleRemoveMed(confirmDelete.id);
+      setConfirmDelete(null);
+      return;
+    }
+
+    setDeletingMedication(true);
+    setMedicationDeleteError('');
+
+    const deleteCandidates = [
+      {
+        path: `/medications/${encodeURIComponent(effectivePatientId)}`,
+        body: {
+          medicationId: medicationToDelete.id,
+          patientId: effectivePatientId,
+          drug: medicationToDelete.drug,
+        },
+      },
+      ...(String(medicationToDelete.id || '').trim() && String(medicationToDelete.id) !== String(effectivePatientId)
+        ? [
+            {
+              path: `/medications/${encodeURIComponent(medicationToDelete.id)}`,
+              body: {
+                patientId: effectivePatientId,
+              },
+            },
+          ]
+        : []),
+    ];
+
+    let deleteSucceeded = false;
+    let deleteErrorMessage = 'Unable to delete medication.';
+
+    for (const candidate of deleteCandidates) {
+      try {
+        const response = await apiFetch(candidate.path, {
+          method: 'DELETE',
+          body: JSON.stringify(candidate.body),
+        });
+
+        const responseText = await response.text().catch(() => '');
+        let data = {};
+
+        if (responseText) {
+          try {
+            data = JSON.parse(responseText);
+          } catch {
+            data = { message: responseText };
+          }
+        }
+
+        if (response.ok) {
+          deleteSucceeded = true;
+          break;
+        }
+
+        deleteErrorMessage = data?.message || data?.error || deleteErrorMessage;
+      } catch (error) {
+        deleteErrorMessage = error?.message || deleteErrorMessage;
+      }
+    }
+
+    if (!deleteSucceeded) {
+      setMedicationDeleteError(deleteErrorMessage);
+      setDeletingMedication(false);
+      return;
+    }
+
+    handleRemoveMed(confirmDelete.id);
+    setMedicationSaveSuccess(`${medicationToDelete.drug || 'Medication'} deleted successfully.`);
     setConfirmDelete(null);
+    setDeletingMedication(false);
   };
 
-  const saveReminder = (medId) => {
-    setAddedMeds(prev => prev.map(m => m.id === medId ? { ...m, reminders: { ...reminderForm } } : m));
+  const saveReminder = async (medId) => {
+    const currentMedication = addedMeds.find(item => item.id === medId);
+
+    if (currentMedication) {
+      try {
+        const response = await apiFetch(`/medications/${encodeURIComponent(medId)}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            patientId: effectivePatientId,
+            prescribedBy: currentMedication.prescribedBy || 'external',
+            drug: currentMedication.drug,
+            dosage: currentMedication.dosage,
+            intake: String(currentMedication.route || 'Oral').toLowerCase(),
+            startDate: reminderForm.startDate,
+            endDate: reminderForm.endDate || null,
+            active: currentMedication.active ?? true,
+            time: reminderForm.times.filter(Boolean).map(formatMedicationApiTime),
+          }),
+        });
+
+        const responseText = await response.text().catch(() => '');
+        let data = {};
+        if (responseText) {
+          try {
+            data = JSON.parse(responseText);
+          } catch {
+            data = { message: responseText };
+          }
+        }
+
+        if (!response.ok) {
+          throw new Error(data?.message || data?.error || 'Unable to save medication reminder.');
+        }
+
+        const updatedMedication = normalizeMedicationRecord(data?.medication || data?.data || data, {
+          ...currentMedication,
+          time: reminderForm.times.filter(Boolean).map(formatMedicationApiTime),
+          startDate: reminderForm.startDate,
+          endDate: reminderForm.endDate,
+          reminderType: reminderForm.reminderType,
+          notifyNurse: reminderForm.notifyNurse,
+          notifyPatient: reminderForm.notifyPatient,
+        });
+
+        setAddedMeds(prev => {
+          const next = mergeMedicationRecords(prev.map(item => item.id === medId ? updatedMedication : item));
+          setCachedPatientMedications(effectivePatientId, next);
+          return next;
+        });
+      } catch (error) {
+        setMedicationSaveError(error?.message || 'Unable to save medication reminder.');
+        return;
+      }
+    } else {
+      setAddedMeds(prev => {
+        const next = prev.map(m => m.id === medId ? { ...m, reminders: { ...reminderForm } } : m);
+        setCachedPatientMedications(effectivePatientId, next);
+        return next;
+      });
+    }
+
     setShowReminderForm(null);
-    setReminderForm({ times: ['08:00'], startDate: new Date().toISOString().slice(0, 10), endDate: '', reminderType: 'daily', notifyNurse: true, notifyPatient: false });
+    setReminderForm(createMedicationReminderState());
   };
 
   const addReminderTime = () => {
@@ -1873,6 +2430,28 @@ export default function PatientProfile() {
   }, [profileUpdateSuccess]);
 
   useEffect(() => {
+    if (!medicationSaveSuccess) {
+      setShowMedicationSaveAlert(false);
+      return undefined;
+    }
+
+    setShowMedicationSaveAlert(true);
+    const timer = window.setTimeout(() => {
+      setShowMedicationSaveAlert(false);
+      setMedicationSaveSuccess('');
+    }, 3600);
+
+    return () => window.clearTimeout(timer);
+  }, [medicationSaveSuccess]);
+
+  useEffect(() => {
+    if (!confirmDelete) {
+      setMedicationDeleteError('');
+      setDeletingMedication(false);
+    }
+  }, [confirmDelete]);
+
+  useEffect(() => {
     setAvatarImageError(false);
   }, [avatarSrc]);
 
@@ -1924,6 +2503,21 @@ export default function PatientProfile() {
     .split(',')
     .map((item) => item.trim())
     .filter(Boolean);
+  const existingMedicationEntries = medicationList
+    .map((entry, index) => {
+      const parts = entry.split(' ');
+      const drug = parts.slice(0, -2).join(' ') || entry;
+      const dose = parts.length >= 3 ? parts[parts.length - 2] : '—';
+      const freq = parts.length >= 3 ? parts[parts.length - 1] : '—';
+      return { id: `existing-${index}`, drug, dosage: dose, frequency: freq, route: 'Oral', notes: '', source: 'existing', originalIndex: index };
+    })
+    .filter(item => !deletedExistingMeds.includes(item.originalIndex));
+  const existingMedicationSignatures = new Set(existingMedicationEntries.map(buildMedicationSignature));
+  const persistedMedicationEntries = addedMeds.filter(item => !existingMedicationSignatures.has(buildMedicationSignature(item)));
+  const activeMedicationRecords = [...existingMedicationEntries, ...persistedMedicationEntries];
+  const medicationReminderCount = activeMedicationRecords.filter(item => Array.isArray(item?.reminders?.times) && item.reminders.times.length > 0).length;
+  const medicationOralCount = activeMedicationRecords.filter(item => String(item?.route || '').trim().toLowerCase() === 'oral').length;
+  const medicationNewCount = persistedMedicationEntries.length;
   const latestVitalRecord = vitalRecords[0] || null;
   const latestVitalSummary = latestVitalRecord
     ? `${latestVitalRecord.date} at ${latestVitalRecord.time}`
@@ -1956,7 +2550,7 @@ export default function PatientProfile() {
   const patientSnapshotItems = [
     { label: 'Registration No.', value: p.regNo || '—' },
     { label: 'Region', value: p.region || '—' },
-    { label: 'Medication Count', value: medicationList.length || 0 },
+    { label: 'Medication Count', value: activeMedicationRecords.length || 0 },
     { label: 'Clinical Flags', value: flags[0]?.label || 'None' },
   ];
   const patientOverviewRows = [
@@ -2039,6 +2633,28 @@ export default function PatientProfile() {
           </button>
         </div>
       )}
+      {showMedicationSaveAlert && (
+        <div className="patient-profile-save-alert" role="status" aria-live="polite" style={{ top: showProfileSaveAlert ? 92 : 24 }}>
+          <div className="patient-profile-save-alert__icon">
+            <FiCheckCircle size={18} />
+          </div>
+          <div className="patient-profile-save-alert__content">
+            <strong>Medication added</strong>
+            <span>{medicationSaveSuccess}</span>
+          </div>
+          <button
+            type="button"
+            className="patient-profile-save-alert__close"
+            onClick={() => {
+              setShowMedicationSaveAlert(false);
+              setMedicationSaveSuccess('');
+            }}
+            aria-label="Dismiss medication save alert"
+          >
+            <FiX size={16} />
+          </button>
+        </div>
+      )}
       <div className="nurse-profile-shell">
         <div className="nurse-profile-topbar">
           <div className="nurse-profile-topbar__left">
@@ -2115,7 +2731,7 @@ export default function PatientProfile() {
                   <span>Vitals</span>
                 </div>
                 <div>
-                  <strong>{medicationList.length}</strong>
+                  <strong>{activeMedicationRecords.length}</strong>
                   <span>Meds</span>
                 </div>
               </div>
@@ -2169,7 +2785,7 @@ export default function PatientProfile() {
               <div className="nurse-profile-doc-list">
                 {[
                   { key: 'vitals', label: 'Vitals Records', hint: latestVitalSummary, icon: <FiThermometer size={14} /> },
-                  { key: 'medications', label: 'Medication List', hint: `${medicationList.length} active items`, icon: <FiFileText size={14} /> },
+                  { key: 'medications', label: 'Medication List', hint: `${activeMedicationRecords.length} active items`, icon: <FiFileText size={14} /> },
                   { key: 'notes', label: 'Nurse Notes', hint: `${nurseNotes.length} entries recorded`, icon: <FiEdit2 size={14} /> },
                 ].map((item) => (
                   <button key={item.key} type="button" className="nurse-profile-doc-item" onClick={() => setTab(item.key)}>
@@ -2324,11 +2940,11 @@ export default function PatientProfile() {
             </Panel>
 
             <Panel title="Current Medications" variant="summary">
-              {medicationList.length > 0 ? medicationList.map((med, i) => (
+              {activeMedicationRecords.length > 0 ? activeMedicationRecords.map((med, i) => (
                 <div key={i} className="d-flex align-items-center" style={{
                   padding: '7px 10px', borderBottom: '1px solid #f3f4f6', fontSize: 12.5,
                 }}>
-                  <span style={{ color: 'var(--kh-text)', fontWeight: 500 }}>{med}</span>
+                  <span style={{ color: 'var(--kh-text)', fontWeight: 500 }}>{med.drug}{med.dosage && med.dosage !== '—' ? ` ${med.dosage}` : ''}{med.frequency && med.frequency !== '—' ? ` ${med.frequency}` : ''}</span>
                 </div>
               )) : <NoDataState text="No current medications are available from the endpoint." />}
             </Panel>
@@ -2738,164 +3354,373 @@ export default function PatientProfile() {
       {tab === 'medications' && (
         <div className="row g-3">
           <div className="col-lg-12">
-            <Panel title="Active Medications" icon={<FiFileText size={14} />} accent="#45B6FE"
+            <Panel title="Active Medications" icon={<FiFileText size={14} />} accent="#45B6FE" bodyClassName="patient-medications-panel"
               action={
-                <div className="d-flex align-items-center gap-3">
-                  <span style={{ fontSize: 10.5, fontWeight: 600, color: '#45B6FE' }}>{p.medications.split(', ').filter((_, i) => !deletedExistingMeds.includes(i)).length + addedMeds.length} active</span>
-                  <button onClick={() => { setShowMedForm(true); setDrugSearch(''); setShowCustomDrug(false); }} style={{
-                    padding: '6px 14px', fontSize: 12, fontWeight: 700, borderRadius: 2, cursor: 'pointer',
-                    background: '#45B6FE', color: '#fff', border: 'none',
-                    display: 'flex', alignItems: 'center', gap: 5,
-                  }}>
+                <div className="patient-medications-panel__action">
+                  <span className="patient-medications-panel__count">{activeMedicationRecords.length} active</span>
+                  <button onClick={() => { setShowMedForm(true); setDrugSearch(''); setShowCustomDrug(false); setShowDrugDropdown(false); }} className="patient-medications-panel__add-btn">
                     <FiPlus size={13} /> Add Medication
                   </button>
                 </div>
               }
             >
-              {/* Add Medication Form */}
+              {/* Add Medication Modal */}
               {showMedForm && (
-                <div style={{ padding: '16px', marginBottom: 16, borderRadius: 2, background: '#F0F7FE', border: '1px solid #A8D8FC' }}>
-                  <div className="d-flex justify-content-between align-items-center" style={{ marginBottom: 14 }}>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: '#45B6FE' }}>New Medication</span>
-                    <button onClick={() => { setShowMedForm(false); setMedForm({ drug: '', dosage: '', frequency: '', route: 'Oral', notes: '' }); setDrugSearch(''); setShowCustomDrug(false); }}
-                      style={{ background: 'none', border: '1px solid #e5e7eb', borderRadius: 2, padding: '4px 6px', cursor: 'pointer', color: 'var(--kh-text-muted)', display: 'flex' }}>
-                      <FiX size={14} />
-                    </button>
-                  </div>
-
-                  <div className="row g-2 mb-2">
-                    {/* Searchable Drug Dropdown */}
-                    <div className="col-md-4">
-                      <label style={{ display: 'block', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text-muted)', marginBottom: 4 }}>Drug Name *</label>
-                      <div style={{ position: 'relative' }}>
-                        <FiSearch size={13} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', zIndex: 2 }} />
-                        <input
-                          value={drugSearch}
-                          onChange={e => { setDrugSearch(e.target.value); setShowDrugDropdown(true); setMedForm(f => ({ ...f, drug: '' })); setShowCustomDrug(false); }}
-                          onFocus={() => setShowDrugDropdown(true)}
-                          placeholder="Search medication..."
-                          style={{ width: '100%', padding: '8px 30px 8px 32px', fontSize: 13, fontWeight: 500, border: '1px solid #d1d5db', borderRadius: 2, background: '#fff', color: 'var(--kh-text)' }}
-                        />
-                        <FiChevronDown size={13} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
-
-                        {/* Dropdown list */}
-                        {showDrugDropdown && drugSearch.length >= 1 && (
-                          <div style={{
-                            position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 20,
-                            background: '#fff', border: '1px solid #d1d5db', borderTop: 'none', borderRadius: '0 0 2px 2px',
-                            maxHeight: 220, overflowY: 'auto', boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                          }}>
-                            {filteredDrugs.length > 0 ? (
-                              filteredDrugs.map((d, i) => (
-                                <div key={i} onClick={() => selectDrug(d)} style={{
-                                  padding: '8px 12px', cursor: 'pointer', borderBottom: '1px solid #f3f4f6',
-                                  transition: 'background 0.1s',
-                                }} onMouseEnter={e => e.currentTarget.style.background = '#F0F7FE'}
-                                   onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--kh-text)' }}>{d.name}</div>
-                                  <div style={{ fontSize: 11, color: 'var(--kh-text-muted)' }}>{d.category} · {d.commonDose}</div>
-                                </div>
-                              ))
-                            ) : (
-                              <div style={{ padding: '12px' }}>
-                                <div style={{ fontSize: 12.5, color: '#dc2626', fontWeight: 600, marginBottom: 6 }}>
-                                  <FiAlertTriangle size={12} style={{ marginRight: 4 }} /> "{drugSearch}" not found in database
-                                </div>
-                                <button onClick={() => { setShowCustomDrug(true); setCustomDrugName(drugSearch); setShowDrugDropdown(false); }} style={{
-                                  width: '100%', padding: '8px 12px', fontSize: 12, fontWeight: 700, borderRadius: 2, cursor: 'pointer',
-                                  background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca',
-                                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-                                }}>
-                                  <FiPlus size={12} /> Add as Custom Medication
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        )}
+                <div
+                  className="kh-modal-overlay"
+                  style={{ zIndex: 9998, padding: 16 }}
+                  onClick={resetMedicationComposer}
+                >
+                  <div
+                    className="kh-modal-panel"
+                    style={{
+                      width: 'min(980px, 96vw)',
+                      maxHeight: '90vh',
+                      overflow: 'hidden',
+                      display: 'flex',
+                      flexDirection: 'column',
+                    }}
+                    onClick={event => event.stopPropagation()}
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label={editingMedicationId ? 'Edit medication' : 'Add medication'}
+                  >
+                    <div className="kh-modal-header patient-medication-modal__header" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+                      <div className="patient-medication-modal__header-copy">
+                        <div className="patient-medication-modal__eyebrow">Medication workflow</div>
+                        <div className="patient-medication-modal__title-row">
+                          <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--kh-text)' }}>{editingMedicationId ? 'Edit Medication' : 'Add Medication'}</div>
+                          <span className={`patient-medication-modal__status${drugCatalogError ? ' is-warning' : ''}`}>
+                            {drugCatalogLoading
+                              ? 'Syncing /drugs'
+                              : drugCatalogError
+                                ? 'Using fallback list'
+                                : `${drugCatalog.length} drugs available`}
+                          </span>
+                        </div>
+                        <div className="patient-medication-modal__header-text">
+                          {editingMedicationId
+                            ? 'Update the medication details and reminder schedule in one place.'
+                            : 'Search the live drug catalog, confirm the prescription details, then continue to reminders.'}
+                        </div>
                       </div>
+                      <button
+                        type="button"
+                        onClick={resetMedicationComposer}
+                        className="patient-update-modal__close-btn"
+                        style={{ cursor: 'pointer' }}
+                      >
+                        <FiX size={18} />
+                      </button>
+                    </div>
 
-                      {/* Selected drug badge */}
-                      {medForm.drug && (
-                        <div style={{ marginTop: 6, display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 2, background: '#F0F7FE', border: '1px solid #BAE0FD' }}>
-                          <FiCheckCircle size={11} style={{ color: '#1565A0' }} />
-                          <span style={{ fontSize: 11.5, fontWeight: 600, color: '#1565A0' }}>{medForm.drug}</span>
-                          <button onClick={() => { setMedForm(f => ({ ...f, drug: '', dosage: '' })); setDrugSearch(''); }}
-                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#1565A0', display: 'flex', padding: 0, marginLeft: 2 }}>
-                            <FiX size={11} />
-                          </button>
+                    <div className="kh-modal-body patient-medication-modal__body" style={{ overflowY: 'auto' }}>
+                      {medicationSaveError && (
+                        <div style={{ marginBottom: 12, borderRadius: 8, border: '1px solid #fecaca', background: '#fef2f2', color: '#dc2626', padding: '10px 12px', fontSize: 12.5, fontWeight: 600 }}>
+                          {medicationSaveError}
                         </div>
                       )}
-                    </div>
+                      <div className="patient-medication-modal__layout">
+                        <div className="patient-medication-modal__main">
+                          <section className="patient-medication-modal__section">
+                            <div className="patient-medication-modal__section-header">
+                              <div>
+                                <div className="patient-medication-modal__section-title">Drug selection</div>
+                                <div className="patient-medication-modal__section-copy">
+                                  {drugCatalogLoading
+                                    ? 'Loading the latest drugs from `/drugs`.'
+                                    : drugCatalogError
+                                      ? `${drugCatalogError} The default list is available below.`
+                                      : 'Search and select a medication from the live catalog.'}
+                                </div>
+                              </div>
+                              <span className="patient-medication-modal__pill">{editingMedicationId ? 'Edit mode' : 'New entry'}</span>
+                            </div>
 
-                    <div className="col-md-3">
-                      <label style={{ display: 'block', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text-muted)', marginBottom: 4 }}>Dosage *</label>
-                      <input value={medForm.dosage} onChange={e => setMedForm(f => ({ ...f, dosage: e.target.value }))} placeholder="e.g. 500mg"
-                        style={{ width: '100%', padding: '8px 12px', fontSize: 13, fontWeight: 500, border: '1px solid #d1d5db', borderRadius: 2, background: '#fff', color: 'var(--kh-text)' }} />
-                    </div>
-                    <div className="col-md-2">
-                      <label style={{ display: 'block', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text-muted)', marginBottom: 4 }}>Frequency *</label>
-                      <select value={medForm.frequency} onChange={e => setMedForm(f => ({ ...f, frequency: e.target.value }))}
-                        style={{ width: '100%', padding: '8px 12px', fontSize: 13, fontWeight: 600, border: '1px solid #d1d5db', borderRadius: 2, background: '#fff', color: 'var(--kh-text)', cursor: 'pointer' }}>
-                        <option value="">Select</option>
-                        {FREQ_OPTIONS.map(f => <option key={f} value={f}>{f}</option>)}
-                      </select>
-                    </div>
-                    <div className="col-md-3">
-                      <label style={{ display: 'block', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text-muted)', marginBottom: 4 }}>Route</label>
-                      <select value={medForm.route} onChange={e => setMedForm(f => ({ ...f, route: e.target.value }))}
-                        style={{ width: '100%', padding: '8px 12px', fontSize: 13, fontWeight: 600, border: '1px solid #d1d5db', borderRadius: 2, background: '#fff', color: 'var(--kh-text)', cursor: 'pointer' }}>
-                        {ROUTE_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
-                      </select>
-                    </div>
-                  </div>
+                            <div className="patient-medication-modal__field">
+                              <label className="patient-medication-modal__label">Drug Name *</label>
+                              <div className="patient-medication-modal__search-wrap">
+                                <FiSearch size={14} className="patient-medication-modal__search-icon" />
+                                <input
+                                  value={drugSearch}
+                                  onChange={e => { setDrugSearch(e.target.value); setShowDrugDropdown(true); setMedForm(f => ({ ...f, drug: '' })); setShowCustomDrug(false); }}
+                                  onFocus={() => setShowDrugDropdown(true)}
+                                  placeholder="Search medication"
+                                  className="patient-medication-modal__search-input"
+                                />
+                                <FiChevronDown size={14} className="patient-medication-modal__search-caret" />
 
-                  {/* Custom Drug Entry */}
-                  {showCustomDrug && (
-                    <div style={{ padding: '12px 14px', marginBottom: 10, borderRadius: 2, background: '#fef2f2', border: '1px solid #fecaca' }}>
-                      <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#dc2626', marginBottom: 6 }}>
-                        <FiPlus size={11} style={{ marginRight: 4 }} /> Add Custom Medication
+                                {showDrugDropdown && drugSearch.length >= 1 && (
+                                  <div className="patient-medication-modal__search-dropdown">
+                                    {drugCatalogLoading ? (
+                                      <div className="patient-medication-modal__search-empty">Loading available drugs...</div>
+                                    ) : filteredDrugs.length > 0 ? (
+                                      filteredDrugs.map((drugOption, index) => (
+                                        <button
+                                          key={drugOption.id || index}
+                                          type="button"
+                                          onClick={() => selectDrug(drugOption)}
+                                          className="patient-medication-modal__search-option"
+                                        >
+                                          <span>{drugOption.name}</span>
+                                          <small>{drugOption.category}{drugOption.commonDose ? ` · ${drugOption.commonDose}` : ''}</small>
+                                        </button>
+                                      ))
+                                    ) : (
+                                      <div style={{ padding: '12px' }}>
+                                        <div className="patient-medication-modal__search-miss">
+                                          <FiAlertTriangle size={12} /> "{drugSearch}" not found in the drug list
+                                        </div>
+                                        <button
+                                          type="button"
+                                          onClick={() => { setShowCustomDrug(true); setCustomDrugName(drugSearch); setShowDrugDropdown(false); }}
+                                          className="patient-medication-modal__custom-trigger"
+                                        >
+                                          <FiPlus size={12} /> Add as Custom Medication
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+
+                              {medForm.drug && (
+                                <div className="patient-medication-modal__selected-chip">
+                                  <span className="patient-medication-modal__selected-chip-icon"><FiCheckCircle size={11} /></span>
+                                  <span>{medForm.drug}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => { setMedForm(f => ({ ...f, drug: '', dosage: '' })); setDrugSearch(''); }}
+                                  >
+                                    <FiX size={11} />
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+
+                            {showCustomDrug && (
+                              <div className="patient-medication-modal__custom-card">
+                                <div className="patient-medication-modal__custom-title">Custom medication</div>
+                                <div className="patient-medication-modal__custom-copy">Use this when the searched drug is not yet available from `/drugs`.</div>
+                                <div className="patient-medication-modal__custom-actions">
+                                  <input
+                                    value={customDrugName}
+                                    onChange={e => setCustomDrugName(e.target.value)}
+                                    placeholder="Enter medication name"
+                                    className="patient-medication-modal__input"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={applyCustomDrug}
+                                    disabled={!customDrugName.trim()}
+                                    className="patient-medication-modal__inline-btn patient-medication-modal__inline-btn--primary"
+                                  >
+                                    <FiCheckCircle size={12} /> Confirm
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => { setShowCustomDrug(false); setCustomDrugName(''); }}
+                                    className="patient-medication-modal__inline-btn"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </section>
+
+                          <section className="patient-medication-modal__section">
+                            <div className="patient-medication-modal__section-header">
+                              <div>
+                                <div className="patient-medication-modal__section-title">Prescription details</div>
+                                <div className="patient-medication-modal__section-copy">Complete the core details before saving the medication.</div>
+                              </div>
+                              <span className="patient-medication-modal__required-note">Required fields are marked with *</span>
+                            </div>
+
+                            <div className="row g-3">
+                              <div className="col-md-4">
+                                <div className="patient-medication-modal__field">
+                                  <label className="patient-medication-modal__label">Dosage *</label>
+                                  <input
+                                    value={medForm.dosage}
+                                    onChange={e => setMedForm(f => ({ ...f, dosage: e.target.value }))}
+                                    placeholder="e.g. 500mg"
+                                    className="patient-medication-modal__input"
+                                  />
+                                </div>
+                              </div>
+                              <div className="col-md-4">
+                                <div className="patient-medication-modal__field">
+                                  <label className="patient-medication-modal__label">Frequency *</label>
+                                  <select
+                                    value={medForm.frequency}
+                                    onChange={e => setMedForm(f => ({ ...f, frequency: e.target.value }))}
+                                    className="patient-medication-modal__input"
+                                  >
+                                    <option value="">Select</option>
+                                    {FREQ_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
+                                  </select>
+                                </div>
+                              </div>
+                              <div className="col-md-4">
+                                <div className="patient-medication-modal__field">
+                                  <label className="patient-medication-modal__label">Route</label>
+                                  <select
+                                    value={medForm.route}
+                                    onChange={e => setMedForm(f => ({ ...f, route: e.target.value }))}
+                                    className="patient-medication-modal__input"
+                                  >
+                                    {ROUTE_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
+                                  </select>
+                                </div>
+                              </div>
+                              <div className="col-12">
+                                <div className="patient-medication-modal__field">
+                                  <label className="patient-medication-modal__label">Notes</label>
+                                  <input
+                                    value={medForm.notes}
+                                    onChange={e => setMedForm(f => ({ ...f, notes: e.target.value }))}
+                                    placeholder="Additional instructions or notes"
+                                    className="patient-medication-modal__input"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          </section>
+
+                          {editingMedicationId && (
+                            <section className="patient-medication-modal__section">
+                              <div className="patient-medication-modal__section-header">
+                                <div>
+                                  <div className="patient-medication-modal__section-title">Reminder schedule</div>
+                                  <div className="patient-medication-modal__section-copy">Update dates, notifications, and reminder times for this medication.</div>
+                                </div>
+                              </div>
+
+                              <div className="row g-3" style={{ marginBottom: 12 }}>
+                                <div className="col-md-4">
+                                  <div className="patient-medication-modal__field">
+                                    <label className="patient-medication-modal__label">Start Date</label>
+                                    <input
+                                      type="date"
+                                      value={reminderForm.startDate}
+                                      onChange={e => setReminderForm(f => ({ ...f, startDate: e.target.value }))}
+                                      className="patient-medication-modal__input"
+                                    />
+                                  </div>
+                                </div>
+                                <div className="col-md-4">
+                                  <div className="patient-medication-modal__field">
+                                    <label className="patient-medication-modal__label">End Date</label>
+                                    <input
+                                      type="date"
+                                      value={reminderForm.endDate}
+                                      onChange={e => setReminderForm(f => ({ ...f, endDate: e.target.value }))}
+                                      className="patient-medication-modal__input"
+                                    />
+                                  </div>
+                                </div>
+                                <div className="col-md-4">
+                                  <div className="patient-medication-modal__field">
+                                    <label className="patient-medication-modal__label">Notify</label>
+                                    <div className="patient-medication-modal__checkboxes">
+                                      <label>
+                                        <input type="checkbox" checked={reminderForm.notifyNurse} onChange={e => setReminderForm(f => ({ ...f, notifyNurse: e.target.checked }))} style={{ accentColor: '#45B6FE' }} />
+                                        Nurse
+                                      </label>
+                                      <label>
+                                        <input type="checkbox" checked={reminderForm.notifyPatient} onChange={e => setReminderForm(f => ({ ...f, notifyPatient: e.target.checked }))} style={{ accentColor: '#45B6FE' }} />
+                                        Patient
+                                      </label>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div>
+                                <div className="patient-medication-modal__section-header patient-medication-modal__section-header--compact">
+                                  <div>
+                                    <div className="patient-medication-modal__section-title">Reminder times</div>
+                                  </div>
+                                  <button onClick={addReminderTime} type="button" className="patient-medications-table__action">
+                                    <FiPlus size={11} /> Add Time
+                                  </button>
+                                </div>
+                                <div className="patient-medication-modal__time-list">
+                                  {reminderForm.times.map((time, index) => (
+                                    <div key={index} className="patient-medication-modal__time-chip">
+                                      <FiClock size={12} style={{ color: '#45B6FE' }} />
+                                      <input
+                                        type="time"
+                                        value={time}
+                                        onChange={e => updateReminderTime(index, e.target.value)}
+                                      />
+                                      {reminderForm.times.length > 1 && (
+                                        <button type="button" onClick={() => removeReminderTime(index)}>
+                                          <FiX size={12} />
+                                        </button>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </section>
+                          )}
+                        </div>
+
+                        <aside className="patient-medication-modal__aside">
+                          <div className="patient-medication-modal__summary-card">
+                            <div className="patient-medication-modal__summary-title">Medication summary</div>
+                            <div className="patient-medication-modal__summary-list">
+                              <div><span>Drug</span><strong>{medForm.drug || 'Select a drug'}</strong></div>
+                              <div><span>Dosage</span><strong>{medForm.dosage || 'Not set'}</strong></div>
+                              <div><span>Frequency</span><strong>{medForm.frequency || 'Not set'}</strong></div>
+                              <div><span>Route</span><strong>{medForm.route || 'Oral'}</strong></div>
+                            </div>
+                          </div>
+
+                          <div className="patient-medication-modal__summary-card patient-medication-modal__summary-card--soft">
+                            <div className="patient-medication-modal__summary-title">Next step</div>
+                            <div className="patient-medication-modal__summary-copy">
+                              {editingMedicationId
+                                ? 'Save your changes to update both the medication details and its reminder schedule.'
+                                : 'Save the medication first, then continue to reminder setup right away.'}
+                            </div>
+                          </div>
+
+                          <div className="patient-medication-modal__summary-card patient-medication-modal__summary-card--soft">
+                            <div className="patient-medication-modal__summary-title">Drug source</div>
+                            <div className="patient-medication-modal__summary-copy">
+                              {drugCatalogLoading
+                                ? 'Checking `/drugs` for the latest medication list.'
+                                : drugCatalogError
+                                  ? 'The modal is showing the local fallback list because the live drug list is unavailable.'
+                                  : 'The dropdown is powered by the live `/drugs` endpoint.'}
+                            </div>
+                          </div>
+                        </aside>
                       </div>
-                      <div className="d-flex gap-2">
-                        <input value={customDrugName} onChange={e => setCustomDrugName(e.target.value)} placeholder="Enter medication name"
-                          style={{ flex: 1, padding: '8px 12px', fontSize: 13, fontWeight: 500, border: '1px solid #d1d5db', borderRadius: 2, background: '#fff', color: 'var(--kh-text)' }} />
-                        <button onClick={applyCustomDrug} disabled={!customDrugName.trim()} style={{
-                          padding: '8px 16px', fontSize: 12, fontWeight: 700, borderRadius: 2, border: 'none',
-                          cursor: customDrugName.trim() ? 'pointer' : 'not-allowed',
-                          background: customDrugName.trim() ? '#dc2626' : '#e5e7eb',
-                          color: customDrugName.trim() ? '#fff' : '#9ca3af',
-                          display: 'flex', alignItems: 'center', gap: 4,
+                    </div>
+
+                    <div className="kh-modal-footer patient-update-modal__footer patient-medication-modal__footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                      <button onClick={resetMedicationComposer}
+                        type="button"
+                        className="patient-update-modal__action-btn patient-update-modal__action-btn--secondary"
+                        style={{ cursor: 'pointer' }}>
+                        Cancel
+                      </button>
+                      <button onClick={handleAddMed} disabled={!medForm.drug || !medForm.dosage || !medForm.frequency || savingMedication}
+                        type="button"
+                        className="patient-update-modal__action-btn patient-update-modal__action-btn--primary"
+                        style={{
+                          cursor: medForm.drug && medForm.dosage && medForm.frequency && !savingMedication ? 'pointer' : 'not-allowed',
+                          opacity: medForm.drug && medForm.dosage && medForm.frequency && !savingMedication ? 1 : 0.55,
+                          display: 'inline-flex', alignItems: 'center', gap: 6,
                         }}>
-                          <FiCheckCircle size={12} /> Confirm
-                        </button>
-                        <button onClick={() => { setShowCustomDrug(false); setCustomDrugName(''); }}
-                          style={{ padding: '8px 12px', fontSize: 12, fontWeight: 600, borderRadius: 2, cursor: 'pointer', background: '#fff', color: 'var(--kh-text-muted)', border: '1px solid #d1d5db' }}>
-                          Cancel
-                        </button>
-                      </div>
+                        <FiSend size={12} /> {savingMedication ? 'Saving...' : editingMedicationId ? 'Save Changes' : 'Save & Continue'}
+                      </button>
                     </div>
-                  )}
-
-                  <div style={{ marginBottom: 14 }}>
-                    <label style={{ display: 'block', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text-muted)', marginBottom: 4 }}>Notes</label>
-                    <input value={medForm.notes} onChange={e => setMedForm(f => ({ ...f, notes: e.target.value }))} placeholder="Additional instructions or notes..."
-                      style={{ width: '100%', padding: '8px 12px', fontSize: 13, fontWeight: 500, border: '1px solid #d1d5db', borderRadius: 2, background: '#fff', color: 'var(--kh-text)' }} />
-                  </div>
-
-                  <div className="d-flex gap-2 justify-content-end">
-                    <button onClick={() => { setShowMedForm(false); setMedForm({ drug: '', dosage: '', frequency: '', route: 'Oral', notes: '' }); setDrugSearch(''); setShowCustomDrug(false); }}
-                      style={{ padding: '8px 18px', fontSize: 12.5, fontWeight: 700, borderRadius: 2, cursor: 'pointer', background: '#fff', color: 'var(--kh-text-muted)', border: '1px solid #d1d5db' }}>
-                      Cancel
-                    </button>
-                    <button onClick={handleAddMed} disabled={!medForm.drug || !medForm.dosage || !medForm.frequency}
-                      style={{
-                        padding: '8px 18px', fontSize: 12.5, fontWeight: 700, borderRadius: 2, border: 'none',
-                        cursor: medForm.drug && medForm.dosage && medForm.frequency ? 'pointer' : 'not-allowed',
-                        background: medForm.drug && medForm.dosage && medForm.frequency ? '#45B6FE' : '#e5e7eb',
-                        color: medForm.drug && medForm.dosage && medForm.frequency ? '#fff' : '#9ca3af',
-                        display: 'flex', alignItems: 'center', gap: 5,
-                      }}>
-                      <FiSend size={12} /> Add & Set Reminder
-                    </button>
                   </div>
                 </div>
               )}
@@ -3016,114 +3841,118 @@ export default function PatientProfile() {
                 );
               })()}
 
-              <div className="table-responsive">
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ background: '#F0F7FE' }}>
-                      {['#', 'Drug Name', 'Dosage', 'Frequency', 'Route', 'Reminder', 'Status', ''].map((h, i) => (
-                        <th key={i} style={{
-                          padding: '10px 14px', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase',
-                          letterSpacing: '0.5px', color: '#45B6FE', borderBottom: '2px solid #45B6FE',
-                          textAlign: 'left', whiteSpace: 'nowrap',
-                        }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {p.medications.split(', ').map((med, origIdx) => {
-                      if (deletedExistingMeds.includes(origIdx)) return null;
-                      const parts = med.split(' ');
-                      const drug = parts.slice(0, -2).join(' ') || med;
-                      const dose = parts.length >= 3 ? parts[parts.length - 2] : '—';
-                      const freq = parts.length >= 3 ? parts[parts.length - 1] : '—';
-                      const visibleIdx = p.medications.split(', ').slice(0, origIdx).filter((_, ii) => !deletedExistingMeds.includes(ii)).length;
-                      return (
-                        <tr key={origIdx} style={{ background: visibleIdx % 2 === 1 ? '#fafbfc' : 'transparent', borderBottom: '1px solid #f3f4f6' }}>
-                          <td style={{ padding: '10px 14px', fontSize: 12, fontWeight: 700, color: 'var(--kh-text-muted)' }}>{visibleIdx + 1}</td>
-                          <td style={{ padding: '10px 14px', fontSize: 13, fontWeight: 600, color: 'var(--kh-text)' }}>{drug}</td>
-                          <td style={{ padding: '10px 14px', fontSize: 12.5, color: 'var(--kh-text)' }}>{dose}</td>
-                          <td style={{ padding: '10px 14px' }}>
-                            <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 2, background: '#F0F7FE', color: '#45B6FE', border: '1px solid #A8D8FC' }}>{freq}</span>
-                          </td>
-                          <td style={{ padding: '10px 14px', fontSize: 12.5, color: 'var(--kh-text)' }}>Oral</td>
-                          <td style={{ padding: '10px 14px' }}>
-                            <span style={{ fontSize: 11, color: 'var(--kh-text-muted)' }}>—</span>
-                          </td>
-                          <td style={{ padding: '10px 14px' }}>
-                            <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 2, background: '#F0F7FE', color: '#1565A0', border: '1px solid #BAE0FD', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                              <FiCheckCircle size={11} /> Active
-                            </span>
-                          </td>
-                          <td style={{ padding: '10px 14px', textAlign: 'center' }}>
-                            <button onClick={() => setConfirmDelete({ type: 'existing', id: origIdx, name: drug })} style={{
-                              background: 'none', border: '1px solid #fecaca', borderRadius: 2, padding: '3px 6px',
-                              cursor: 'pointer', color: '#dc2626', display: 'inline-flex', alignItems: 'center',
-                            }} title="Delete medication">
-                              <FiX size={12} />
-                            </button>
-                          </td>
+              {activeMedicationRecords.length > 0 ? (
+                <div className="patient-medications-table-wrap">
+                  <div className="table-responsive">
+                    <table className="patient-medications-table">
+                      <thead>
+                        <tr>
+                          <th>#</th>
+                          <th>Drug Name</th>
+                          <th>Dosage</th>
+                          <th>Frequency</th>
+                          <th>Route</th>
+                          <th>Reminder</th>
+                          <th>Status</th>
+                          <th>Action</th>
                         </tr>
-                      );
-                    }).filter(Boolean)}
-                    {addedMeds.map((med, i) => {
-                      const existingCount = p.medications.split(', ').filter((_, ii) => !deletedExistingMeds.includes(ii)).length;
-                      const rowIdx = existingCount + i;
-                      return (
-                        <tr key={med.id} style={{ background: rowIdx % 2 === 1 ? '#fafbfc' : 'transparent', borderBottom: '1px solid #f3f4f6' }}>
-                          <td style={{ padding: '10px 14px', fontSize: 12, fontWeight: 700, color: 'var(--kh-text-muted)' }}>{rowIdx + 1}</td>
-                          <td style={{ padding: '10px 14px' }}>
-                            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--kh-text)' }}>{med.drug}</div>
-                            {med.notes && <div style={{ fontSize: 11, color: 'var(--kh-text-muted)', marginTop: 2 }}>{med.notes}</div>}
-                          </td>
-                          <td style={{ padding: '10px 14px', fontSize: 12.5, color: 'var(--kh-text)' }}>{med.dosage}</td>
-                          <td style={{ padding: '10px 14px' }}>
-                            <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 2, background: '#F0F7FE', color: '#45B6FE', border: '1px solid #A8D8FC' }}>{med.frequency}</span>
-                          </td>
-                          <td style={{ padding: '10px 14px', fontSize: 12.5, color: 'var(--kh-text)' }}>{med.route}</td>
-                          <td style={{ padding: '10px 14px' }}>
-                            {med.reminders ? (
-                              <div>
-                                <div className="d-flex align-items-center gap-1" style={{ marginBottom: 2 }}>
-                                  <FiBell size={11} style={{ color: '#d97706' }} />
-                                  <span style={{ fontSize: 11, fontWeight: 700, color: '#92400e' }}>{med.reminders.reminderType}</span>
-                                </div>
-                                <div className="d-flex flex-wrap gap-1">
-                                  {med.reminders.times.map((t, ti) => (
-                                    <span key={ti} style={{ fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 2, background: '#fffbeb', color: '#d97706', border: '1px solid #fde68a' }}>{t}</span>
-                                  ))}
-                                </div>
-                                {(med.reminders.notifyNurse || med.reminders.notifyPatient) && (
-                                  <div style={{ fontSize: 10, color: 'var(--kh-text-muted)', marginTop: 2 }}>
-                                    → {[med.reminders.notifyNurse && 'Nurse', med.reminders.notifyPatient && 'Patient'].filter(Boolean).join(', ')}
-                                  </div>
-                                )}
+                      </thead>
+                      <tbody>
+                        {existingMedicationEntries.map((med, visibleIdx) => (
+                          <tr key={med.id}>
+                            <td>{visibleIdx + 1}</td>
+                            <td>
+                              <div className="patient-medications-table__name-cell">
+                                <strong>{med.drug}</strong>
+                                <span>Patient record</span>
                               </div>
-                            ) : (
-                              <button onClick={() => { setShowReminderForm(med.id); setReminderForm({ times: ['08:00'], startDate: new Date().toISOString().slice(0, 10), endDate: '', reminderType: 'daily', notifyNurse: true, notifyPatient: false }); }}
-                                style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 2, cursor: 'pointer', background: '#fffbeb', color: '#d97706', border: '1px solid #fde68a', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-                                <FiBell size={11} /> Set
+                            </td>
+                            <td>{med.dosage || '—'}</td>
+                            <td>{med.frequency || '—'}</td>
+                            <td>{med.route || '—'}</td>
+                            <td><span className="patient-medications-table__reminder is-muted">No reminder</span></td>
+                            <td><span className="patient-medications-table__status">Active</span></td>
+                            <td>
+                              <button
+                                onClick={() => setConfirmDelete({ type: 'existing', id: med.originalIndex, name: med.drug })}
+                                className="patient-medications-table__action patient-medications-table__action--danger"
+                                title="Delete medication"
+                              >
+                                <FiX size={12} /> Remove
                               </button>
-                            )}
-                          </td>
-                          <td style={{ padding: '10px 14px' }}>
-                            <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 2, background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                              <FiCheckCircle size={11} /> New
-                            </span>
-                          </td>
-                          <td style={{ padding: '10px 14px', textAlign: 'center' }}>
-                            <button onClick={() => setConfirmDelete({ type: 'added', id: med.id, name: med.drug })} style={{
-                              background: 'none', border: '1px solid #fecaca', borderRadius: 2, padding: '3px 6px',
-                              cursor: 'pointer', color: '#dc2626', display: 'inline-flex', alignItems: 'center',
-                            }} title="Remove medication">
-                              <FiX size={12} />
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                            </td>
+                          </tr>
+                        ))}
+                        {persistedMedicationEntries.map((med, i) => {
+                          const existingCount = existingMedicationEntries.length;
+                          const reminderTargets = med.reminders
+                            ? [med.reminders.notifyNurse && 'Nurse', med.reminders.notifyPatient && 'Patient'].filter(Boolean)
+                            : [];
+
+                          return (
+                            <tr key={med.id}>
+                              <td>{existingCount + i + 1}</td>
+                              <td>
+                                <div className="patient-medications-table__name-cell">
+                                  <strong>{med.drug}</strong>
+                                  {med.notes ? <span>{med.notes}</span> : null}
+                                </div>
+                              </td>
+                              <td>{med.dosage || '—'}</td>
+                              <td>{med.frequency || '—'}</td>
+                              <td>{med.route || '—'}</td>
+                              <td>
+                                {med.reminders ? (
+                                  <div className="patient-medications-table__badges">
+                                    {med.reminders.times.map((time, timeIndex) => (
+                                      <span key={timeIndex} className="patient-medications-table__badge">
+                                        {time}
+                                      </span>
+                                    ))}
+                                    {reminderTargets.map((target) => (
+                                      <span key={target} className="patient-medications-table__badge patient-medications-table__badge--soft">
+                                        {target}
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <button
+                                    onClick={() => { setShowReminderForm(med.id); setReminderForm({ times: ['08:00'], startDate: new Date().toISOString().slice(0, 10), endDate: '', reminderType: 'daily', notifyNurse: true, notifyPatient: false }); }}
+                                    className="patient-medications-table__action"
+                                  >
+                                    <FiBell size={12} /> Set Reminder
+                                  </button>
+                                )}
+                              </td>
+                              <td><span className="patient-medications-table__status patient-medications-table__status--new">New</span></td>
+                              <td>
+                                <div className="patient-medications-table__actions">
+                                  <button
+                                    onClick={() => openMedicationEditor(med)}
+                                    className="patient-medications-table__action patient-medications-table__action--secondary"
+                                    title="Edit medication"
+                                  >
+                                    <FiEdit2 size={12} /> Edit
+                                  </button>
+                                  <button
+                                    onClick={() => setConfirmDelete({ type: 'added', id: med.id, name: med.drug })}
+                                    className="patient-medications-table__action patient-medications-table__action--danger"
+                                    title="Remove medication"
+                                  >
+                                    <FiX size={12} /> Remove
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : (
+                <NoDataState text="No active medications have been recorded for this patient yet." />
+              )}
             </Panel>
           </div>
         </div>
@@ -4446,50 +5275,51 @@ export default function PatientProfile() {
       {confirmDelete && (
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999,
-          background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: 'rgba(15, 23, 42, 0.28)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px',
         }} onClick={() => setConfirmDelete(null)}>
           <div onClick={e => e.stopPropagation()} style={{
-            background: '#fff', borderRadius: 2, width: 400, maxWidth: '90vw',
-            boxShadow: '0 20px 60px rgba(0,0,0,0.2)', overflow: 'hidden',
+            background: '#fff', borderRadius: 16, width: 380, maxWidth: '100%',
+            boxShadow: '0 24px 50px rgba(15, 23, 42, 0.16)', padding: '24px',
           }}>
-            {/* Modal header */}
-            <div style={{ padding: '16px 20px', borderBottom: '1px solid #e5e7eb', background: '#fef2f2', display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#fecaca', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#dc2626', flexShrink: 0 }}>
-                <FiAlertTriangle size={18} />
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 18 }}>
+              <div style={{ width: 40, height: 40, borderRadius: 12, background: '#fef2f2', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#dc2626', flexShrink: 0 }}>
+                <FiAlertTriangle size={17} />
               </div>
-              <div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: '#991b1b' }}>Delete Medication</div>
-                <div style={{ fontSize: 11.5, color: '#dc2626', marginTop: 1 }}>This action cannot be undone</div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--kh-text)' }}>Delete Medication</div>
+                <div style={{ fontSize: 12.5, color: 'var(--kh-text-muted)', marginTop: 4 }}>This action cannot be undone.</div>
               </div>
             </div>
 
-            {/* Modal body */}
-            <div style={{ padding: '20px' }}>
-              <div style={{ fontSize: 13, color: 'var(--kh-text)', lineHeight: 1.6, marginBottom: 16 }}>
-                Are you sure you want to delete <strong style={{ color: '#dc2626' }}>{confirmDelete.name}</strong> from the medication list?
+            {medicationDeleteError && (
+              <div style={{ marginBottom: 14, borderRadius: 10, border: '1px solid #fecaca', background: '#fef2f2', color: '#dc2626', padding: '10px 12px', fontSize: 12.5, fontWeight: 600 }}>
+                {medicationDeleteError}
               </div>
+            )}
 
-              <div style={{ padding: '10px 14px', borderRadius: 2, background: '#fef2f2', border: '1px solid #fecaca', marginBottom: 16 }}>
-                <div className="d-flex align-items-center gap-2">
-                  <FiAlertCircle size={13} style={{ color: '#dc2626', flexShrink: 0 }} />
-                  <span style={{ fontSize: 12, color: '#991b1b', fontWeight: 500 }}>Deleting a medication will remove it from the patient's active medication list and any associated reminders.</span>
-                </div>
-              </div>
+            <div style={{ fontSize: 13.5, color: 'var(--kh-text)', lineHeight: 1.6, marginBottom: 20 }}>
+              Are you sure you want to delete <strong style={{ color: 'var(--kh-text)' }}>{confirmDelete.name}</strong> from the medication list?
+            </div>
 
-              {/* Modal actions */}
-              <div className="d-flex gap-2 justify-content-end">
-                <button onClick={() => setConfirmDelete(null)} style={{
-                  padding: '9px 20px', fontSize: 12.5, fontWeight: 700, borderRadius: 2, cursor: 'pointer',
-                  background: '#fff', color: 'var(--kh-text-muted)', border: '1px solid #d1d5db',
-                }}>Cancel</button>
-                <button onClick={confirmDeleteMed} style={{
-                  padding: '9px 20px', fontSize: 12.5, fontWeight: 700, borderRadius: 2, cursor: 'pointer',
-                  background: '#dc2626', color: '#fff', border: 'none',
-                  display: 'flex', alignItems: 'center', gap: 5,
-                }}>
-                  <FiX size={13} /> Delete Medication
-                </button>
+            <div style={{ padding: '12px 14px', borderRadius: 12, background: '#f8fafc', border: '1px solid #e5e7eb', marginBottom: 20 }}>
+              <div className="d-flex align-items-center gap-2">
+                <FiAlertCircle size={13} style={{ color: 'var(--kh-text-muted)', flexShrink: 0 }} />
+                <span style={{ fontSize: 12, color: 'var(--kh-text-muted)', fontWeight: 500 }}>The medication and its reminders will be removed from this profile.</span>
               </div>
+            </div>
+
+            <div className="d-flex gap-2 justify-content-end">
+              <button onClick={() => setConfirmDelete(null)} style={{
+                padding: '10px 18px', fontSize: 12.5, fontWeight: 600, borderRadius: 10, cursor: 'pointer',
+                background: '#fff', color: 'var(--kh-text)', border: '1px solid #d1d5db',
+              }} disabled={deletingMedication}>Cancel</button>
+              <button onClick={confirmDeleteMed} style={{
+                padding: '10px 18px', fontSize: 12.5, fontWeight: 600, borderRadius: 10, cursor: 'pointer',
+                background: '#dc2626', color: '#fff', border: 'none',
+                display: 'flex', alignItems: 'center', gap: 6, opacity: deletingMedication ? 0.7 : 1,
+              }}>
+                <FiX size={13} /> {deletingMedication ? 'Deleting...' : 'Delete'}
+              </button>
             </div>
           </div>
         </div>
