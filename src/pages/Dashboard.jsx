@@ -1,19 +1,13 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import {
-  FiUsers,
-  FiCalendar,
-  FiActivity,
-  FiCheckCircle,
   FiAlertTriangle,
-  FiHeart,
   FiX,
   FiMapPin,
   FiPhone,
-  FiFileText,
-  FiTrendingUp,
-  FiBell,
   FiMoreHorizontal,
+  FiUser,
+  FiUsers,
 } from '../icons/hugeicons-feather';
 import { fetchAllPatients } from '../utils/patients';
 
@@ -110,34 +104,6 @@ const severityStyle = {
   medium: { bg: '#fefce8', color: '#ca8a04', border: '#fef08a' },
 };
 
-const summaryCards = [
-  { label: "Today's Visits", value: '128', delta: '+17.8%', detail: '14 waiting for check-in', Icon: FiCalendar, tone: 'green' },
-  { label: 'Care Revenue', value: '$43,000', delta: '-3.9%', detail: 'This month billing progress', Icon: FiTrendingUp, tone: 'rose' },
-  { label: 'Time Saved', value: '56 hrs', delta: '+12.4%', detail: 'Saved by automation this month', Icon: FiCheckCircle, tone: 'lime' },
-];
-
-const quickActions = [
-  { label: 'Admit', Icon: FiUsers },
-  { label: 'Schedule', Icon: FiCalendar },
-  { label: 'Vitals', Icon: FiHeart },
-  { label: 'History', Icon: FiFileText },
-];
-
-const visitFlow = [
-  { month: 'Jan', completed: 62, missed: 28 },
-  { month: 'Feb', completed: 48, missed: 22 },
-  { month: 'Mar', completed: 54, missed: 20 },
-  { month: 'Apr', completed: 70, missed: 16 },
-  { month: 'May', completed: 51, missed: 25 },
-  { month: 'Jun', completed: 57, missed: 14 },
-  { month: 'Jul', completed: 43, missed: 19 },
-  { month: 'Aug', completed: 49, missed: 24 },
-  { month: 'Sep', completed: 72, missed: 20 },
-  { month: 'Oct', completed: 58, missed: 18 },
-  { month: 'Nov', completed: 39, missed: 26 },
-  { month: 'Dec', completed: 53, missed: 17 },
-];
-
 const carePrograms = [
   { name: 'Chronic Care', current: '$18,400', target: '$24,000', progress: 76 },
   { name: 'Post-Surgery Recovery', current: '$9,800', target: '$15,000', progress: 65 },
@@ -151,18 +117,6 @@ const activityFeed = [
   { title: 'Taylor Green reviewed missed visit escalations', time: '21:05', accent: 'gold' },
   { title: 'Wilson Baptista reassigned an emergency visit', time: '09:05', accent: 'green' },
 ];
-
-const statisticBreakdown = [
-  { label: 'Routine Visits', value: '$2,100', percent: 60, tone: 'green' },
-  { label: 'Critical Care', value: '$525', percent: 15, tone: 'lime' },
-  { label: 'Education', value: '$420', percent: 12, tone: 'gray' },
-  { label: 'Nutrition', value: '$280', percent: 8, tone: 'slate' },
-  { label: 'Medication', value: '$175', percent: 5, tone: 'light' },
-];
-
-const donutStyle = {
-  background: 'conic-gradient(#1f5e59 0 60%, #b7ff5a 60% 75%, #d6dde6 75% 87%, #eef2f6 87% 95%, #f7f9fb 95% 100%)',
-};
 
 export default function Dashboard() {
   const [flagTab, setFlagTab] = useState('all');
@@ -195,180 +149,75 @@ export default function Dashboard() {
 
   const filtered = flagTab === 'all' ? flaggedIssues : flaggedIssues.filter((flag) => flag.type === flagTab);
   const criticalCount = flaggedIssues.filter((flag) => flag.severity === 'critical').length;
+  const statisticCards = [
+    {
+      key: 'patients',
+      title: 'Patients',
+      value: `${patientCount}`,
+      note: 'Total registered patients',
+      Icon: FiUsers,
+    },
+    {
+      key: 'nures',
+      title: 'Nurses',
+      value: '36',
+      note: 'Active care staff',
+      Icon: FiUser,
+    },
+    {
+      key: 'emerency',
+      title: 'Emerency',
+      value: `${criticalCount}`,
+      note: 'Active urgent cases',
+      Icon: FiAlertTriangle,
+    },
+  ];
 
   return (
     <motion.div className="page-wrapper dashboard-page" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25 }}>
       <div className="dashboard-shell">
         <div className="dashboard-top-grid">
-          <div className="dashboard-primary-column">
-            <motion.div className="dashboard-agency-card" initial={{ y: 12, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.28 }}>
-              <div className="dashboard-agency-card__header">
-                <div className="dashboard-agency-brand">
-                  <span className="dashboard-agency-brand__icon"><FiActivity size={16} /></span>
-                  <span>Agency Pulse</span>
-                </div>
-                <FiBell size={16} />
-              </div>
-              <div className="dashboard-agency-card__body">
-                <div className="dashboard-agency-card__eyebrow">Kulobal Homecare</div>
-                <h2>Ama Asante</h2>
-                <p>Executive overview of patients, nurses, flagged cases, and operational health across the agency.</p>
-              </div>
-              <div className="dashboard-agency-card__stats">
-                <div>
-                  <span>Total Patients</span>
-                  <strong>{patientCount}</strong>
-                </div>
-                <div>
-                  <span>Critical Flags</span>
-                  <strong>{criticalCount}</strong>
-                </div>
-                <div>
-                  <span>Active Nurses</span>
-                  <strong>36</strong>
-                </div>
-              </div>
-              <div className="dashboard-quick-actions">
-                {quickActions.map(({ label, Icon }) => (
-                  <button key={label} type="button" className="dashboard-quick-actions__item">
-                    <span><Icon size={15} /></span>
-                    <small>{label}</small>
-                  </button>
-                ))}
-              </div>
-            </motion.div>
-
-            <div className="dashboard-summary-cluster">
-              <div className="dashboard-summary-grid">
-                {summaryCards.map(({ label, value, delta, detail, Icon, tone }, index) => (
-                  <motion.div key={label} className={`dashboard-summary-card tone-${tone}`} initial={{ y: 12, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.28, delay: 0.04 * index }}>
-                    <div className="dashboard-summary-card__top">
-                      <span className="dashboard-summary-card__icon"><Icon size={16} /></span>
-                      <button type="button" className="dashboard-icon-ghost"><FiMoreHorizontal size={15} /></button>
-                    </div>
-                    <div className="dashboard-summary-card__delta">{delta}</div>
-                    <div className="dashboard-summary-card__value">{value}</div>
-                    <div className="dashboard-summary-card__label">{label}</div>
-                    <div className="dashboard-summary-card__detail">{detail}</div>
-                  </motion.div>
-                ))}
-              </div>
-
-              <motion.div className="dashboard-limit-card" initial={{ y: 12, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.28, delay: 0.16 }}>
-                <div className="dashboard-section-header compact">
+          {statisticCards.map((card, index) => (
+            <motion.div key={card.key} className="dashboard-stat-card" initial={{ y: 12, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.28, delay: 0.06 * index }}>
+              <div className="dashboard-section-header compact">
+                <div className="dashboard-stat-card__title">
+                  <span className="dashboard-summary-card__icon"><card.Icon size={16} /></span>
                   <div>
-                    <h4>Care Capacity</h4>
-                    <p>Visits completed vs monthly target</p>
+                  <h4>{card.title}</h4>
+                  <p>{card.note}</p>
                   </div>
-                  <button type="button" className="dashboard-icon-ghost"><FiMoreHorizontal size={15} /></button>
-                </div>
-                <div className="dashboard-limit-card__numbers">
-                  <span>$2,500.00 spent of $20,000.00</span>
-                  <strong>12.5%</strong>
-                </div>
-                <div className="dashboard-progress"><span style={{ width: '12.5%' }} /></div>
-              </motion.div>
-            </div>
-          </div>
-
-          <div className="dashboard-sidebar-column">
-            <motion.div className="dashboard-stat-card" initial={{ y: 12, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.28, delay: 0.12 }}>
-              <div className="dashboard-section-header compact">
-                <div>
-                  <h4>Statistic</h4>
-                  <p>This Month</p>
-                </div>
-                <button type="button" className="dashboard-filter-chip">This Month</button>
-              </div>
-              <div className="dashboard-stat-card__legend">
-                <span>Income ($4,800)</span>
-                <span>Expense ($3,500)</span>
-              </div>
-              <div className="dashboard-donut" style={donutStyle}>
-                <div className="dashboard-donut__inner">
-                  <small>Total Expenses</small>
-                  <strong>$3,500</strong>
                 </div>
               </div>
-              <div className="dashboard-breakdown-list">
-                {statisticBreakdown.map((item) => (
-                  <div key={item.label} className="dashboard-breakdown-item">
-                    <div className="dashboard-breakdown-item__left">
-                      <span className={`dashboard-breakdown-item__badge tone-${item.tone}`}>{item.percent}%</span>
-                      <span>{item.label}</span>
-                    </div>
-                    <strong>{item.value}</strong>
-                  </div>
-                ))}
+              <div className="dashboard-stat-card__center">
+                <strong>{card.value}</strong>
               </div>
             </motion.div>
-
-            <motion.div className="dashboard-activity-card" initial={{ y: 12, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.28, delay: 0.22 }}>
-              <div className="dashboard-section-header compact">
-                <div>
-                  <h4>Recent Activity</h4>
-                  <p>Today</p>
-                </div>
-                <button type="button" className="dashboard-icon-ghost"><FiMoreHorizontal size={15} /></button>
-              </div>
-              <div className="dashboard-activity-list">
-                {activityFeed.map((activity) => (
-                  <div key={`${activity.title}-${activity.time}`} className="dashboard-activity-item">
-                    <div className={`dashboard-activity-item__avatar tone-${activity.accent}`}>{activity.title.split(' ')[0][0]}</div>
-                    <div className="dashboard-activity-item__content">
-                      <strong>{activity.title}</strong>
-                      <span>{activity.time}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </motion.div>
-          </div>
+          ))}
         </div>
 
         <div className="dashboard-main-grid">
-          <motion.div className="dashboard-flow-card" initial={{ y: 12, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.28, delay: 0.18 }}>
-            <div className="dashboard-section-header">
+          <motion.div className="dashboard-activity-card" initial={{ y: 12, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.28, delay: 0.2 }}>
+            <div className="dashboard-section-header compact">
               <div>
-                <h4>Visit Flow</h4>
-                <p>Total balance</p>
+                <h4>Recent Activity</h4>
+                <p>Today</p>
               </div>
-              <button type="button" className="dashboard-filter-chip">This Year</button>
+              <button type="button" className="dashboard-icon-ghost"><FiMoreHorizontal size={15} /></button>
             </div>
-            <div className="dashboard-flow-card__summary">
-              <div>
-                <span>Total Balance</span>
-                <strong>$562,000</strong>
-              </div>
-              <div className="dashboard-flow-card__insight">
-                <div>
-                  <span>June 2026</span>
-                  <strong>Income $6,000</strong>
-                </div>
-                <div>
-                  <span>Expense</span>
-                  <strong>$4,000</strong>
-                </div>
-              </div>
-              <div className="dashboard-flow-card__keys">
-                <span><i className="tone-green" />Income</span>
-                <span><i className="tone-lime" />Expense</span>
-              </div>
-            </div>
-            <div className="dashboard-bar-chart">
-              {visitFlow.map((item) => (
-                <div key={item.month} className="dashboard-bar-chart__item">
-                  <div className="dashboard-bar-chart__bars">
-                    <span className="bar-positive" style={{ height: `${item.completed}%` }} />
-                    <span className="bar-negative" style={{ height: `${item.missed}%` }} />
+            <div className="dashboard-activity-list">
+              {activityFeed.map((activity) => (
+                <div key={`${activity.title}-${activity.time}`} className="dashboard-activity-item">
+                  <div className={`dashboard-activity-item__avatar tone-${activity.accent}`}>{activity.title.split(' ')[0][0]}</div>
+                  <div className="dashboard-activity-item__content">
+                    <strong>{activity.title}</strong>
+                    <span>{activity.time}</span>
                   </div>
-                  <small>{item.month}</small>
                 </div>
               ))}
             </div>
           </motion.div>
 
-          <motion.div className="dashboard-programs-card dashboard-programs-card--tall" initial={{ y: 12, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.28, delay: 0.2 }}>
+          <motion.div className="dashboard-programs-card dashboard-programs-card--tall" initial={{ y: 12, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.28, delay: 0.24 }}>
             <div className="dashboard-section-header compact">
               <div>
                 <h4>Care Programs</h4>

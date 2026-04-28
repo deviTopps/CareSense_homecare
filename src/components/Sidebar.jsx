@@ -72,7 +72,11 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleCollapse
         <div className="sidebar-panel">
           <div className="sidebar-brand">
             <div className="sidebar-brand__identity">
-              <img src="/Blue_Logo.png" alt="CareSense" className="sidebar-brand__logo" />
+              <img
+                src={isCollapsed ? '/Blue_Logo Only.png' : '/Blue_Logo.png'}
+                alt="CareSense"
+                className="sidebar-brand__logo"
+              />
             </div>
 
             <button
