@@ -372,10 +372,10 @@ button, input, select, textarea {
 .sidebar-upgrade-card {
   margin: 16px 10px 12px;
   border-radius: 20px;
-  background: linear-gradient(180deg, #8eb4ff 0%, #5f88ef 58%, #5670dc 100%);
+  background: linear-gradient(180deg, #45B6FE 0%, #2E7DB8 100%);
   padding: 14px 14px 12px;
   color: #fff;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 18px 30px rgba(46, 125, 184, 0.24);
   position: relative;
   overflow: hidden;
 }
@@ -440,7 +440,7 @@ button, input, select, textarea {
   height: 46px;
   border-radius: 16px;
   background: #fff;
-  color: #111827;
+  color: #1565A0;
   display: flex;
   align-items: center;
   justify-content: center;

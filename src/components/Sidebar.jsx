@@ -46,6 +46,7 @@ const sidebarGroups = [
 
 export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleCollapse, onLogout, user }) {
   const displayName = user ? `${user.firstName} ${user.lastName}` : 'Kulobal Care';
+  const agencyName = user?.agency?.name || user?.agencyName || user?.organizationName || user?.organisationName || 'Agency Name';
   const initials = user ? `${(user.firstName?.[0] || '')}${(user.lastName?.[0] || '')}`.toUpperCase() : 'KC';
 
   return (
@@ -140,7 +141,7 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleCollapse
               <p>Collaborate on your finances. Upgrade to Shared Budget.</p>
             </div>
             <NavLink to="/billing" className="sidebar-upgrade-card__action" title="Upgrade plan">
-              <span className="sidebar-link-label">Upgrade 50 $</span>
+              <span className="sidebar-link-label">{agencyName}</span>
             </NavLink>
             {isCollapsed && <span className="sidebar-upgrade-card__initials">{initials}</span>}
           </div>

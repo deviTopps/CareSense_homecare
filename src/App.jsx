@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { isTokenValid, clearAuth, getUser } from './api';
@@ -27,6 +27,8 @@ function ProtectedRoute({ isAuthenticated, children }) {
   return children;
 }
 
+const INACTIVITY_LOGOUT_MS = 3 * 60 * 1000;
+
 function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -36,6 +38,7 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(() => isTokenValid());
   const navigate = useNavigate();
   const location = useLocation();
+  const inactivityTimeoutRef = useRef(null);
 
   // Periodically check token validity (every 60s)
   useEffect(() => {
@@ -63,6 +66,45 @@ function App() {
     setIsAuthenticated(false);
     navigate('/login', { replace: true });
   }, [navigate]);
+
+  useEffect(() => {
+    if (!isAuthenticated || typeof window === 'undefined') {
+      if (inactivityTimeoutRef.current) {
+        window.clearTimeout(inactivityTimeoutRef.current);
+        inactivityTimeoutRef.current = null;
+      }
+      return undefined;
+    }
+
+    const resetInactivityTimer = () => {
+      if (inactivityTimeoutRef.current) {
+        window.clearTimeout(inactivityTimeoutRef.current);
+      }
+
+      inactivityTimeoutRef.current = window.setTimeout(() => {
+        handleLogout();
+      }, INACTIVITY_LOGOUT_MS);
+    };
+
+    const activityEvents = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'click'];
+
+    activityEvents.forEach((eventName) => {
+      window.addEventListener(eventName, resetInactivityTimer, true);
+    });
+
+    resetInactivityTimer();
+
+    return () => {
+      activityEvents.forEach((eventName) => {
+        window.removeEventListener(eventName, resetInactivityTimer, true);
+      });
+
+      if (inactivityTimeoutRef.current) {
+        window.clearTimeout(inactivityTimeoutRef.current);
+        inactivityTimeoutRef.current = null;
+      }
+    };
+  }, [isAuthenticated, handleLogout]);
 
   const user = getUser();
 
