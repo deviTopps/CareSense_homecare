@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { FiPlus, FiSearch, FiX, FiChevronRight, FiChevronLeft, FiCheck, FiSave, FiChevronsLeft, FiChevronsRight, FiUserPlus, FiCheckCircle, FiInfo, FiDownload, FiMoreHorizontal } from '../icons/hugeicons-feather';
+import { FiPlus, FiSearch, FiX, FiChevronRight, FiChevronLeft, FiCheck, FiSave, FiChevronsLeft, FiChevronsRight, FiUserPlus, FiCheckCircle, FiInfo, FiDownload, FiMoreHorizontal, FiUser } from '../icons/hugeicons-feather';
 import { apiFetch } from '../api';
 
 const patientsData = [
@@ -24,15 +24,12 @@ const patientsData = [
 
 const ROWS_OPTIONS = [5, 10, 15];
 const PATIENT_PHOTO_CACHE_KEY = 'patientProfilePhotoCache';
-
-const nursesList = [
-  { id: 'N-001', name: 'Efua Mensah', specialisation: 'Geriatric Care', region: 'Accra' },
-  { id: 'N-002', name: 'Yaa Asantewaa', specialisation: 'Wound Care', region: 'Kumasi' },
-  { id: 'N-003', name: 'Ama Darko', specialisation: 'Diabetes Management', region: 'Tamale' },
-  { id: 'N-004', name: 'Adwoa Badu', specialisation: 'Physiotherapy', region: 'Takoradi' },
-  { id: 'N-005', name: 'Akua Owusu', specialisation: 'Palliative Care', region: 'Accra' },
-  { id: 'N-006', name: 'Abena Fosu', specialisation: 'Cardiac Care', region: 'Cape Coast' },
-];
+const NURSE_ROLE_LABELS = {
+  head_nurse: 'Head Nurse',
+  supervising_nurse: 'Supervising Nurse',
+  office_nurse: 'Office Nurse',
+  field_nurse: 'Field Nurse',
+};
 
 const TABS = [
   { key: 'personal', label: 'Personal Details', num: 1 },
@@ -132,6 +129,7 @@ const initialAdmissionForm = {
       nutritionConcerns: '',
     },
   },
+  
   hygienePsych: {
     personal: {
       hygieneNeeds: null,
@@ -185,6 +183,55 @@ const initialAdmissionForm = {
     objectKey: '',
     mediaId: '',
   },
+};
+
+const normalizeNurseAssignment = (nurse, index = 0) => {
+  if (!nurse) return null;
+
+  if (typeof nurse === 'string') {
+    const name = nurse.trim();
+    return name ? { id: `name:${name.toLowerCase()}:${index}`, name } : null;
+  }
+
+  const firstName = nurse?.firstName || nurse?.personal?.firstName || nurse?.nurse?.firstName || '';
+  const lastName = nurse?.lastName || nurse?.personal?.lastName || nurse?.nurse?.lastName || '';
+  const name = nurse?.name || nurse?.fullName || nurse?.nurse?.name || `${firstName} ${lastName}`.trim();
+
+  if (!name) return null;
+
+  return {
+    id: nurse?._id || nurse?.id || nurse?.nurseId || nurse?.nurse?._id || nurse?.nurse?.id || `name:${name.toLowerCase()}`,
+    name,
+    role: nurse?.jobTitle || NURSE_ROLE_LABELS[nurse?.role] || nurse?.specialisation || nurse?.specialization || '',
+    region: nurse?.region || nurse?.location || nurse?.address || nurse?.nurse?.region || '',
+  };
+};
+
+const dedupeAssignedNurses = (assignedNurses) => {
+  const seen = new Set();
+
+  return assignedNurses.filter((entry) => {
+    if (!entry?.name) return false;
+    const key = String(entry.id || entry.name).trim().toLowerCase();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
+
+const normalizeAssignableNurse = (nurse) => {
+  const firstName = nurse?.firstName || '';
+  const lastName = nurse?.lastName || '';
+  const name = nurse?.name || `${firstName} ${lastName}`.trim();
+
+  if (!name) return null;
+
+  return {
+    id: nurse?._id || nurse?.id || null,
+    name,
+    specialisation: nurse?.jobTitle || NURSE_ROLE_LABELS[nurse?.role] || nurse?.specialisation || nurse?.specialization || 'Nurse',
+    region: nurse?.region || nurse?.location || nurse?.address || '—',
+  };
 };
 
 const Field = ({ label, children, col = 'col-md-6' }) => (
@@ -399,8 +446,14 @@ export default function Patients() {
   const [page, setPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(5);
   const [patients, setPatients] = useState(patientsData);
+  const [assignableNurses, setAssignableNurses] = useState([]);
   const [assignModal, setAssignModal] = useState(null); // patient object or null
   const [nurseSearch, setNurseSearch] = useState('');
+  const [assigningNurseId, setAssigningNurseId] = useState('');
+  const [nursesLoading, setNursesLoading] = useState(false);
+  const [nursesError, setNursesError] = useState('');
+  const [assignmentError, setAssignmentError] = useState('');
+  const [assignmentSuccess, setAssignmentSuccess] = useState('');
   const [admissionForm, setAdmissionForm] = useState(initialAdmissionForm);
   const [savingAdmission, setSavingAdmission] = useState(false);
   const [admissionError, setAdmissionError] = useState('');
@@ -481,12 +534,11 @@ export default function Patients() {
       || patient?.assigned_nurses
       || [];
 
-    const nurses = Array.isArray(nurseCandidates)
-      ? nurseCandidates.map((nurse) => {
-        if (typeof nurse === 'string') return nurse;
-        return nurse?.name || `${nurse?.firstName || ''} ${nurse?.lastName || ''}`.trim() || 'Assigned Nurse';
-      }).filter(Boolean)
+    const assignedNurseRecords = Array.isArray(nurseCandidates)
+      ? dedupeAssignedNurses(nurseCandidates.map((nurse, nurseIndex) => normalizeNurseAssignment(nurse, nurseIndex)).filter(Boolean))
       : [];
+
+    const nurses = assignedNurseRecords.map((nurse) => nurse.name);
 
     const enrolledRaw = patient?.dateOfAdmission || patient?.admissionDate || patient?.createdAt || patient?.created_at || '';
     const enrolled = typeof enrolledRaw === 'string' && enrolledRaw.includes('T') ? enrolledRaw.split('T')[0] : (enrolledRaw || '-');
@@ -494,9 +546,15 @@ export default function Patients() {
     const statusRaw = String(patient?.status || 'active').toLowerCase();
     const status = statusRaw === 'discharged' ? 'discharged' : 'active';
     const profileImageUrl = extractPatientProfileImageUrl(patient) || getCachedPatientPhotoUrl(patient);
+    const displayId = patient?.registrationNumber || patient?.regNo || patient?.patientId || patient?.id || `P-${String(index + 1).padStart(4, '0')}`;
+    const recordId = patient?._id || patient?.id || patient?.patientId || null;
+    const uuid = patient?.uuid || patient?.patientUuid || patient?.patientUUID || patient?.patient?.uuid || null;
 
     return {
-      id: patient?.id || patient?.patientId || patient?.registrationNumber || `P-${String(index + 1).padStart(4, '0')}`,
+      id: displayId,
+      profileRouteId: uuid || recordId || patient?.patientId || patient?.id || displayId,
+      recordId,
+      uuid,
       name: fullName || 'Unknown Patient',
       age: patient?.age ?? '-',
       gender: patient?.gender || '-',
@@ -509,56 +567,100 @@ export default function Patients() {
       status,
       enrolled,
       profileImageUrl,
+      assignedNurseRecords,
     };
   };
 
-  useEffect(() => {
-    let isMounted = true;
+  const loadPatients = useCallback(async () => {
+    setPatientsLoading(true);
+    setPatientsError('');
 
-    const loadPatients = async () => {
-      setPatientsLoading(true);
-      setPatientsError('');
+    try {
+      const response = await apiFetch('/patients', { method: 'GET' });
+      let data = {};
       try {
-        const response = await apiFetch('/patients', { method: 'GET' });
-        let data = {};
-        try {
-          data = await response.json();
-        } catch {
-          data = {};
-        }
-
-        if (!response.ok) {
-          throw new Error(data?.message || data?.error || 'Failed to load patients.');
-        }
-
-        const patientList = Array.isArray(data)
-          ? data
-          : Array.isArray(data?.patients)
-            ? data.patients
-            : Array.isArray(data?.data)
-              ? data.data
-              : Array.isArray(data?.items)
-                ? data.items
-                : [];
-
-        if (!isMounted) return;
-
-        if (patientList.length > 0) {
-          setPatients(patientList.map((patient, index) => normalizePatient(patient, index)));
-        } else {
-          setPatients([]);
-        }
-      } catch (error) {
-        if (!isMounted) return;
-        setPatientsError(error?.message || 'Unable to fetch patients right now.');
-      } finally {
-        if (isMounted) setPatientsLoading(false);
+        data = await response.json();
+      } catch {
+        data = {};
       }
-    };
 
-    loadPatients();
-    return () => { isMounted = false; };
+      if (!response.ok) {
+        throw new Error(data?.message || data?.error || 'Failed to load patients.');
+      }
+
+      const patientList = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.patients)
+          ? data.patients
+          : Array.isArray(data?.data)
+            ? data.data
+            : Array.isArray(data?.items)
+              ? data.items
+              : [];
+
+      if (patientList.length > 0) {
+        setPatients(patientList.map((patient, index) => normalizePatient(patient, index)));
+      } else {
+        setPatients([]);
+      }
+    } catch (error) {
+      setPatientsError(error?.message || 'Unable to fetch patients right now.');
+    } finally {
+      setPatientsLoading(false);
+    }
   }, []);
+
+  const loadAssignableNurses = useCallback(async () => {
+    setNursesLoading(true);
+    setNursesError('');
+
+    try {
+      const response = await apiFetch('/nurses', { method: 'GET' });
+      let data = {};
+      try {
+        data = await response.json();
+      } catch {
+        data = {};
+      }
+
+      if (!response.ok) {
+        throw new Error(data?.message || data?.error || 'Failed to load nurses.');
+      }
+
+      const nurseList = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.nurses)
+          ? data.nurses
+          : Array.isArray(data?.data)
+            ? data.data
+            : Array.isArray(data?.items)
+              ? data.items
+              : [];
+
+      const normalized = nurseList
+        .map(normalizeAssignableNurse)
+        .filter((nurse) => nurse?.id && nurse?.name)
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+      setAssignableNurses(normalized);
+      if (normalized.length === 0) {
+        setNursesError('No nurses are available to assign yet.');
+      }
+    } catch (error) {
+      setNursesError(error?.message || 'Unable to load nurses right now.');
+      setAssignableNurses([]);
+    } finally {
+      setNursesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadPatients();
+  }, [loadPatients]);
+
+  useEffect(() => {
+    loadAssignableNurses();
+  }, [loadAssignableNurses]);
 
   /* ── filtering ── */
   const activeCount = patients.filter((patient) => patient.status === 'active').length;
@@ -711,6 +813,95 @@ export default function Patients() {
       return;
     }
     await checkRegistrationNumberExists(reg);
+  };
+
+  const openAssignModal = (patient) => {
+    setAssignModal(patient);
+    setNurseSearch('');
+    setAssignmentError('');
+    setAssignmentSuccess('');
+    setAssigningNurseId('');
+  };
+
+  const handleAssignNurse = async (patient, nurse) => {
+    const patientIdentifierCandidates = Array.from(new Set([
+      patient?.uuid,
+      patient?.recordId,
+      patient?.id,
+    ].map((value) => String(value || '').trim()).filter(Boolean)));
+
+    const nurseId = String(nurse?.id || '').trim();
+
+    if (patientIdentifierCandidates.length === 0 || !nurseId) {
+      setAssignmentError('Missing patient or nurse identifier for assignment.');
+      return;
+    }
+
+    const currentAssigned = Array.isArray(patient?.assignedNurseRecords) ? patient.assignedNurseRecords : [];
+    const alreadyAssigned = currentAssigned.some((entry) => String(entry?.id || entry?.name).trim().toLowerCase() === nurseId.toLowerCase()
+      || String(entry?.name || '').trim().toLowerCase() === nurse.name.toLowerCase());
+
+    if (alreadyAssigned) {
+      setAssignmentSuccess(`${nurse.name} is already assigned to ${patient.name}.`);
+      return;
+    }
+
+    setAssigningNurseId(nurseId);
+    setAssignmentError('');
+    setAssignmentSuccess('');
+
+    let lastError = 'Unable to assign nurse right now.';
+
+    for (const patientId of patientIdentifierCandidates) {
+      try {
+        const response = await apiFetch('/assignments', {
+          method: 'POST',
+          body: JSON.stringify({ patientId, nurseId }),
+        });
+
+        let data = {};
+        try {
+          data = await response.json();
+        } catch {
+          data = {};
+        }
+
+        if (!response.ok) {
+          lastError = data?.message || data?.error || `Assignment failed for patient ${patientId}.`;
+          continue;
+        }
+
+        setPatients((prev) => prev.map((entry) => {
+          if (entry.id !== patient.id) return entry;
+
+          const assignedNurseRecords = dedupeAssignedNurses([
+            ...(entry.assignedNurseRecords || []),
+            {
+              id: nurseId,
+              name: nurse.name,
+              role: nurse.specialisation,
+              region: nurse.region,
+            },
+          ]);
+
+          return {
+            ...entry,
+            nurses: assignedNurseRecords.map((assigned) => assigned.name),
+            assignedNurseRecords,
+          };
+        }));
+
+        setAssignmentSuccess(data?.message || `${nurse.name} assigned to ${patient.name}.`);
+        setAssigningNurseId('');
+        loadPatients();
+        return;
+      } catch (error) {
+        lastError = error?.message || lastError;
+      }
+    }
+
+    setAssignmentError(lastError);
+    setAssigningNurseId('');
   };
 
   const ActiveTabComponent = TAB_COMPONENTS[TABS[activeTab].key];
@@ -984,6 +1175,9 @@ export default function Patients() {
       setPatients(prev => ([
         {
           id: patientId,
+          profileRouteId: personalInfoResponse?.uuid || personalInfoResponse?.patientUuid || personalInfoResponse?.patient?.uuid || patientId,
+          recordId: patientId,
+          uuid: personalInfoResponse?.uuid || personalInfoResponse?.patientUuid || personalInfoResponse?.patient?.uuid || patientId,
           name: `${personalInfoPayload.firstName} ${personalInfoPayload.lastName}`,
           age: Number(personalInfoPayload.age) || '-',
           gender: personalInfoPayload.gender,
@@ -995,6 +1189,7 @@ export default function Patients() {
           emergency: '-',
           status: 'active',
           enrolled: personalInfoPayload.dateOfAdmission,
+          assignedNurseRecords: [],
         },
         ...prev,
       ]));
@@ -1113,7 +1308,7 @@ export default function Patients() {
                 <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('name')}>Patient <SortIcon col="name" /></th>
                 <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('age')}>Age <SortIcon col="age" /></th>
                 <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('gender')}>Gender <SortIcon col="gender" /></th>
-                <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('region')}>Region <SortIcon col="region" /></th>
+                <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('address')}>Address <SortIcon col="address" /></th>
                 <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('nurse')}>Assigned Nurse <SortIcon col="nurse" /></th>
                 <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('enrolled')}>Enrolled <SortIcon col="enrolled" /></th>
                 <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('status')}>Status <SortIcon col="status" /></th>
@@ -1128,7 +1323,7 @@ export default function Patients() {
                 <tr><td colSpan={9} className="text-center py-4" style={{ color: '#dc2626', fontSize: 13, fontWeight: 600 }}>{patientsError}</td></tr>
               )}
               {!patientsLoading && !patientsError && paged.map((p, i) => (
-                <tr key={p.id} className="patients-row-card" onClick={() => navigate(`/patients/${p.id}`)} style={{ cursor: 'pointer' }}>
+                <tr key={p.id} className="patients-row-card" onClick={() => navigate(`/patients/${p.profileRouteId || p.id}`)} style={{ cursor: 'pointer' }}>
                   <td className="col-num">{startRow + i}</td>
                   <td>
                     <div className="d-flex align-items-center gap-2 patients-name-cell">
@@ -1149,7 +1344,7 @@ export default function Patients() {
                               onError={() => setAvatarLoadErrors(prev => ({ ...prev, [avatarKey]: true }))}
                               style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }}
                             />
-                          : p.name.split(' ').map(n => n[0]).join('')}
+                          : <FiUser size={16} aria-hidden="true" />}
                       </div>
                         );
                       })()}
@@ -1161,21 +1356,14 @@ export default function Patients() {
                   </td>
                   <td className="patients-table-value">{p.age}</td>
                   <td className="patients-table-value">{p.gender}</td>
-                  <td className="patients-table-value">{p.region}</td>
+                  <td className="patients-table-value">{p.address}</td>
                   <td className="patients-table-value">
                     <div className="d-flex flex-wrap align-items-center gap-1 patients-nurse-stack">
                       {p.nurses.map((name, ni) => (
-                        <span key={ni} className="patient-nurse-chip">
-                          {name}
-                          <span
-                            onClick={e => { e.stopPropagation(); setPatients(prev => prev.map(pt => pt.id === p.id ? { ...pt, nurses: pt.nurses.filter((_, idx) => idx !== ni) } : pt)); }}
-                            className="patient-nurse-chip__remove"
-                            title={`Remove ${name}`}
-                          >×</span>
-                        </span>
+                        <span key={ni} className="patient-nurse-chip">{name}</span>
                       ))}
                       <button
-                        onClick={e => { e.stopPropagation(); setAssignModal(p); setNurseSearch(''); }}
+                        onClick={e => { e.stopPropagation(); openAssignModal(p); }}
                         className={`patient-assign-btn${p.nurses.length === 0 ? ' is-empty' : ''}`}
                       >
                         <FiUserPlus size={11} /> {p.nurses.length === 0 ? 'Assign' : '+'}
@@ -1185,7 +1373,7 @@ export default function Patients() {
                   <td className="patients-table-date">{p.enrolled}</td>
                   <td><span className={`patients-status-pill ${p.status === 'active' ? 'is-active' : 'is-discharged'}`}>{p.status}</span></td>
                   <td style={{ textAlign: 'right' }}>
-                    <button className="patients-row-action" onClick={(e) => { e.stopPropagation(); navigate(`/patients/${p.id}`); }}>
+                    <button className="patients-row-action" onClick={(e) => { e.stopPropagation(); navigate(`/patients/${p.profileRouteId || p.id}`); }}>
                       <FiMoreHorizontal size={16} />
                     </button>
                   </td>
@@ -1229,95 +1417,122 @@ export default function Patients() {
       {/* ═══ ASSIGN NURSE MODAL ═══ */}
       {assignModal && (() => {
         const currentPatient = patients.find(p => p.id === assignModal.id);
-        const assignedNames = currentPatient ? currentPatient.nurses : [];
+        const assignedNurseRecords = currentPatient?.assignedNurseRecords || [];
+        const assignedNames = assignedNurseRecords.map((entry) => entry.name);
+        const assignedLookup = new Set(assignedNurseRecords.flatMap((entry) => [
+          String(entry.id || '').trim().toLowerCase(),
+          String(entry.name || '').trim().toLowerCase(),
+        ].filter(Boolean)));
+        const filteredAssignableNurses = assignableNurses.filter((nr) => (
+          !nurseSearch
+          || nr.name.toLowerCase().includes(nurseSearch.toLowerCase())
+          || nr.specialisation.toLowerCase().includes(nurseSearch.toLowerCase())
+          || nr.region.toLowerCase().includes(nurseSearch.toLowerCase())
+        ));
         return (
         <div className="modal modal-open" style={{ background: 'rgba(0,0,0,0.3)', backdropFilter: 'blur(4px)', zIndex: 1060 }} onClick={() => setAssignModal(null)}>
-          <div className="modal-dialog modal-dialog-centered" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
-            <div className="modal-content kh-modal-panel" style={{ borderRadius: 12, border: 'none', boxShadow: '0 20px 60px rgba(0,0,0,0.15)', overflow: 'hidden' }}>
-              {/* Header */}
-              <div style={{ background: '#45B6FE', padding: '18px 24px', color: '#fff' }}>
-                <div className="d-flex justify-content-between align-items-center">
+          <div className="modal-dialog modal-dialog-centered" style={{ maxWidth: 500 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-content kh-modal-panel" style={{ borderRadius: 20, border: '1px solid #e5e7eb', boxShadow: '0 24px 60px rgba(15,23,42,0.14)', padding: 0 }}>
+              <div style={{ padding: '20px 20px 16px', borderBottom: '1px solid #eef2f7' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
                   <div>
-                    <h6 style={{ fontWeight: 700, fontSize: 16, margin: 0, color: '#fff' }}>Assign Nurses</h6>
-                    <div style={{ fontSize: 12, opacity: 0.85, marginTop: 4 }}>
-                      Patient: <strong>{assignModal.name}</strong> ({assignModal.id}) · {assignModal.region}
+                    <h6 style={{ fontWeight: 700, fontSize: 17, margin: 0, color: 'var(--kh-text)' }}>Assign nurse</h6>
+                    <div style={{ fontSize: 12.5, color: 'var(--kh-text-muted)', marginTop: 4 }}>
+                      {assignModal.name} · {assignModal.id}
                     </div>
                   </div>
-                  <button onClick={() => setAssignModal(null)} className="btn btn-xs btn-ghost" style={{ background: 'rgba(255,255,255,0.2)', color: '#fff' }}><FiX size={16} /></button>
+                  <button onClick={() => setAssignModal(null)} className="btn btn-sm btn-ghost" style={{ color: 'var(--kh-text-muted)', minHeight: 'auto', padding: 4 }}><FiX size={18} /></button>
                 </div>
-                {/* Currently assigned badges */}
+
+                <div style={{ position: 'relative', marginTop: 16 }}>
+                  <FiSearch size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--kh-text-muted)' }} />
+                  <input
+                    className="input input-bordered input-sm w-full form-control-kh"
+                    placeholder="Search nurse name or role"
+                    value={nurseSearch}
+                    onChange={e => setNurseSearch(e.target.value)}
+                    style={{ paddingLeft: 34, fontSize: 13, height: 42 }}
+                  />
+                </div>
+
+                <div style={{ marginTop: 14, fontSize: 12.5, color: 'var(--kh-text-muted)' }}>
+                  Assigned: <strong style={{ color: 'var(--kh-text)' }}>{assignedNames.length}</strong>
+                </div>
                 {assignedNames.length > 0 && (
-                  <div className="d-flex flex-wrap gap-1" style={{ marginTop: 10 }}>
-                    {assignedNames.map((name, i) => (
-                      <span key={i} style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 4,
-                        background: 'rgba(255,255,255,0.2)', color: '#fff', borderRadius: 2,
-                        padding: '3px 10px', fontSize: 11.5, fontWeight: 600,
-                      }}>
-                        {name}
-                        <span
-                          onClick={() => setPatients(prev => prev.map(pt => pt.id === assignModal.id ? { ...pt, nurses: pt.nurses.filter((_, idx) => idx !== i) } : pt))}
-                          style={{ cursor: 'pointer', marginLeft: 2, fontWeight: 700, fontSize: 14, lineHeight: 1, opacity: 0.8 }}
-                          title={`Remove ${name}`}
-                        >×</span>
+                  <div className="d-flex flex-wrap gap-2" style={{ marginTop: 10 }}>
+                    {assignedNurseRecords.map((assigned) => (
+                      <span
+                        key={assigned.id || assigned.name}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          padding: '6px 10px',
+                          borderRadius: 999,
+                          background: '#f3f7fb',
+                          color: '#334155',
+                          fontSize: 12,
+                          fontWeight: 600,
+                        }}
+                      >
+                        {assigned.name}
                       </span>
                     ))}
                   </div>
                 )}
               </div>
-              {/* Search */}
-              <div style={{ padding: '16px 24px 8px', borderBottom: '1px solid #e5e7eb' }}>
-                <div style={{ position: 'relative' }}>
-                  <FiSearch size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--kh-text-muted)' }} />
-                  <input className="input input-bordered input-sm w-full form-control-kh" placeholder="Search by name, specialisation or region..." value={nurseSearch}
-                    onChange={e => setNurseSearch(e.target.value)} style={{ paddingLeft: 34, fontSize: 13 }} />
-                </div>
-              </div>
-              {/* Nurse List */}
-              <div style={{ maxHeight: 340, overflowY: 'auto', padding: '8px 0' }}>
-                {nursesList
-                  .filter(nr => !nurseSearch || nr.name.toLowerCase().includes(nurseSearch.toLowerCase()) || nr.specialisation.toLowerCase().includes(nurseSearch.toLowerCase()) || nr.region.toLowerCase().includes(nurseSearch.toLowerCase()))
-                  .map(nr => {
-                    const isAssigned = assignedNames.includes(nr.name);
-                    return (
-                    <div key={nr.id}
-                      onClick={() => {
-                        if (isAssigned) {
-                          setPatients(prev => prev.map(pt => pt.id === assignModal.id ? { ...pt, nurses: pt.nurses.filter(n => n !== nr.name) } : pt));
-                        } else {
-                          setPatients(prev => prev.map(pt => pt.id === assignModal.id ? { ...pt, nurses: [...pt.nurses, nr.name] } : pt));
-                        }
+
+              <div style={{ padding: '8px 0', maxHeight: 360, overflowY: 'auto' }}>
+                {assignmentError && (
+                  <div style={{ padding: '8px 20px 4px', color: '#dc2626', fontSize: 12.5, fontWeight: 600 }}>{assignmentError}</div>
+                )}
+                {assignmentSuccess && (
+                  <div style={{ padding: '8px 20px 4px', color: '#047857', fontSize: 12.5, fontWeight: 600 }}>{assignmentSuccess}</div>
+                )}
+                {nursesLoading && <div style={{ padding: '18px 20px', color: 'var(--kh-text-muted)', fontSize: 13 }}>Loading nurses...</div>}
+                {!nursesLoading && nursesError && <div style={{ padding: '18px 20px', color: '#dc2626', fontSize: 13, fontWeight: 600 }}>{nursesError}</div>}
+                {!nursesLoading && !nursesError && filteredAssignableNurses.length === 0 && (
+                  <div style={{ padding: '18px 20px', color: 'var(--kh-text-muted)', fontSize: 13 }}>No nurses found.</div>
+                )}
+                {!nursesLoading && !nursesError && filteredAssignableNurses.map((nr) => {
+                  const isAssigned = assignedLookup.has(String(nr.id || '').trim().toLowerCase()) || assignedLookup.has(nr.name.toLowerCase());
+                  const isSubmitting = assigningNurseId === String(nr.id || '');
+
+                  return (
+                    <div
+                      key={nr.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 12,
+                        padding: '12px 20px',
+                        borderTop: '1px solid #f1f5f9',
                       }}
-                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 24px', cursor: 'pointer', transition: 'background 0.15s', borderBottom: '1px solid #f3f4f6', background: isAssigned ? '#F0F7FE' : 'transparent' }}
-                      onMouseEnter={e => { if (!isAssigned) e.currentTarget.style.background = '#fafbfc'; }}
-                      onMouseLeave={e => { e.currentTarget.style.background = isAssigned ? '#F0F7FE' : 'transparent'; }}
                     >
-                      <div className="d-flex align-items-center gap-3">
-                        <div style={{ width: 36, height: 36, borderRadius: '50%', background: isAssigned ? '#45B6FE' : '#D6ECFC', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 13, color: isAssigned ? '#fff' : '#45B6FE' }}>
-                          {isAssigned ? <FiCheck size={16} /> : nr.name.split(' ').map(w => w[0]).join('')}
-                        </div>
-                        <div>
-                          <div style={{ fontWeight: 600, fontSize: 13.5, color: 'var(--kh-text)' }}>{nr.name}</div>
-                          <div style={{ fontSize: 11.5, color: 'var(--kh-text-muted)' }}>{nr.specialisation} · {nr.region}</div>
-                        </div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, fontSize: 13.5, color: 'var(--kh-text)' }}>{nr.name}</div>
+                        <div style={{ fontSize: 12, color: 'var(--kh-text-muted)' }}>{nr.specialisation}</div>
                       </div>
                       {isAssigned ? (
-                        <button className="btn btn-xs btn-outline btn-error" style={{ fontSize: 12, fontWeight: 700 }}>
-                          <FiX size={13} /> Remove
-                        </button>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: '#2563eb' }}>Assigned</span>
                       ) : (
-                        <button className="btn btn-xs btn-primary" style={{ fontSize: 12, fontWeight: 700 }}>
-                          <FiPlus size={13} /> Assign
+                        <button
+                          className="btn btn-sm btn-primary"
+                          type="button"
+                          disabled={isSubmitting}
+                          onClick={() => handleAssignNurse(currentPatient || assignModal, nr)}
+                          style={{ fontSize: 12, fontWeight: 700, minWidth: 90 }}
+                        >
+                          {isSubmitting ? 'Saving...' : 'Assign'}
                         </button>
                       )}
                     </div>
-                    );
-                  })}
+                  );
+                })}
               </div>
-              {/* Footer */}
-              <div style={{ padding: '14px 24px', borderTop: '2px solid #D6ECFC', background: '#fafbfc', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 12.5, color: '#2E7DB8', fontWeight: 600 }}>{assignedNames.length} nurse{assignedNames.length !== 1 ? 's' : ''} assigned</span>
-                <button onClick={() => setAssignModal(null)} className="btn btn-sm btn-primary" style={{ fontSize: 13, fontWeight: 700 }}>Done</button>
+
+              <div style={{ padding: '14px 20px', borderTop: '1px solid #eef2f7', display: 'flex', justifyContent: 'flex-end' }}>
+                <button onClick={() => setAssignModal(null)} className="btn btn-kh-outline" style={{ fontSize: 13, fontWeight: 600 }}>Close</button>
               </div>
             </div>
           </div>

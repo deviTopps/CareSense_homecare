@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiPlus, FiSearch, FiChevronRight, FiChevronLeft, FiChevronsLeft, FiChevronsRight, FiArrowUp, FiArrowDown, FiCamera, FiUpload, FiX, FiCheck, FiSave, FiArrowRight, FiAlertCircle, FiClock, FiEdit, FiTrash2, FiUsers } from '../icons/hugeicons-feather';
+import { FiPlus, FiSearch, FiChevronRight, FiChevronLeft, FiChevronsLeft, FiChevronsRight, FiArrowUp, FiArrowDown, FiUpload, FiX, FiCheck, FiSave, FiArrowRight, FiAlertCircle, FiClock, FiEdit, FiTrash2, FiUsers } from '../icons/hugeicons-feather';
 import { apiFetch, isTokenValid } from '../api';
-import compressImage from '../utils/compressImage';
 
 const ROLE_LABELS = { head_nurse: 'Head Nurse', supervising_nurse: 'Supervising Nurse', office_nurse: 'Office Nurse', field_nurse: 'Field Nurse' };
 
@@ -285,7 +284,6 @@ export default function Workforce() {
   const [saving, setSaving] = useState(false);
   const [apiError, setApiError] = useState('');
   const [debugInfo, setDebugInfo] = useState(null);
-  const [photoPreview, setPhotoPreview] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null); // nurse to delete
   const [deleting, setDeleting] = useState(false);
 
@@ -342,17 +340,6 @@ export default function Workforce() {
   const addArrayItem = (field, template) => setForm(p => ({ ...p, [field]: [...p[field], typeof template === 'object' ? { ...template } : template] }));
   const removeArrayItem = (field, idx) => setForm(p => ({ ...p, [field]: p[field].filter((_, i) => i !== idx) }));
 
-  const handlePhotoUpload = async (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) { alert('Photo must be under 5 MB'); return; }
-      const compressed = await compressImage(file, { maxWidth: 600, maxHeight: 600, quality: 0.75 });
-      const reader = new FileReader();
-      reader.onloadend = () => setPhotoPreview(reader.result);
-      reader.readAsDataURL(compressed);
-    }
-  };
-
   const uploadAndRegisterDocument = useCallback(async ({ file, resolvedNurseId, documentType }) => {
     const uploadFormData = new FormData();
     uploadFormData.append('file', file);
@@ -394,7 +381,7 @@ export default function Workforce() {
 
   const resetAll = () => {
     setStep(0); setForm({ ...initialFormState, qualifications: [{ ...emptyQualification }], trainingCourses: [''], employmentHistory: [{ ...emptyEmployment }], referees: [{ ...emptyReferee }, { ...emptyReferee }] });
-    setNurseId(null); setCompletedSteps([]); setSaving(false); setApiError(''); setDebugInfo(null); setPhotoPreview(null);
+    setNurseId(null); setCompletedSteps([]); setSaving(false); setApiError(''); setDebugInfo(null);
   };
 
   const handleDeleteNurse = async (nurse, e) => {
@@ -727,41 +714,12 @@ export default function Workforce() {
   const sectionTitleStyle = { fontSize: 11.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#1e5d53', marginBottom: 16 };
   const fieldLabelStyle = { fontSize: 12, fontWeight: 700, color: '#415463', marginBottom: 7 };
   const sectionCardStyle = { padding: 22, border: '1px solid #edf1f5', borderRadius: 24, background: '#fff', boxShadow: '0 12px 30px rgba(148, 163, 184, 0.08)' };
-  const passportCardStyle = { ...sectionCardStyle, padding: 16 };
   const inp = 'form-control form-control-kh workforce-form-input';
   const sel = 'form-select form-control-kh workforce-form-input';
 
   // ── Step content renderers ──
   const renderStep0 = () => (
     <div className="d-grid" style={{ gap: 18 }}>
-      <div style={passportCardStyle}>
-        <div style={sectionTitleStyle}>Passport Photo</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <div style={{ position: 'relative', flexShrink: 0 }}>
-            {photoPreview ? (
-              <div style={{ position: 'relative' }}>
-                <img src={photoPreview} alt="Preview" loading="lazy" style={{ width: 104, height: 104, objectFit: 'cover', borderRadius: '50%', border: '3px solid #D6ECFC', boxShadow: '0 4px 12px rgba(45,127,184,0.12)' }} />
-                <button onClick={() => setPhotoPreview(null)} style={{ position: 'absolute', top: -8, right: -8, width: 24, height: 24, borderRadius: '50%', background: '#e74c3c', color: '#fff', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 6px rgba(0,0,0,0.15)' }}><FiX size={13} /></button>
-              </div>
-            ) : (
-              <label htmlFor="nurse-photo-upload" style={{ width: 104, height: 104, borderRadius: '50%', cursor: 'pointer', border: '2px dashed #B8D9F0', background: '#F0F7FE', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                <div style={{ width: 38, height: 38, borderRadius: '50%', background: '#D6ECFC', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><FiCamera size={18} color="#2E7DB8" /></div>
-                <span style={{ fontSize: 11, fontWeight: 600, color: '#2E7DB8' }}>Upload</span>
-              </label>
-            )}
-            <input id="nurse-photo-upload" type="file" accept="image/png,image/jpeg,image/webp" onChange={handlePhotoUpload} style={{ display: 'none' }} />
-          </div>
-          <div style={{ flex: 1, paddingTop: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--kh-text)', marginBottom: 4 }}>Upload a passport-style photo</div>
-            <ul style={{ fontSize: 11.5, color: 'var(--kh-text-muted)', margin: 0, paddingLeft: 16, lineHeight: 1.55 }}>
-              <li>Clear, front-facing headshot</li><li>JPG, PNG, or WebP — Max 5 MB</li>
-            </ul>
-            {!photoPreview && <label htmlFor="nurse-photo-upload" className="btn" style={{ marginTop: 9, fontSize: 11.5, fontWeight: 700, padding: '6px 14px', background: '#F0F7FE', color: '#2E7DB8', border: '1px solid #D6ECFC', borderRadius: 999, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}><FiUpload size={12} /> Choose File</label>}
-            {photoPreview && <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8 }}><div style={{ width: 7, height: 7, borderRadius: '50%', background: '#27ae60' }} /><span style={{ fontSize: 11.5, color: '#27ae60', fontWeight: 600 }}>Photo uploaded</span></div>}
-          </div>
-        </div>
-      </div>
-
       <div style={sectionCardStyle}>
         <div style={sectionTitleStyle}>Personal Details</div>
         <div className="row g-3">
@@ -1130,26 +1088,26 @@ export default function Workforce() {
               <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('role')}>Role <SortIcon col="role" /></th>
               <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('license')}>License <SortIcon col="license" /></th>
               <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('joined')}>Joined <SortIcon col="joined" /></th>
-              <th>Status</th>
               <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('phone')}>Phone <SortIcon col="phone" /></th>
               <th style={{ width: 180, textAlign: 'center' }}>Actions</th>
             </tr></thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={8} className="text-center py-5">
+                <tr><td colSpan={7} className="text-center py-5">
                   <div className="d-flex align-items-center justify-content-center gap-2" style={{ color: 'var(--kh-text-muted)', fontSize: 13 }}>
                     <div className="spinner-border spinner-border-sm" role="status" style={{ color: '#45B6FE' }} />
                     <span>Loading nurses…</span>
                   </div>
                 </td></tr>
               ) : paged.length === 0 ? (
-                <tr><td colSpan={8} className="text-center py-4" style={{ color: 'var(--kh-text-muted)', fontSize: 13 }}>
+                <tr><td colSpan={7} className="text-center py-4" style={{ color: 'var(--kh-text-muted)', fontSize: 13 }}>
                   {nurses.length === 0 ? 'No nurses registered yet. Click "Register Nurse" to add one.' : 'No nurses match your search.'}
                 </td></tr>
               ) : paged.map((n, i) => (
                 <tr key={n.id} onClick={() => navigate(`/workforce/${n.id}`)} style={{ cursor: 'pointer' }}>
-                  <td className="col-num">{startRow + i}</td>
-                  <td><div className="d-flex align-items-center gap-2">
+                  <td className="col-num" data-label="#">{startRow + i}</td>
+                  <td data-label="Nurse">
+                    <div className="d-flex align-items-center gap-2 workforce-person-cell">
                     <div className="workforce-avatar">
                       {n.profilePhotoUrl && !avatarLoadErrors[n.id] ? (
                         <img
@@ -1167,26 +1125,12 @@ export default function Workforce() {
                       <div className="workforce-person-email">{n.email}</div>
                     </div>
                   </div></td>
-                  <td><span className="workforce-role-chip">{n.role}</span></td>
-                  <td style={{ fontSize: 13, fontWeight: 600, fontFamily: 'monospace', color: '#2E7DB8' }}>{n.license}</td>
-                  <td className="workforce-date-cell">{n.joined}</td>
-                  <td>
-                    <span className={`workforce-status-badge${n.isComplete ? ' is-complete' : ' is-pending'}`}>
-                      {n.isComplete ? 'Active' : 'In Progress'}
-                    </span>
-                  </td>
-                  <td style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>{n.phone}</td>
-                  <td style={{ textAlign: 'center' }}>
+                  <td data-label="Role"><span className="workforce-role-chip">{n.role}</span></td>
+                  <td data-label="License" style={{ fontSize: 13, fontWeight: 600, fontFamily: 'monospace', color: '#2E7DB8' }}>{n.license}</td>
+                  <td data-label="Joined" className="workforce-date-cell">{n.joined}</td>
+                  <td data-label="Phone" style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>{n.phone}</td>
+                  <td data-label="Actions" style={{ textAlign: 'center' }}>
                     <div className="workforce-row-actions">
-                      {!n.isComplete && (
-                        <button
-                          onClick={(e) => continueRegistration(n, e)}
-                          title="Continue registration"
-                          className="workforce-row-btn workforce-row-btn--continue"
-                        >
-                          Continue
-                        </button>
-                      )}
                       <button
                         onClick={(e) => { e.stopPropagation(); navigate(`/workforce/${n.id}`); }}
                         title="Edit nurse"

@@ -18,25 +18,6 @@ const ROLE_LABELS = {
   field_nurse: 'Field Nurse',
 };
 
-/* ── Mock patients data (mirrors Patients.jsx) ── */
-const ALL_PATIENTS = [
-  { id: 'P-1001', name: 'Kwame Boateng', age: 72, gender: 'Male', diagnosis: 'Hypertension, Type 2 Diabetes', region: 'Accra', nurses: ['Efua Mensah'], status: 'active', enrolled: '2024-06-01' },
-  { id: 'P-1002', name: 'Abena Osei', age: 65, gender: 'Female', diagnosis: 'Post-surgical wound care', region: 'Kumasi', nurses: ['Yaa Asantewaa', 'Ama Darko'], status: 'active', enrolled: '2024-08-15' },
-  { id: 'P-1003', name: 'Kofi Ankrah', age: 58, gender: 'Male', diagnosis: 'Diabetes, Peripheral Neuropathy', region: 'Tamale', nurses: ['Ama Darko'], status: 'active', enrolled: '2024-09-20' },
-  { id: 'P-1004', name: 'Akosua Mensah', age: 80, gender: 'Female', diagnosis: 'GERD, Osteoarthritis', region: 'Accra', nurses: [], status: 'active', enrolled: '2025-01-10' },
-  { id: 'P-1005', name: 'Yaw Frimpong', age: 45, gender: 'Male', diagnosis: 'Stroke rehabilitation', region: 'Takoradi', nurses: [], status: 'active', enrolled: '2025-03-01' },
-  { id: 'P-1006', name: 'Esi Appiah', age: 68, gender: 'Female', diagnosis: 'COPD, Asthma', region: 'Accra', nurses: ['Yaa Asantewaa'], status: 'active', enrolled: '2025-06-15' },
-  { id: 'P-1007', name: 'Nana Agyemang', age: 77, gender: 'Male', diagnosis: 'Heart failure, Chronic kidney disease', region: 'Accra', nurses: ['Efua Mensah'], status: 'discharged', enrolled: '2024-04-01' },
-  { id: 'P-1008', name: 'Afia Kumah', age: 55, gender: 'Female', diagnosis: 'Rheumatoid Arthritis', region: 'Cape Coast', nurses: [], status: 'active', enrolled: '2025-11-01' },
-  { id: 'P-1009', name: 'Kwesi Mensah', age: 63, gender: 'Male', diagnosis: 'Chronic Kidney Disease Stage 3', region: 'Accra', nurses: ['Efua Mensah'], status: 'active', enrolled: '2025-02-10' },
-  { id: 'P-1010', name: 'Adwoa Darko', age: 70, gender: 'Female', diagnosis: 'Parkinson Disease', region: 'Kumasi', nurses: ['Yaa Asantewaa'], status: 'active', enrolled: '2025-04-20' },
-  { id: 'P-1011', name: 'Kojo Asante', age: 82, gender: 'Male', diagnosis: 'Dementia, Hypertension', region: 'Accra', nurses: [], status: 'active', enrolled: '2025-07-01' },
-  { id: 'P-1012', name: 'Efua Aidoo', age: 48, gender: 'Female', diagnosis: 'Multiple Sclerosis', region: 'Takoradi', nurses: ['Adwoa Badu'], status: 'active', enrolled: '2025-09-15' },
-  { id: 'P-1013', name: 'Yaa Ofosu', age: 74, gender: 'Female', diagnosis: 'Congestive Heart Failure', region: 'Sunyani', nurses: ['Yaa Asantewaa'], status: 'active', enrolled: '2025-08-01' },
-  { id: 'P-1014', name: 'Ama Boahen', age: 60, gender: 'Female', diagnosis: 'Breast cancer post-mastectomy', region: 'Ho', nurses: ['Ama Darko'], status: 'active', enrolled: '2025-10-05' },
-  { id: 'P-1015', name: 'Kwaku Mensah', age: 69, gender: 'Male', diagnosis: 'COPD, Emphysema', region: 'Bolgatanga', nurses: ['Adwoa Badu'], status: 'discharged', enrolled: '2024-11-20' },
-];
-
 /* ── Tiny shared components ── */
 const DataRow = ({ label, children, missing }) => (
   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid #f3f4f6', fontSize: 12.5 }}>
@@ -134,6 +115,124 @@ function inferMimeType(value) {
   return extension ? MIME_TYPES_BY_EXTENSION[extension] || '' : '';
 }
 
+function normalizeAssignedNurseEntry(nurse, index = 0) {
+  if (!nurse) return null;
+
+  if (typeof nurse === 'string') {
+    const name = nurse.trim();
+    return name ? { id: `name:${name.toLowerCase()}:${index}`, name } : null;
+  }
+
+  const firstName = nurse?.firstName || nurse?.personal?.firstName || nurse?.nurse?.firstName || '';
+  const lastName = nurse?.lastName || nurse?.personal?.lastName || nurse?.nurse?.lastName || '';
+  const name = nurse?.name || nurse?.fullName || nurse?.nurse?.name || `${firstName} ${lastName}`.trim();
+
+  if (!name) return null;
+
+  return {
+    id: nurse?._id || nurse?.id || nurse?.uuid || nurse?.nurseId || nurse?.nurse?._id || nurse?.nurse?.id || nurse?.nurse?.uuid || `name:${name.toLowerCase()}`,
+    uuid: nurse?.uuid || nurse?.nurse?.uuid || null,
+    name,
+  };
+}
+
+function normalizeAssignedPatient(patient, index = 0) {
+  const firstName = patient?.firstName || '';
+  const lastName = patient?.lastName || '';
+  const name = patient?.name || patient?.fullName || `${firstName} ${lastName}`.trim() || 'Unknown Patient';
+  const assignedSource = patient?.nurses || patient?.assignedNurses || patient?.assigned_nurses || [];
+  const assignedNurses = Array.isArray(assignedSource)
+    ? assignedSource.map((entry, assignedIndex) => normalizeAssignedNurseEntry(entry, assignedIndex)).filter(Boolean)
+    : [];
+  const enrolledRaw = patient?.dateOfAdmission || patient?.admissionDate || patient?.createdAt || patient?.created_at || '';
+  const enrolled = typeof enrolledRaw === 'string' && enrolledRaw.includes('T') ? enrolledRaw.split('T')[0] : (enrolledRaw || '—');
+  const statusRaw = String(patient?.status || 'active').toLowerCase();
+
+  return {
+    id: patient?.patientId || patient?.registrationNumber || patient?.regNo || patient?.id || patient?._id || `patient-${index + 1}`,
+    uuid: patient?.uuid || patient?.patientUuid || patient?.patientUUID || patient?.patient?.uuid || null,
+    name,
+    diagnosis: patient?.diagnosis || patient?.medicalCondition || patient?.careNeeds || '—',
+    region: patient?.region || patient?.location || patient?.residentialAddress || '—',
+    status: statusRaw === 'discharged' ? 'discharged' : 'active',
+    enrolled,
+    assignedNurses,
+  };
+}
+
+function normalizeAssignmentRecord(assignment, index = 0) {
+  if (!assignment || typeof assignment !== 'object') return null;
+
+  const patient = assignment?.patient || assignment?.client || assignment?.patientInfo || null;
+  const nurse = assignment?.nurse || assignment?.staff || assignment?.caregiver || null;
+
+  return {
+    id: assignment?._id || assignment?.id || `assignment-${index + 1}`,
+    patientId: assignment?.patientId || assignment?.patient?.id || assignment?.patient?._id || assignment?.patient?.patientId || null,
+    patientUuid: assignment?.patientUuid || assignment?.patientUUID || assignment?.patient?.uuid || null,
+    patientName: assignment?.patientName || patient?.name || [patient?.firstName, patient?.lastName].filter(Boolean).join(' '),
+    nurseId: assignment?.nurseId || nurse?.id || nurse?._id || assignment?.staffId || null,
+    nurseUuid: assignment?.nurseUuid || assignment?.staffUuid || nurse?.uuid || null,
+    nurseName: assignment?.nurseName || nurse?.name || [nurse?.firstName, nurse?.lastName].filter(Boolean).join(' '),
+  };
+}
+
+function assignmentMatchesNurse(assignment, nurseProfile, fallbackRouteId) {
+  const candidateValues = [
+    nurseProfile?._id,
+    nurseProfile?.id,
+    nurseProfile?.uuid,
+    nurseProfile?.nurseId,
+    fallbackRouteId,
+    nurseProfile?.email,
+    [nurseProfile?.firstName, nurseProfile?.lastName].filter(Boolean).join(' '),
+    nurseProfile?.name,
+  ]
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter(Boolean);
+
+  const assignmentValues = [assignment?.nurseId, assignment?.nurseUuid, assignment?.nurseName]
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter(Boolean);
+
+  return assignmentValues.some((value) => candidateValues.includes(value));
+}
+
+function patientMatchesAssignment(patient, assignment) {
+  const patientValues = [patient?.id, patient?.uuid, patient?.name]
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter(Boolean);
+
+  const assignmentValues = [assignment?.patientId, assignment?.patientUuid, assignment?.patientName]
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter(Boolean);
+
+  return assignmentValues.some((value) => patientValues.includes(value));
+}
+
+function patientMatchesNurse(patient, nurseProfile, fallbackRouteId) {
+  const candidateValues = [
+    nurseProfile?._id,
+    nurseProfile?.id,
+    nurseProfile?.uuid,
+    nurseProfile?.nurseId,
+    fallbackRouteId,
+    nurseProfile?.email,
+    [nurseProfile?.firstName, nurseProfile?.lastName].filter(Boolean).join(' '),
+    nurseProfile?.name,
+  ]
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter(Boolean);
+
+  return patient.assignedNurses.some((assigned) => {
+    const assignedValues = [assigned?.id, assigned?.uuid, assigned?.name]
+      .map((value) => String(value || '').trim().toLowerCase())
+      .filter(Boolean);
+
+    return assignedValues.some((value) => candidateValues.includes(value));
+  });
+}
+
 function extractNurseProfileImage(rawPayload) {
   const personal = rawPayload?.personal || rawPayload?.nurse || rawPayload || {};
   const profileImage = personal?.profileImage || personal?.profilePicture || personal?.image || personal?.photo || {};
@@ -210,6 +309,7 @@ export default function NurseProfile() {
   const [diversity, setDiversity] = useState(null);
   const [education, setEducation] = useState(null);
   const [supporting, setSupporting] = useState(null);
+  const [assignedPatients, setAssignedPatients] = useState([]);
 
   // ── Avatar upload ──
   const [avatarUrl, setAvatarUrl] = useState(null);
@@ -579,6 +679,72 @@ export default function NurseProfile() {
       setEducation(data.education || null);
       setSupporting(data.supportingInfo || null);
 
+      try {
+        const [assignmentsRes, patientsRes] = await Promise.all([
+          apiFetch('/assignments', { method: 'GET' }).catch(() => null),
+          apiFetch('/patients', { method: 'GET' }).catch(() => null),
+        ]);
+
+        let assignmentsPayload = {};
+        if (assignmentsRes) {
+          try {
+            assignmentsPayload = await assignmentsRes.json();
+          } catch {
+            assignmentsPayload = {};
+          }
+        }
+
+        let patientsPayload = {};
+        try {
+          patientsPayload = patientsRes ? await patientsRes.json() : {};
+        } catch {
+          patientsPayload = {};
+        }
+
+        if (patientsRes?.ok) {
+          const patientList = Array.isArray(patientsPayload)
+            ? patientsPayload
+            : Array.isArray(patientsPayload?.patients)
+              ? patientsPayload.patients
+              : Array.isArray(patientsPayload?.data)
+                ? patientsPayload.data
+                : Array.isArray(patientsPayload?.items)
+                  ? patientsPayload.items
+                  : [];
+
+            const assignmentList = Array.isArray(assignmentsPayload)
+              ? assignmentsPayload
+              : Array.isArray(assignmentsPayload?.assignments)
+                ? assignmentsPayload.assignments
+                : Array.isArray(assignmentsPayload?.data)
+                  ? assignmentsPayload.data
+                  : Array.isArray(assignmentsPayload?.items)
+                    ? assignmentsPayload.items
+                    : [];
+
+            const normalizedAssignments = assignmentList
+              .map((assignment, index) => normalizeAssignmentRecord(assignment, index))
+              .filter(Boolean)
+              .filter((assignment) => assignmentMatchesNurse(assignment, personalData, nurseId));
+
+            let matchedPatients = patientList
+            .map((patient, index) => normalizeAssignedPatient(patient, index))
+              .filter((patient) => patientMatchesNurse(patient, personalData, nurseId));
+
+            if (normalizedAssignments.length > 0) {
+              matchedPatients = patientList
+                .map((patient, index) => normalizeAssignedPatient(patient, index))
+                .filter((patient) => normalizedAssignments.some((assignment) => patientMatchesAssignment(patient, assignment)));
+            }
+
+          setAssignedPatients(matchedPatients);
+        } else {
+          setAssignedPatients([]);
+        }
+      } catch {
+        setAssignedPatients([]);
+      }
+
       const filled = {};
       const newKyc = {
         profilePhoto: null,
@@ -651,6 +817,7 @@ export default function NurseProfile() {
 
       setKycDocs(newKyc);
     } catch (e) {
+      setAssignedPatients([]);
       setError(e.message || 'Failed to load');
     } finally {
       setLoading(false);
@@ -702,7 +869,6 @@ export default function NurseProfile() {
   const isFullyComplete = stepsComplete === 4;
 
   // ── Patients assigned to this nurse ──
-  const assignedPatients = ALL_PATIENTS.filter(p => p.nurses.some(nm => fullName.toLowerCase().includes(nm.toLowerCase()) || nm.toLowerCase().includes(fullName.toLowerCase())));
   const currentPatients = assignedPatients.filter(p => p.status === 'active');
   const pastPatients = assignedPatients.filter(p => p.status !== 'active');
   const profileDetails = [

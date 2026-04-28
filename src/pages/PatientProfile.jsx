@@ -1,15 +1,17 @@
 import { useParams, useNavigate } from 'react-router-dom';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion } from 'motion/react';
 import {
   FiArrowLeft, FiPhone, FiMail, FiMapPin, FiCalendar,
   FiUser, FiHeart, FiActivity, FiShield, FiFileText, FiEdit2,
   FiAlertTriangle, FiAlertCircle, FiCheckCircle, FiThermometer, FiClipboard,
-  FiPrinter, FiMoreHorizontal, FiClock, FiCamera, FiPlus, FiX, FiSend,
+  FiPrinter, FiMoreHorizontal, FiClock, FiPlus, FiX, FiSend, FiRefreshCw,
   FiSearch, FiBell, FiChevronDown, FiChevronRight, FiBarChart2
 } from '../icons/hugeicons-feather';
 import compressImage from '../utils/compressImage';
 import { API_BASE, apiFetch, getToken, getUser } from '../api';
+
+const DEFAULT_PROFILE_PLACEHOLDER = '/images/default-profile-avatar.svg';
 
 /* ── Patient data ── */
 const patientsData = [
@@ -100,33 +102,81 @@ const painColors = ['#45B6FE', '#d97706', '#ea580c', '#ef4444'];
 const YN = ({ val }) => (
   <span style={{
     fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 2,
-    background: val ? '#F0F7FE' : '#fef2f2', color: val ? '#1565A0' : '#dc2626',
-  }}>{val ? 'Yes' : 'No'}</span>
+    background:
+      val === null || val === undefined || val === ''
+        ? '#f3f4f6'
+        : val
+          ? '#F0F7FE'
+          : '#fef2f2',
+    color:
+      val === null || val === undefined || val === ''
+        ? '#6b7280'
+        : val
+          ? '#1565A0'
+          : '#dc2626',
+  }}>{val === null || val === undefined || val === '' ? 'No data' : val ? 'Yes' : 'No'}</span>
 );
 
 const DataRow = ({ label, children }) => (
   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid #f3f4f6', fontSize: 12.5 }}>
     <span style={{ flexShrink: 0, color: 'var(--kh-text-muted)', fontWeight: 500 }}>{label}</span>
-    <span style={{ color: 'var(--kh-text)', fontWeight: 500, textAlign: 'right' }}>{children}</span>
+    <span style={{ color: 'var(--kh-text)', fontWeight: 500, textAlign: 'right' }}>
+      {children === null || children === undefined || children === ''
+        ? <span style={{ color: 'var(--kh-text-muted)', fontWeight: 500 }}>No data</span>
+        : children}
+    </span>
   </div>
 );
 
-const Panel = ({ title, icon, accent, children, action }) => (
-  <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 5, overflow: 'hidden', marginBottom: 12 }}>
-    <div style={{
-      padding: '10px 16px', borderBottom: '1px solid #f3f4f6', display: 'flex',
-      alignItems: 'center', justifyContent: 'space-between',
-      borderLeft: accent ? `3px solid ${accent}` : 'none',
-    }}>
-      <div className="d-flex align-items-center gap-2">
-        {icon && <span style={{ color: accent || '#45B6FE', display: 'flex' }}>{icon}</span>}
-        <span style={{ fontSize: 12, fontWeight: 700, textTransform: 'capitalize', letterSpacing: '0.5px', color: 'var(--kh-text)' }}>{title}</span>
+const Panel = ({ title, icon, accent, children, action, variant = 'default', bodyClassName = '' }) => {
+  const isSummary = variant === 'summary';
+
+  return (
+    <div
+      className={isSummary ? 'patient-profile-summary-panel' : ''}
+      style={{
+        background: '#fff',
+        border: isSummary ? '1px solid #edf1f5' : '1px solid #e5e7eb',
+        borderRadius: isSummary ? 28 : 5,
+        overflow: 'hidden',
+        marginBottom: 12,
+        boxShadow: isSummary ? '0 24px 60px rgba(15, 23, 42, 0.08)' : 'none',
+      }}
+    >
+      <div
+        className={isSummary ? 'patient-profile-summary-panel__header' : ''}
+        style={{
+          padding: isSummary ? '18px 20px 14px' : '10px 16px',
+          borderBottom: '1px solid #f3f4f6',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 10,
+          borderLeft: !isSummary && accent ? `3px solid ${accent}` : 'none',
+        }}
+      >
+        <div className="d-flex align-items-center gap-2">
+          {icon && <span style={{ color: accent || '#45B6FE', display: 'flex' }}>{icon}</span>}
+          <span
+            className={isSummary ? 'nurse-profile-card-heading' : ''}
+            style={{
+              fontSize: isSummary ? undefined : 12,
+              fontWeight: 700,
+              textTransform: isSummary ? 'none' : 'capitalize',
+              letterSpacing: isSummary ? 'normal' : '0.5px',
+              color: 'var(--kh-text)',
+              marginBottom: 0,
+            }}
+          >
+            {title}
+          </span>
+        </div>
+        {action && action}
       </div>
-      {action && action}
+      <div className={bodyClassName} style={{ padding: isSummary ? '18px 20px 20px' : '12px 16px' }}>{children}</div>
     </div>
-    <div style={{ padding: '12px 16px' }}>{children}</div>
-  </div>
-);
+  );
+};
 
 const VitalTile = ({ label, value, flag, showFlagBorder = true }) => (
   <div style={{
@@ -134,9 +184,35 @@ const VitalTile = ({ label, value, flag, showFlagBorder = true }) => (
     background: flag ? '#fef2f2' : '#fafbfc', borderLeft: showFlagBorder && flag ? '3px solid #ef4444' : '3px solid #e5e7eb',
   }}>
     <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text-muted)', marginBottom: 4 }}>{label}</div>
-    <div style={{ fontSize: 18, fontWeight: 800, color: flag ? '#ef4444' : 'var(--kh-text)', fontVariantNumeric: 'tabular-nums' }}>{value}</div>
+    <div style={{ fontSize: 18, fontWeight: 800, color: flag ? '#ef4444' : 'var(--kh-text)', fontVariantNumeric: 'tabular-nums' }}>
+      {value === null || value === undefined || value === '' ? 'No data' : value}
+    </div>
   </div>
 );
+
+const NoDataState = ({ text = 'No data available for this section.' }) => (
+  <div style={{ fontSize: 12.5, color: 'var(--kh-text-muted)', lineHeight: 1.6 }}>{text}</div>
+);
+
+function hasMeaningfulSectionData(value) {
+  if (value === null || value === undefined) return false;
+  if (typeof value === 'boolean' || typeof value === 'number') return true;
+  if (typeof value === 'string') return value.trim().length > 0;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'object') {
+    return Object.entries(value).some(([key, item]) => {
+      if (['id', 'createdAt', 'updatedAt', '__typename'].includes(key)) return false;
+      return hasMeaningfulSectionData(item);
+    });
+  }
+  return false;
+}
+
+function formatStatusLabel(value) {
+  const normalized = String(value || '').trim();
+  if (!normalized) return 'No status';
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
 
 const FlagItem = ({ label, detail }) => (
   <div className="d-flex align-items-center gap-2" style={{ padding: '6px 0', borderBottom: '1px solid #f3f4f6' }}>
@@ -507,24 +583,35 @@ async function uploadFileViaBackend(file) {
 }
 
 function normalizePatientProfile(rawPatient, fallbackId) {
-  const template = JSON.parse(JSON.stringify(patientsData[0]));
+  if (!rawPatient || typeof rawPatient !== 'object') {
+    return JSON.parse(JSON.stringify(patientsData[0]));
+  }
+
   const firstName = rawPatient?.firstName || '';
   const lastName = rawPatient?.lastName || '';
-  const fullName = rawPatient?.name || `${firstName} ${lastName}`.trim() || template.name;
+  const fullName = rawPatient?.fullName || rawPatient?.name || `${firstName} ${lastName}`.trim();
 
   const nextOfKin = rawPatient?.nextOfKin || {};
-  const sleep = rawPatient?.sleep || {};
-  const nutrition = rawPatient?.nutrition || {};
-  const personal = rawPatient?.personal || {};
-  const bladderBowel = rawPatient?.bladderBowel || {};
-  const psychologicalNeeds = rawPatient?.psychologicalNeeds || {};
-  const skinIntegrity = rawPatient?.skinIntegrity || {};
-  const handlingAssessment = rawPatient?.handlingAssessment || {};
+  const admissionChecklist = rawPatient?.admissionChecklist || {};
+  const communicationStyle = rawPatient?.communicationStyle || {};
+  const infectionControl = rawPatient?.infectionControl || {};
+  const breathPain = rawPatient?.breathPain || {};
+  const sleepNutrition = rawPatient?.sleepNutrition || {};
+  const sleep = sleepNutrition?.sleep || rawPatient?.sleep || {};
+  const nutrition = sleepNutrition?.nutrition || rawPatient?.nutrition || {};
+  const hygienePsychological = rawPatient?.hygienePsychological || {};
+  const personal = hygienePsychological?.personal || rawPatient?.personal || {};
+  const bladderBowel = hygienePsychological?.bladderBowel || rawPatient?.bladderBowel || {};
+  const psychologicalNeeds = hygienePsychological?.psychologicalNeeds || rawPatient?.psychologicalNeeds || {};
+  const skinMobility = rawPatient?.skinMobility || {};
+  const skinIntegrity = skinMobility?.skinIntegrity || rawPatient?.skinIntegrity || {};
+  const handlingAssessment = skinMobility?.handlingAssessment || rawPatient?.handlingAssessment || {};
   const medicalHistoryRecord = rawPatient?.medicalHistory;
+  const initialVitals = rawPatient?.initialVitals || {};
   const profileImage = extractPatientProfileImage(rawPatient || {});
 
   const painPresent = String(rawPatient?.painPresent || '').toLowerCase();
-  const boolFromYesNo = (value, fallback = false) => {
+  const boolFromYesNo = (value, fallback = null) => {
     if (value === true || value === false) return value;
     const normalized = String(value || '').toLowerCase();
     if (normalized === 'yes' || normalized === 'true') return true;
@@ -533,8 +620,7 @@ function normalizePatientProfile(rawPatient, fallbackId) {
   };
 
   return {
-    ...template,
-    id: rawPatient?.id || rawPatient?.patientId || fallbackId || template.id,
+    id: rawPatient?.id || rawPatient?.patientId || fallbackId || '',
     agencyId:
       rawPatient?.agencyId
       || rawPatient?.agencyID
@@ -543,119 +629,131 @@ function normalizePatientProfile(rawPatient, fallbackId) {
       || rawPatient?.organizationId
       || rawPatient?.organisationId
       || null,
-    name: fullName,
-    preferredName: rawPatient?.preferredName || firstName || template.preferredName,
-    age: rawPatient?.age ?? template.age,
-    gender: rawPatient?.gender || template.gender,
-    dob: rawPatient?.dateOfBirth || rawPatient?.dob || template.dob,
-    diagnosis: rawPatient?.diagnosis || template.diagnosis,
-    phone: rawPatient?.contactNumber || rawPatient?.phone || template.phone,
-    email: rawPatient?.email || template.email,
-    address: rawPatient?.residentialAddress || rawPatient?.address || template.address,
-    gps: rawPatient?.gpsCode || rawPatient?.gps || template.gps,
-    region: rawPatient?.region || rawPatient?.location || rawPatient?.residentialAddress || template.region,
-    nurse: rawPatient?.admittingNurse || rawPatient?.nurse || template.nurse,
-    nursePin: rawPatient?.nursePin || template.nursePin,
+    name: fullName || '',
+    preferredName: rawPatient?.preferredName || firstName || '',
+    age: rawPatient?.age ?? '',
+    gender: rawPatient?.gender || '',
+    dob: rawPatient?.dateOfBirth || rawPatient?.dob || '',
+    dateOfAssessment: rawPatient?.dateOfAssessment || '',
+    diagnosis: rawPatient?.diagnosis || rawPatient?.primaryDiagnosis || '',
+    phone: rawPatient?.contactNumber || rawPatient?.phone || '',
+    email: rawPatient?.email || '',
+    address: rawPatient?.residentialAddress || rawPatient?.address || '',
+    gps: rawPatient?.gpsCode || rawPatient?.gps || '',
+    region: rawPatient?.region || rawPatient?.location || rawPatient?.residentialAddress || '',
+    nurse: admissionChecklist?.admittingNurse || rawPatient?.admittingNurse || rawPatient?.nurse || '',
+    nursePin: rawPatient?.nursePin || '',
     emergency: {
-      name: nextOfKin?.fullName || template.emergency.name,
-      relationship: nextOfKin?.relationship || template.emergency.relationship,
-      phone: nextOfKin?.contactOne || nextOfKin?.contactTwo || template.emergency.phone,
+      name: nextOfKin?.fullName || '',
+      relationship: nextOfKin?.relationship || '',
+      phone: nextOfKin?.contactOne || nextOfKin?.contactTwo || '',
     },
     doctor: {
-      name: nextOfKin?.personalDoctor || template.doctor.name,
-      facility: nextOfKin?.personalDoctorFacility || template.doctor.facility,
-      phone: nextOfKin?.personalDoctorContact || template.doctor.phone,
+      name: nextOfKin?.personalDoctor || '',
+      facility: nextOfKin?.personalDoctorFacility || '',
+      phone: nextOfKin?.personalDoctorContact || '',
     },
-    status: rawPatient?.status || template.status,
-    enrolled: rawPatient?.dateOfAdmission || rawPatient?.enrolled || template.enrolled,
-    regNo: rawPatient?.registrationNumber || template.regNo,
+    status: rawPatient?.status || '',
+    enrolled: rawPatient?.dateOfAdmission || rawPatient?.enrolled || '',
+    regNo: rawPatient?.registrationNumber || '',
     profileImage,
-    cultural: nextOfKin?.spiritualNeed || rawPatient?.cultural || template.cultural,
-    handbookGiven: boolFromYesNo(rawPatient?.clientHandBookGiven, template.handbookGiven),
+    cultural: nextOfKin?.spiritualNeed || rawPatient?.cultural || '',
+    notes: rawPatient?.notes || '',
+    handbookGiven: boolFromYesNo(admissionChecklist?.clientHandBookGiven ?? rawPatient?.clientHandBookGiven, null),
     infection: {
-      riskPlan: boolFromYesNo(rawPatient?.InfectionCarePlanCompletion, template.infection.riskPlan),
-      diarrhea: boolFromYesNo(rawPatient?.diarrhea, template.infection.diarrhea),
+      riskPlan: boolFromYesNo(infectionControl?.infectionCarePlanCompletion ?? infectionControl?.InfectionCarePlanCompletion, null),
+      diarrhea: boolFromYesNo(infectionControl?.diarrhea ?? rawPatient?.diarrhea, null),
     },
     diabetes: {
-      has: boolFromYesNo(rawPatient?.anyDiabetes, template.diabetes.has),
-      carePlan: boolFromYesNo(rawPatient?.DiabetesCarePlanCompletion, template.diabetes.carePlan),
-      stockings: boolFromYesNo(rawPatient?.isThePatientBedBound, template.diabetes.stockings),
+      has: boolFromYesNo(infectionControl?.anyDiabetes, null),
+      carePlan: boolFromYesNo(infectionControl?.diabetesCarePlanCompletion ?? infectionControl?.DiabetesCarePlanCompletion, null),
+      stockings: boolFromYesNo(infectionControl?.isThePatientBedBound, null),
     },
     breathing: {
-      difficulties: boolFromYesNo(rawPatient?.anyBreathingDifficulties, template.breathing.difficulties),
-      oxygen: boolFromYesNo(rawPatient?.homeOxygenNeeded, template.breathing.oxygen),
-      smoker: boolFromYesNo(rawPatient?.isSmoker, template.breathing.smoker),
-      everSmoked: boolFromYesNo(rawPatient?.everSmoked, template.breathing.everSmoked),
+      difficulties: boolFromYesNo(breathPain?.anyBreathingDifficulties, null),
+      oxygen: boolFromYesNo(breathPain?.homeOxygenNeeded, null),
+      smoker: boolFromYesNo(breathPain?.isSmoker, null),
+      everSmoked: boolFromYesNo(breathPain?.everSmoked, null),
     },
     pain: {
-      present: painPresent ? painPresent === 'yes' || painPresent === 'true' : boolFromYesNo(rawPatient?.painPresent, template.pain.present),
-      analgesia: rawPatient?.anagelsiaPrescribed ? 'Prescribed' : template.pain.analgesia,
-      location: rawPatient?.locationOfPain || template.pain.location,
-      score: rawPatient?.painScore !== '' && rawPatient?.painScore !== undefined ? Number(rawPatient.painScore) || 0 : template.pain.score,
+      present: painPresent ? painPresent === 'yes' || painPresent === 'true' : boolFromYesNo(breathPain?.painPresent, null),
+      analgesia: breathPain?.anagelsiaPrescribed ? 'Prescribed' : '',
+      location: breathPain?.locationOfPain || '',
+      score: breathPain?.painScore !== '' && breathPain?.painScore !== undefined && breathPain?.painScore !== null ? Number(breathPain.painScore) || 0 : null,
     },
     sleep: {
-      nightWake: boolFromYesNo(sleep?.wakeUpAtNight, template.sleep.nightWake),
-      sedation: boolFromYesNo(sleep?.UseOfNightSedation, template.sleep.sedation),
-      sleepsWell: boolFromYesNo(sleep?.userSleepWell, template.sleep.sleepsWell),
-      bestPosition: sleep?.bestSleepingPosition || template.sleep.bestPosition,
-      wakeTime: sleep?.usualTimeToWakeUp || template.sleep.wakeTime,
+      nightWake: boolFromYesNo(sleep?.wakeUpAtNight, null),
+      sedation: boolFromYesNo(sleep?.UseOfNightSedation, null),
+      sleepsWell: boolFromYesNo(sleep?.userSleepWell, null),
+      bestPosition: sleep?.bestSleepingPosition || '',
+      wakeTime: sleep?.usualTimeToWakeUp || '',
     },
     nutrition: {
-      allergies: boolFromYesNo(nutrition?.allergy, template.nutrition.allergies),
-      specialDiet: boolFromYesNo(nutrition?.specialDiet, template.nutrition.specialDiet),
-      dietType: nutrition?.dietType || template.nutrition.dietType,
-      helpEating: boolFromYesNo(nutrition?.needHelpInEating, template.nutrition.helpEating),
-      swallowing: boolFromYesNo(nutrition?.swallowingDifficulties, template.nutrition.swallowing),
-      ngTube: boolFromYesNo(nutrition?.ngTube, template.nutrition.ngTube),
+      allergies: boolFromYesNo(nutrition?.allergy, null),
+      specialDiet: boolFromYesNo(nutrition?.specialDiet, null),
+      dietType: nutrition?.dietType || '',
+      helpEating: boolFromYesNo(nutrition?.needHelpInEating, null),
+      swallowing: boolFromYesNo(nutrition?.swallowingDifficulties, null),
+      ngTube: boolFromYesNo(nutrition?.ngTube, null),
     },
     hygiene: {
-      independent: boolFromYesNo(personal?.hygieneNeeds, template.hygiene.independent),
-      mouthCare: boolFromYesNo(personal?.mouthCarePlan, template.hygiene.mouthCare),
+      independent: boolFromYesNo(personal?.hygieneNeeds, null),
+      mouthCare: boolFromYesNo(personal?.mouthCarePlan, null),
     },
     bladder: {
-      dysfunction: boolFromYesNo(bladderBowel?.bladderDysfunction, template.bladder.dysfunction),
-      catheter: boolFromYesNo(bladderBowel?.catheterPlan, template.bladder.catheter),
-      pads: boolFromYesNo(bladderBowel?.incontinentPads, template.bladder.pads),
+      dysfunction: boolFromYesNo(bladderBowel?.bladderDysfunction, null),
+      catheter: boolFromYesNo(bladderBowel?.catheterPlan, null),
+      pads: boolFromYesNo(bladderBowel?.incontinentPads, null),
     },
     psych: {
-      concerns: boolFromYesNo(psychologicalNeeds?.psychologicalNeeds, template.psych.concerns),
-      depression: boolFromYesNo(psychologicalNeeds?.depressionHistory, template.psych.depression),
-      anxiety: boolFromYesNo(psychologicalNeeds?.anxietyhistory, template.psych.anxiety),
-      dementia: boolFromYesNo(psychologicalNeeds?.signDementia, template.psych.dementia),
+      concerns: boolFromYesNo(psychologicalNeeds?.psychologicalNeeds, null),
+      depression: boolFromYesNo(psychologicalNeeds?.depressionHistory, null),
+      anxiety: boolFromYesNo(psychologicalNeeds?.anxietyhistory, null),
+      dementia: boolFromYesNo(psychologicalNeeds?.signDementia, null),
     },
     skin: {
-      openWounds: boolFromYesNo(skinIntegrity?.openWounds, template.skin.openWounds),
-      pressureUlcer: boolFromYesNo(skinIntegrity?.pressureUlcer, template.skin.pressureUlcer),
+      openWounds: boolFromYesNo(skinIntegrity?.openWounds, null),
+      pressureUlcer: boolFromYesNo(skinIntegrity?.pressureUlcer, null),
     },
     mobility: {
-      independent: boolFromYesNo(handlingAssessment?.isPatientMobile, template.mobility.independent),
-      bedMove: boolFromYesNo(handlingAssessment?.moveInBed, template.mobility.bedMove),
-      bedToChair: boolFromYesNo(handlingAssessment?.mobilityFromBedToChair, template.mobility.bedToChair),
-      toilet: boolFromYesNo(handlingAssessment?.mobilityToWashroom, template.mobility.toilet),
+      independent: boolFromYesNo(handlingAssessment?.isPatientMobile, null),
+      bedMove: boolFromYesNo(handlingAssessment?.moveInBed, null),
+      bedToChair: boolFromYesNo(handlingAssessment?.mobilityFromBedToChair, null),
+      toilet: boolFromYesNo(handlingAssessment?.mobilityToWashroom, null),
     },
     vitals: {
-      bp: rawPatient?.bloodPressure || template.vitals.bp,
-      sugar: rawPatient?.bloodSugar || template.vitals.sugar,
-      resp: rawPatient?.respiration || template.vitals.resp,
-      spo2: rawPatient?.sp02 || template.vitals.spo2,
-      pulse: rawPatient?.pulseRate || template.vitals.pulse,
-      temp: rawPatient?.temperature || template.vitals.temp,
-      weight: rawPatient?.weight || template.vitals.weight,
-      urinalysis: rawPatient?.urinalysis || template.vitals.urinalysis,
+      bp: initialVitals?.bloodPressure || rawPatient?.bloodPressure || '',
+      sugar: initialVitals?.bloodSugar || rawPatient?.bloodSugar || '',
+      resp: initialVitals?.respiration || rawPatient?.respiration || '',
+      spo2: initialVitals?.sp02 || rawPatient?.sp02 || '',
+      pulse: initialVitals?.pulseRate || rawPatient?.pulseRate || '',
+      temp: initialVitals?.temperature || rawPatient?.temperature || '',
+      weight: initialVitals?.weight || rawPatient?.weight || '',
+      urinalysis: initialVitals?.urinalysis || rawPatient?.urinalysis || '',
     },
-    medications: rawPatient?.currentMedications || rawPatient?.medications || template.medications,
+    medications: rawPatient?.currentMedications || rawPatient?.medications || '',
     communication: {
-      needs: boolFromYesNo(rawPatient?.anyCommunicationNeeds, template.communication.needs),
-      hearing: boolFromYesNo(rawPatient?.anyHearingNeeds, template.communication.hearing),
-      speech: boolFromYesNo(rawPatient?.anySpeechImpairment, template.communication.speech),
-      visual: boolFromYesNo(rawPatient?.anyVisualImpairment, template.communication.visual),
-      understanding: boolFromYesNo(rawPatient?.anyUnderstandingDifficulties, template.communication.understanding),
+      needs: boolFromYesNo(communicationStyle?.anyCommunicationNeeds, null),
+      hearing: boolFromYesNo(communicationStyle?.anyHearingNeeds, null),
+      speech: boolFromYesNo(communicationStyle?.anySpeechImpairment, null),
+      visual: boolFromYesNo(communicationStyle?.anyVisualImpairment, null),
+      understanding: boolFromYesNo(communicationStyle?.anyUnderstandingDifficulties, null),
     },
     medicalHistory:
       rawPatient?.medicalHistoryDescription
       || medicalHistoryRecord?.medicalHistoryDescription
       || (typeof medicalHistoryRecord === 'string' ? medicalHistoryRecord : '')
-      || template.medicalHistory,
+      || '',
+    sectionNextOfKin: rawPatient?.nextOfKin || null,
+    sectionAdmissionChecklist: rawPatient?.admissionChecklist || null,
+    sectionMedicalHistory: rawPatient?.medicalHistory || null,
+    sectionCommunicationStyle: rawPatient?.communicationStyle || null,
+    sectionInfectionControl: rawPatient?.infectionControl || null,
+    sectionBreathPain: rawPatient?.breathPain || null,
+    sectionSleepNutrition: rawPatient?.sleepNutrition || null,
+    sectionHygienePsychological: rawPatient?.hygienePsychological || null,
+    sectionSkinMobility: rawPatient?.skinMobility || null,
+    sectionInitialVitals: rawPatient?.initialVitals || null,
   };
 }
 
@@ -682,6 +780,7 @@ function splitPatientName(name) {
 function createPatientUpdateForm(profile, fallbackId) {
   const person = profile && typeof profile === 'object' ? profile : {};
   const nameParts = splitPatientName(person?.name);
+  const nullableBoolean = (value) => (value === true ? true : value === false ? false : null);
 
   return {
     patientId: String(person?.id || fallbackId || '').trim(),
@@ -745,21 +844,21 @@ function createPatientUpdateForm(profile, fallbackId) {
     },
     sleepNutrition: {
       sleep: {
-        wakeUpAtNight: Boolean(person?.sleep?.nightWake),
-        UseOfNightSedation: Boolean(person?.sleep?.sedation),
-        userSleepWell: Boolean(person?.sleep?.sleepsWell),
-        RestDuringTheDay: false,
+        wakeUpAtNight: nullableBoolean(person?.sleep?.nightWake),
+        UseOfNightSedation: nullableBoolean(person?.sleep?.sedation),
+        userSleepWell: nullableBoolean(person?.sleep?.sleepsWell),
+        RestDuringTheDay: null,
         usualTimeToWakeUp: person?.sleep?.wakeTime || '',
         bestSleepingPosition: person?.sleep?.bestPosition || '',
       },
       nutrition: {
-        allergy: Boolean(person?.nutrition?.allergies),
-        specialDiet: Boolean(person?.nutrition?.specialDiet),
-        needHelpInEating: Boolean(person?.nutrition?.helpEating),
-        feedingAid: false,
-        swallowingDifficulties: Boolean(person?.nutrition?.swallowing),
+        allergy: nullableBoolean(person?.nutrition?.allergies),
+        specialDiet: nullableBoolean(person?.nutrition?.specialDiet),
+        needHelpInEating: nullableBoolean(person?.nutrition?.helpEating),
+        feedingAid: null,
+        swallowingDifficulties: nullableBoolean(person?.nutrition?.swallowing),
         dietType: person?.nutrition?.dietType || '',
-        ngTube: Boolean(person?.nutrition?.ngTube),
+        ngTube: nullableBoolean(person?.nutrition?.ngTube),
         nutritionConcerns: '',
       },
     },
@@ -834,6 +933,7 @@ export default function PatientProfile() {
   const [savingProfileUpdate, setSavingProfileUpdate] = useState(false);
   const [profileUpdateError, setProfileUpdateError] = useState('');
   const [profileUpdateSuccess, setProfileUpdateSuccess] = useState('');
+  const [showProfileSaveAlert, setShowProfileSaveAlert] = useState(false);
   const [profileUpdateForm, setProfileUpdateForm] = useState(() => createPatientUpdateForm(null, effectivePatientId));
 
   const setProfileUpdateField = (path, value) => {
@@ -857,41 +957,35 @@ export default function PatientProfile() {
     });
   };
 
-  useEffect(() => {
-    let isMounted = true;
-
-    const loadPatientProfile = async () => {
-      setProfileLoading(true);
-      setProfileError('');
+  const loadPatientProfile = useCallback(async () => {
+    setProfileLoading(true);
+    setProfileError('');
+    try {
+      const response = await apiFetch(`/patients/${effectivePatientId}`, { method: 'GET' });
+      let data = {};
       try {
-        const response = await apiFetch(`/patients/${effectivePatientId}`, { method: 'GET' });
-        let data = {};
-        try {
-          data = await response.json();
-        } catch {
-          data = {};
-        }
-
-        if (!response.ok) {
-          throw new Error(data?.message || data?.error || 'Failed to load patient profile.');
-        }
-
-        const rawPatient = data?.patient || data?.data || data;
-        if (!isMounted) return;
-        const hydratedProfile = await hydratePatientProfile(rawPatient, effectivePatientId);
-        if (!isMounted) return;
-        setRemotePatient(hydratedProfile);
-      } catch (error) {
-        if (!isMounted) return;
-        setProfileError(error?.message || 'Unable to load patient profile.');
-      } finally {
-        if (isMounted) setProfileLoading(false);
+        data = await response.json();
+      } catch {
+        data = {};
       }
-    };
 
-    loadPatientProfile();
-    return () => { isMounted = false; };
+      if (!response.ok) {
+        throw new Error(data?.message || data?.error || 'Failed to load patient profile.');
+      }
+
+      const rawPatient = data?.patient || data?.data || data;
+      const hydratedProfile = await hydratePatientProfile(rawPatient, effectivePatientId);
+      setRemotePatient(hydratedProfile);
+    } catch (error) {
+      setProfileError(error?.message || 'Unable to load patient profile.');
+    } finally {
+      setProfileLoading(false);
+    }
   }, [effectivePatientId]);
+
+  useEffect(() => {
+    loadPatientProfile();
+  }, [loadPatientProfile]);
 
   /* Medication database */
   const MEDICATION_DB = [
@@ -1492,6 +1586,28 @@ export default function PatientProfile() {
     setProfileUpdateError('');
     setProfileUpdateSuccess('');
 
+    const toBooleanString = (value) => (value ? 'true' : 'false');
+    const yesNo = (value) => (value === true ? 'Yes' : value === false ? 'No' : '');
+    const optionalBoolean = (value) => (value === true || value === false ? value : undefined);
+    const optionalText = (value) => {
+      const normalized = String(value ?? '').trim();
+      return normalized ? normalized : undefined;
+    };
+    const pruneEmpty = (value) => {
+      if (value === undefined || value === '') return undefined;
+      if (Array.isArray(value)) {
+        const next = value.map(pruneEmpty).filter(item => item !== undefined);
+        return next.length ? next : undefined;
+      }
+      if (value && typeof value === 'object') {
+        const nextEntries = Object.entries(value)
+          .map(([key, item]) => [key, pruneEmpty(item)])
+          .filter(([, item]) => item !== undefined);
+        return nextEntries.length ? Object.fromEntries(nextEntries) : undefined;
+      }
+      return value;
+    };
+
     const patchJson = async (path, payload) => {
       const response = await apiFetch(path, {
         method: 'PATCH',
@@ -1587,55 +1703,55 @@ export default function PatientProfile() {
         homeOxygenNeeded: Boolean(profileUpdateForm.breathPain.homeOxygenNeeded),
         isSmoker: Boolean(profileUpdateForm.breathPain.isSmoker),
         everSmoked: Boolean(profileUpdateForm.breathPain.everSmoked),
-        painPresent: Boolean(profileUpdateForm.breathPain.painPresent),
+        painPresent: toBooleanString(profileUpdateForm.breathPain.painPresent),
         anagelsiaPrescribed: Boolean(profileUpdateForm.breathPain.anagelsiaPrescribed),
         locationOfPain: profileUpdateForm.breathPain.locationOfPain,
         painScore: profileUpdateForm.breathPain.painScore,
       });
 
-      await patchJson('/patients/sleep-nutrition', {
+      const sleepNutritionPayload = pruneEmpty({
         patientId: patientIdForPatch,
         sleep: {
-          wakeUpAtNight: Boolean(profileUpdateForm.sleepNutrition.sleep.wakeUpAtNight),
-          UseOfNightSedation: Boolean(profileUpdateForm.sleepNutrition.sleep.UseOfNightSedation),
-          userSleepWell: Boolean(profileUpdateForm.sleepNutrition.sleep.userSleepWell),
-          RestDuringTheDay: Boolean(profileUpdateForm.sleepNutrition.sleep.RestDuringTheDay),
-          usualTimeToWakeUp: profileUpdateForm.sleepNutrition.sleep.usualTimeToWakeUp,
-          bestSleepingPosition: profileUpdateForm.sleepNutrition.sleep.bestSleepingPosition,
+          wakeUpAtNight: optionalBoolean(profileUpdateForm.sleepNutrition.sleep.wakeUpAtNight),
+          UseOfNightSedation: optionalBoolean(profileUpdateForm.sleepNutrition.sleep.UseOfNightSedation),
+          userSleepWell: optionalBoolean(profileUpdateForm.sleepNutrition.sleep.userSleepWell),
+          RestDuringTheDay: optionalBoolean(profileUpdateForm.sleepNutrition.sleep.RestDuringTheDay),
+          usualTimeToWakeUp: optionalText(profileUpdateForm.sleepNutrition.sleep.usualTimeToWakeUp),
+          bestSleepingPosition: optionalText(profileUpdateForm.sleepNutrition.sleep.bestSleepingPosition),
         },
         nutrition: {
-          allergy: Boolean(profileUpdateForm.sleepNutrition.nutrition.allergy),
-          specialDiet: Boolean(profileUpdateForm.sleepNutrition.nutrition.specialDiet),
-          needHelpInEating: Boolean(profileUpdateForm.sleepNutrition.nutrition.needHelpInEating),
-          feedingAid: Boolean(profileUpdateForm.sleepNutrition.nutrition.feedingAid),
-          swallowingDifficulties: Boolean(profileUpdateForm.sleepNutrition.nutrition.swallowingDifficulties),
-          dietType: profileUpdateForm.sleepNutrition.nutrition.dietType,
-          ngTube: Boolean(profileUpdateForm.sleepNutrition.nutrition.ngTube),
-          nutritionConcerns: profileUpdateForm.sleepNutrition.nutrition.nutritionConcerns,
+          allergy: optionalBoolean(profileUpdateForm.sleepNutrition.nutrition.allergy),
+          specialDiet: optionalBoolean(profileUpdateForm.sleepNutrition.nutrition.specialDiet),
+          needHelpInEating: optionalBoolean(profileUpdateForm.sleepNutrition.nutrition.needHelpInEating),
+          feedingAid: optionalBoolean(profileUpdateForm.sleepNutrition.nutrition.feedingAid),
+          swallowingDifficulties: optionalBoolean(profileUpdateForm.sleepNutrition.nutrition.swallowingDifficulties),
+          dietType: optionalText(profileUpdateForm.sleepNutrition.nutrition.dietType),
+          ngTube: optionalBoolean(profileUpdateForm.sleepNutrition.nutrition.ngTube),
+          nutritionConcerns: optionalText(profileUpdateForm.sleepNutrition.nutrition.nutritionConcerns),
         },
-      });
-
-      await patchJson('/patients/sleep-nutrition', {
-        patientId: patientIdForPatch,
         personal: {
-          hygieneNeeds: Boolean(profileUpdateForm.hygienePsych.personal.hygieneNeeds),
-          mouthCarePlan: Boolean(profileUpdateForm.hygienePsych.personal.mouthCarePlan),
-          diabeteFoot: Boolean(profileUpdateForm.hygienePsych.personal.diabeteFoot),
+          hygieneNeeds: yesNo(profileUpdateForm.hygienePsych.personal.hygieneNeeds),
+          mouthCarePlan: yesNo(profileUpdateForm.hygienePsych.personal.mouthCarePlan),
+          diabeteFoot: yesNo(profileUpdateForm.hygienePsych.personal.diabeteFoot),
         },
         bladderBowel: {
-          bladderDysfunction: Boolean(profileUpdateForm.hygienePsych.bladderBowel.bladderDysfunction),
+          bladderDysfunction: yesNo(profileUpdateForm.hygienePsych.bladderBowel.bladderDysfunction),
           catheterDescription: profileUpdateForm.hygienePsych.bladderBowel.catheterDescription,
-          catheterPlan: Boolean(profileUpdateForm.hygienePsych.bladderBowel.catheterPlan),
-          incontinentPads: Boolean(profileUpdateForm.hygienePsych.bladderBowel.incontinentPads),
+          catheterPlan: yesNo(profileUpdateForm.hygienePsych.bladderBowel.catheterPlan),
+          incontinentPads: yesNo(profileUpdateForm.hygienePsych.bladderBowel.incontinentPads),
         },
         psychologicalNeeds: {
-          psychologicalNeeds: Boolean(profileUpdateForm.hygienePsych.psychologicalNeeds.psychologicalNeeds),
-          depressionHistory: Boolean(profileUpdateForm.hygienePsych.psychologicalNeeds.depressionHistory),
-          anxietyhistory: Boolean(profileUpdateForm.hygienePsych.psychologicalNeeds.anxietyhistory),
-          signDementia: Boolean(profileUpdateForm.hygienePsych.psychologicalNeeds.signDementia),
+          psychologicalNeeds: yesNo(profileUpdateForm.hygienePsych.psychologicalNeeds.psychologicalNeeds),
+          depressionHistory: yesNo(profileUpdateForm.hygienePsych.psychologicalNeeds.depressionHistory),
+          anxietyhistory: yesNo(profileUpdateForm.hygienePsych.psychologicalNeeds.anxietyhistory),
+          signDementia: yesNo(profileUpdateForm.hygienePsych.psychologicalNeeds.signDementia),
           psychologicalNotes: profileUpdateForm.hygienePsych.psychologicalNeeds.psychologicalNotes,
         },
       });
+
+      if (sleepNutritionPayload?.sleep || sleepNutritionPayload?.nutrition) {
+        await patchJson('/patients/sleep-nutrition', sleepNutritionPayload);
+      }
 
       try {
         await patchJson('/patients/skin-mobility', {
@@ -1710,12 +1826,22 @@ export default function PatientProfile() {
     }
   };
 
-  const localPatient = patientsData.find(pt => pt.id === patientId);
+  const localPatient = patientsData.find((pt) => {
+    const candidateIds = [
+      pt?.id,
+      pt?.patientId,
+      pt?.uuid,
+      pt?.regNo,
+      pt?._id,
+    ].filter(Boolean).map((value) => String(value));
+    return candidateIds.includes(String(patientId || ''));
+  });
   const p = remotePatient || localPatient;
   const persistedPhotoUrl = p?.profileImage?.url || null;
   const persistedPreviewDataUrl = p?.profileImage?.previewDataUrl || null;
   const avatarSrc = photo || persistedPhotoUrl || persistedPreviewDataUrl || null;
   const showAvatarImage = Boolean(avatarSrc) && !avatarImageError;
+  const avatarDisplaySrc = showAvatarImage ? avatarSrc : DEFAULT_PROFILE_PLACEHOLDER;
   const cachedPhotoMeta = getCachedPatientPhoto(effectivePatientId);
   const canRefreshStoredPhoto = Boolean(
     p?.profileImage?.mediaId
@@ -1730,6 +1856,21 @@ export default function PatientProfile() {
     setProfileUpdateSuccess('');
     setProfileUpdateForm(createPatientUpdateForm(p, effectivePatientId));
   }, [showUpdateModal, p, effectivePatientId]);
+
+  useEffect(() => {
+    if (!profileUpdateSuccess) {
+      setShowProfileSaveAlert(false);
+      return undefined;
+    }
+
+    setShowProfileSaveAlert(true);
+    const timer = window.setTimeout(() => {
+      setShowProfileSaveAlert(false);
+      setProfileUpdateSuccess('');
+    }, 3600);
+
+    return () => window.clearTimeout(timer);
+  }, [profileUpdateSuccess]);
 
   useEffect(() => {
     setAvatarImageError(false);
@@ -1779,6 +1920,82 @@ export default function PatientProfile() {
   if (!p.mobility.independent) flags.push({ label: 'Mobility Assist Required', status: 'warn', detail: 'Not independent' });
   if (flags.length === 0) flags.push({ label: 'No active clinical flags', status: 'ok', detail: '' });
 
+  const medicationList = String(p.medications || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const latestVitalRecord = vitalRecords[0] || null;
+  const latestVitalSummary = latestVitalRecord
+    ? `${latestVitalRecord.date} at ${latestVitalRecord.time}`
+    : `Admitted ${p.enrolled}`;
+  const hasNextOfKinData = hasMeaningfulSectionData(p.sectionNextOfKin);
+  const hasAdmissionChecklistData = hasMeaningfulSectionData(p.sectionAdmissionChecklist);
+  const hasMedicalHistoryData = hasMeaningfulSectionData(p.sectionMedicalHistory) || Boolean(String(p.medicalHistory || '').trim());
+  const hasCommunicationData = hasMeaningfulSectionData(p.sectionCommunicationStyle);
+  const hasInfectionControlData = hasMeaningfulSectionData(p.sectionInfectionControl);
+  const hasBreathPainData = hasMeaningfulSectionData(p.sectionBreathPain);
+  const hasSleepNutritionData = hasMeaningfulSectionData(p.sectionSleepNutrition);
+  const hasHygienePsychData = hasMeaningfulSectionData(p.sectionHygienePsychological);
+  const hasSkinMobilityData = hasMeaningfulSectionData(p.sectionSkinMobility);
+  const hasInitialVitalsData = hasMeaningfulSectionData(p.sectionInitialVitals);
+  const patientStatusLabel = formatStatusLabel(p.status);
+  const patientStatusClass = p.status === 'active' ? ' is-active' : ' is-pending';
+  const patientProfileDetails = [
+    { label: 'Patient ID', value: p.id || '—' },
+    { label: 'Date of Birth', value: p.dob || '—' },
+    { label: 'Phone', value: p.phone || '—' },
+    { label: 'Address', value: p.address || '—' },
+    { label: 'Primary Nurse', value: p.nurse || '—' },
+    { label: 'Physician', value: p.doctor?.name || '—' },
+  ];
+  const patientHighlights = [
+    `Emergency contact: ${p.emergency?.name || '—'}${p.emergency?.relationship ? ` (${p.emergency.relationship})` : ''}`,
+    `Clinical focus: ${p.diagnosis || 'No diagnosis recorded'}`,
+    `Latest vitals update: ${latestVitalSummary}`,
+  ];
+  const patientSnapshotItems = [
+    { label: 'Registration No.', value: p.regNo || '—' },
+    { label: 'Region', value: p.region || '—' },
+    { label: 'Medication Count', value: medicationList.length || 0 },
+    { label: 'Clinical Flags', value: flags[0]?.label || 'None' },
+  ];
+  const patientOverviewRows = [
+    {
+      label: 'Primary Nurse',
+      detail: p.nurse || 'No nurse assigned',
+      meta: p.nursePin || 'PIN unavailable',
+      status: p.nurse ? 'Assigned' : 'Pending',
+    },
+    {
+      label: 'Physician',
+      detail: p.doctor?.name || 'No physician on file',
+      meta: p.doctor?.facility || 'Facility unavailable',
+      status: p.doctor?.name ? 'On file' : 'Pending',
+    },
+    {
+      label: 'Emergency Contact',
+      detail: p.emergency?.name || 'No contact set',
+      meta: p.emergency?.phone || p.emergency?.relationship || 'No contact details',
+      status: hasNextOfKinData ? (p.emergency?.phone ? 'Reachable' : 'Recorded') : 'No data',
+    },
+    {
+      label: 'Latest Vitals',
+      detail: latestVitalRecord ? `${latestVitalRecord.bp} • SpO₂ ${latestVitalRecord.spo2}` : 'No recent vitals',
+      meta: latestVitalSummary,
+      status: latestVitalRecord ? 'Updated' : hasInitialVitalsData ? 'On file' : 'No data',
+    },
+  ];
+
+  const handlePrimaryAction = () => {
+    if (p.phone) {
+      window.location.href = `tel:${String(p.phone).replace(/\s+/g, '')}`;
+      return;
+    }
+    if (p.email) {
+      window.location.href = `mailto:${p.email}`;
+    }
+  };
+
   const getProfileUpdateValue = (path) => {
     const keys = String(path || '').split('.').filter(Boolean);
     return keys.reduce((acc, key) => (acc && typeof acc === 'object' ? acc[key] : undefined), profileUpdateForm);
@@ -1799,207 +2016,325 @@ export default function PatientProfile() {
   );
 
   return (
-    <motion.div className="page-wrapper" style={{ background: '#f8f9fa' }} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.24 }}>
-
-      {/* ── EHR Header Bar ── */}
-      <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 5, padding: '16px 20px', marginBottom: 16 }}>
-        <div className="d-flex align-items-center gap-3">
-          <button onClick={() => navigate('/patients')} style={{
-            background: 'none', border: '1px solid #e5e7eb', borderRadius: 2, padding: '7px 9px',
-            cursor: 'pointer', color: 'var(--kh-text-muted)', display: 'flex',
-          }}><FiArrowLeft size={15} /></button>
-
-          {/* Patient photo upload */}
-          <input type="file" accept="image/*" ref={fileRef} onChange={handlePhoto} style={{ display: 'none' }} />
-          <div
-            onClick={() => fileRef.current?.click()}
-            title="Upload patient photo"
-            style={{
-              width: 72, height: 72, borderRadius: '50%', flexShrink: 0, cursor: 'pointer',
-              border: '2px dashed #d1d5db', background: showAvatarImage ? 'none' : '#f9fafb',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              overflow: 'hidden', transition: 'border-color 0.2s',
+    <motion.div className="page-wrapper nurse-profile-page patient-profile-page" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.24 }}>
+      {showProfileSaveAlert && (
+        <div className="patient-profile-save-alert" role="status" aria-live="polite">
+          <div className="patient-profile-save-alert__icon">
+            <FiCheckCircle size={18} />
+          </div>
+          <div className="patient-profile-save-alert__content">
+            <strong>Changes saved</strong>
+            <span>{profileUpdateSuccess}</span>
+          </div>
+          <button
+            type="button"
+            className="patient-profile-save-alert__close"
+            onClick={() => {
+              setShowProfileSaveAlert(false);
+              setProfileUpdateSuccess('');
             }}
-            onMouseEnter={e => e.currentTarget.style.borderColor = '#45B6FE'}
-            onMouseLeave={e => e.currentTarget.style.borderColor = '#d1d5db'}
+            aria-label="Dismiss save alert"
           >
-            {showAvatarImage
-              ? <img
-                  src={avatarSrc}
-                  alt={p.name}
-                  loading="lazy"
-                  onError={() => setAvatarImageError(true)}
-                  style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }}
-                />
-              : <FiCamera size={24} style={{ color: '#9ca3af' }} />
-            }
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="d-flex align-items-center gap-2">
-              <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--kh-text)' }}>{p.name}</span>
-              <span style={{
-                fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 2, textTransform: 'uppercase', letterSpacing: '0.5px',
-                background: p.status === 'active' ? '#F0F7FE' : '#fef3c7',
-                color: p.status === 'active' ? '#1565A0' : '#92400e',
-                border: `1px solid ${p.status === 'active' ? '#BAE0FD' : '#fde68a'}`,
-              }}>{p.status}</span>
-            </div>
-            <div style={{ fontSize: 12, color: 'var(--kh-text-muted)', marginTop: 2 }}>
-              <span style={{ fontWeight: 600, color: 'var(--kh-text)' }}>{p.id}</span>
-              <span style={{ margin: '0 6px', color: '#d1d5db' }}>|</span>
-              {p.gender}, {p.age} yrs
-              <span style={{ margin: '0 6px', color: '#d1d5db' }}>|</span>
-              DOB: {p.dob}
-              <span style={{ margin: '0 6px', color: '#d1d5db' }}>|</span>
-              <span style={{ fontWeight: 600 }}>{p.regNo}</span>
-            </div>
-            {photoUploading && <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4, fontWeight: 600 }}>Uploading patient photo...</div>}
-            {!photoUploading && photoUploadSuccess && <div style={{ fontSize: 11, color: '#059669', marginTop: 4, fontWeight: 600 }}>{photoUploadSuccess}</div>}
-            {!photoUploading && photoUploadError && <div style={{ fontSize: 11, color: '#dc2626', marginTop: 4, fontWeight: 600 }}>{photoUploadError}</div>}
-            {!!profileUpdateSuccess && <div style={{ fontSize: 11, color: '#059669', marginTop: 4, fontWeight: 600 }}>{profileUpdateSuccess}</div>}
-            {!!profileUpdateError && !showUpdateModal && <div style={{ fontSize: 11, color: '#dc2626', marginTop: 4, fontWeight: 600 }}>{profileUpdateError}</div>}
-            {!photoUploading && canRefreshStoredPhoto && (
-              <button
-                type="button"
-                onClick={handleRefreshStoredPhoto}
-                disabled={photoRefreshLoading}
-                style={{
-                  marginTop: 6,
-                  background: '#F0F7FE',
-                  color: '#1565A0',
-                  border: '1px solid #BAE0FD',
-                  borderRadius: 2,
-                  padding: '3px 10px',
-                  fontSize: 10.5,
-                  fontWeight: 700,
-                  cursor: photoRefreshLoading ? 'not-allowed' : 'pointer',
-                  opacity: photoRefreshLoading ? 0.7 : 1,
-                }}
-              >
-                {photoRefreshLoading ? 'Refreshing photo...' : 'Refresh stored photo'}
-              </button>
-            )}
-          </div>
-
-          {/* Quick contact */}
-          <div className="d-flex gap-4" style={{ fontSize: 11.5, color: 'var(--kh-text-muted)' }}>
-            <div className="text-end">
-              <div style={{ fontWeight: 600, textTransform: 'uppercase', fontSize: 10, letterSpacing: '0.5px', marginBottom: 2 }}>Primary Nurse</div>
-              <div style={{ fontWeight: 600, color: 'var(--kh-text)', fontSize: 12.5 }}>{p.nurse}</div>
-              <div style={{ fontSize: 11, color: 'var(--kh-text-muted)' }}>{p.nursePin}</div>
-            </div>
-            <div style={{ width: 1, background: '#e5e7eb' }} />
-            <div className="text-end">
-              <div style={{ fontWeight: 600, textTransform: 'uppercase', fontSize: 10, letterSpacing: '0.5px', marginBottom: 2 }}>Physician</div>
-              <div style={{ fontWeight: 600, color: 'var(--kh-text)', fontSize: 12.5 }}>{p.doctor.name}</div>
-              <div style={{ fontSize: 11, color: 'var(--kh-text-muted)' }}>{p.doctor.facility}</div>
+            <FiX size={16} />
+          </button>
+        </div>
+      )}
+      <div className="nurse-profile-shell">
+        <div className="nurse-profile-topbar">
+          <div className="nurse-profile-topbar__left">
+            <button onClick={() => navigate('/patients')} className="nurse-profile-icon-btn"><FiArrowLeft size={15} /></button>
+            <div className="nurse-profile-breadcrumbs">
+              <span>Patients</span>
+              <FiChevronRight size={12} />
+              <span className="is-current">{p.name}</span>
             </div>
           </div>
-
-          <div style={{ width: 1, height: 36, background: '#e5e7eb' }} />
-          <div className="d-flex gap-1">
-            <button style={{ background: 'none', border: '1px solid #e5e7eb', borderRadius: 2, padding: '7px 9px', cursor: 'pointer', color: 'var(--kh-text-muted)', display: 'flex' }}><FiPrinter size={14} /></button>
-            <button
-              onClick={() => setShowUpdateModal(true)}
-              style={{ background: 'none', border: '1px solid #e5e7eb', borderRadius: 2, padding: '7px 9px', cursor: 'pointer', color: 'var(--kh-text-muted)', display: 'flex' }}
-            ><FiEdit2 size={14} /></button>
-            <button style={{ background: 'none', border: '1px solid #e5e7eb', borderRadius: 2, padding: '7px 9px', cursor: 'pointer', color: 'var(--kh-text-muted)', display: 'flex' }}><FiMoreHorizontal size={14} /></button>
+          <div className="nurse-profile-topbar__actions">
+            <button type="button" title="Print" className="nurse-profile-icon-btn" onClick={() => window.print()}><FiPrinter size={14} /></button>
+            <button type="button" title="Edit" className="nurse-profile-icon-btn nurse-profile-icon-btn--primary" onClick={() => setShowUpdateModal(true)}><FiEdit2 size={14} /></button>
+            <button type="button" title="Refresh" className="nurse-profile-icon-btn" onClick={loadPatientProfile}><FiRefreshCw size={14} /></button>
           </div>
         </div>
-      </div>
 
-      {/* ── Tab Bar ── */}
-      <div style={{ display: 'flex', gap: 0, background: '#F0F7FE', borderRadius: '2px 2px 0 0', borderBottom: '2px solid #45B6FE', marginBottom: 16 }}>
-        {TABS.map(t => (
-          <button key={t.key} onClick={() => setTab(t.key)} style={{
-            display: 'flex', alignItems: 'center', gap: 6, padding: '10px 18px', fontSize: 12.5,
-            fontWeight: tab === t.key ? 700 : 500, border: 'none', cursor: 'pointer',
-            background: tab === t.key ? '#45B6FE' : 'transparent',
-            color: tab === t.key ? '#fff' : '#2E7DB8',
-            borderBottom: tab === t.key ? '2px solid #45B6FE' : '2px solid transparent',
-            marginBottom: -2, transition: 'all 0.15s',
-            borderRadius: '2px 2px 0 0',
-          }}>{t.icon} {t.label}</button>
-        ))}
-      </div>
+        <div className="nurse-profile-header-card">
+          <div className="nurse-profile-header-card__meta">
+            <div className="nurse-profile-kicker">Patient profile</div>
+            <h2>{p.name}</h2>
+            <p>Patient overview with clinical status, care team, vitals, medications, and nursing records in the same layout style as the nurse profile page.</p>
+          </div>
+          <div className="nurse-profile-header-card__actions">
+            <button type="button" className="nurse-profile-primary-btn" onClick={handlePrimaryAction}>
+              <span className="nurse-profile-primary-btn__icon"><FiFileText size={14} /></span>
+              Generate Report
+            </button>
+          </div>
+        </div>
+
+        <div className="nurse-profile-summary-shell">
+          <div className="nurse-profile-summary-grid">
+            <div className="nurse-profile-card nurse-profile-card--hero">
+              <input type="file" accept="image/*" ref={fileRef} onChange={handlePhoto} style={{ display: 'none' }} />
+              <div
+                onClick={() => fileRef.current?.click()}
+                title="Upload patient photo"
+                className="nurse-profile-avatar"
+                style={{ background: '#fff' }}
+              >
+                <img
+                  src={avatarDisplaySrc}
+                  alt={showAvatarImage ? p.name : 'Default patient profile avatar'}
+                  loading="lazy"
+                  onError={() => {
+                    if (showAvatarImage) setAvatarImageError(true);
+                  }}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                />
+                <div className="nurse-profile-avatar__overlay">
+                  {showAvatarImage
+                    ? <>
+                        <FiUser size={16} color="#fff" />
+                        <span>Update</span>
+                      </>
+                    : <>
+                        <FiUser size={16} color="#fff" />
+                        <span>Avatar</span>
+                      </>
+                  }
+                </div>
+              </div>
+
+              <div className="nurse-profile-card__title">{p.name}</div>
+              <div className="nurse-profile-card__subtitle">{p.email || p.phone || 'No direct contact provided'}</div>
+              <div className="nurse-profile-status-row">
+                <span className={`nurse-profile-status-badge${patientStatusClass}`}>{patientStatusLabel}</span>
+                <span className="nurse-profile-status-badge is-warning">{p.regNo || 'No Reg. No.'}</span>
+              </div>
+              <div className="nurse-profile-mini-stats">
+                <div>
+                  <strong>{vitalRecords.length}</strong>
+                  <span>Vitals</span>
+                </div>
+                <div>
+                  <strong>{medicationList.length}</strong>
+                  <span>Meds</span>
+                </div>
+              </div>
+              {photoUploading && <div style={{ fontSize: 11, color: '#6b7280', marginTop: 10, fontWeight: 600 }}>Uploading patient photo...</div>}
+              {!photoUploading && photoUploadSuccess && <div style={{ fontSize: 11, color: '#059669', marginTop: 10, fontWeight: 600 }}>{photoUploadSuccess}</div>}
+              {!photoUploading && photoUploadError && <div style={{ fontSize: 11, color: '#dc2626', marginTop: 10, fontWeight: 600 }}>{photoUploadError}</div>}
+              {!!profileUpdateError && !showUpdateModal && <div style={{ fontSize: 11, color: '#dc2626', marginTop: 10, fontWeight: 600 }}>{profileUpdateError}</div>}
+              {!photoUploading && canRefreshStoredPhoto && (
+                <button
+                  type="button"
+                  className="nurse-profile-inline-btn"
+                  onClick={handleRefreshStoredPhoto}
+                  disabled={photoRefreshLoading}
+                  style={{ marginTop: 12, opacity: photoRefreshLoading ? 0.7 : 1, cursor: photoRefreshLoading ? 'not-allowed' : 'pointer' }}
+                >
+                  {photoRefreshLoading ? 'Refreshing photo...' : 'Refresh stored photo'}
+                </button>
+              )}
+            </div>
+
+            <div className="nurse-profile-card nurse-profile-card--details">
+              <div className="nurse-profile-card-heading">Profile Details</div>
+              <div className="nurse-profile-info-grid">
+                {patientProfileDetails.map((item) => (
+                  <div key={item.label} className="nurse-profile-info-item">
+                    <span>{item.label}</span>
+                    <strong>{item.value}</strong>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="nurse-profile-card nurse-profile-card--notes">
+              <div className="nurse-profile-card-heading nurse-profile-card-heading--with-action">
+                <span>Care Highlights</span>
+                <button type="button" className="nurse-profile-link-btn" onClick={() => setTab('notes')}>Open notes</button>
+              </div>
+              <div className="nurse-profile-note-list">
+                {patientHighlights.map((item, index) => (
+                  <div key={`${item}-${index}`} className="nurse-profile-note-item">• {item}</div>
+                ))}
+              </div>
+              <button type="button" className="nurse-profile-inline-btn" onClick={() => setTab('clinical')}>View clinical assessment</button>
+            </div>
+
+            <div className="nurse-profile-card nurse-profile-card--files">
+              <div className="nurse-profile-card-heading nurse-profile-card-heading--with-action">
+                <span>Quick Access</span>
+                <button type="button" className="nurse-profile-link-btn" onClick={() => setTab('chart')}>Open summary</button>
+              </div>
+              <div className="nurse-profile-doc-list">
+                {[
+                  { key: 'vitals', label: 'Vitals Records', hint: latestVitalSummary, icon: <FiThermometer size={14} /> },
+                  { key: 'medications', label: 'Medication List', hint: `${medicationList.length} active items`, icon: <FiFileText size={14} /> },
+                  { key: 'notes', label: 'Nurse Notes', hint: `${nurseNotes.length} entries recorded`, icon: <FiEdit2 size={14} /> },
+                ].map((item) => (
+                  <button key={item.key} type="button" className="nurse-profile-doc-item" onClick={() => setTab(item.key)}>
+                    <span className="nurse-profile-doc-item__icon">{item.icon}</span>
+                    <span className="nurse-profile-doc-item__content">
+                      <strong>{item.label}</strong>
+                      <small>{item.hint}</small>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="kh-card nurse-profile-board">
+          <div className="nurse-profile-tabs">
+            {TABS.map((item) => (
+              <button key={item.key} type="button" onClick={() => setTab(item.key)} className={`nurse-profile-tab${tab === item.key ? ' active' : ''}`}>
+                {item.icon} {item.label}
+                {item.key !== 'chart' && <span className="nurse-profile-tab__dot is-ready" />}
+              </button>
+            ))}
+          </div>
+
+          <div className="nurse-profile-board__content">
 
       {/* ═══ CHART SUMMARY ═══ */}
       {tab === 'chart' && (
-        <div className="row g-3">
+        <>
+          <div className="nurse-profile-overview-grid" style={{ marginBottom: 18 }}>
+            <div className="nurse-profile-card nurse-profile-card--timeline">
+              <div className="nurse-profile-card-heading nurse-profile-card-heading--with-action">
+                <span>Care Summary</span>
+                <button type="button" className="nurse-profile-inline-btn" onClick={() => setTab('clinical')}>Clinical details</button>
+              </div>
+              <div className="nurse-profile-timeline-table">
+                <div className="nurse-profile-timeline-head">
+                  <span>Category</span>
+                  <span>Detail</span>
+                  <span>Context</span>
+                  <span>Status</span>
+                </div>
+                {patientOverviewRows.map((row) => (
+                  <div key={row.label} className="nurse-profile-timeline-row" style={{ cursor: 'default' }}>
+                    <span>
+                      <strong>{row.label}</strong>
+                      <small>{row.meta}</small>
+                    </span>
+                    <span>{row.detail}</span>
+                    <span>{row.meta}</span>
+                    <span>
+                      <em className={row.status === 'Assigned' || row.status === 'Updated' || row.status === 'Reachable' ? 'is-active' : ''}>{row.status}</em>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="nurse-profile-card nurse-profile-card--snapshot">
+              <div className="nurse-profile-card-heading">Profile Snapshot</div>
+              <div className="nurse-profile-snapshot-list">
+                {patientSnapshotItems.map((item) => (
+                  <div key={item.label} className="nurse-profile-snapshot-item">
+                    <span>{item.label}</span>
+                    <strong>{item.value}</strong>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="row g-3">
           {/* Left column */}
           <div className="col-lg-4">
-            <Panel title="Demographics">
-              <DataRow label="Full Name">{p.name}</DataRow>
-              <DataRow label="Preferred Name">{p.preferredName}</DataRow>
-              <DataRow label="Date of Birth">{p.dob}</DataRow>
-              <DataRow label="Sex">{p.gender}</DataRow>
-              <DataRow label="Phone">{p.phone}</DataRow>
-              <DataRow label="Email">{p.email}</DataRow>
-              <DataRow label="Address">{p.address}</DataRow>
-              <DataRow label="GPS Code">{p.gps}</DataRow>
-              <DataRow label="Region">{p.region}</DataRow>
+            <Panel title="Next of kin Info" variant="summary">
+              {hasNextOfKinData ? (
+                <>
+                  <DataRow label="Full Name">{p.emergency.name}</DataRow>
+                  <DataRow label="Relationship">{p.emergency.relationship}</DataRow>
+                  <DataRow label="Contact One">{p.sectionNextOfKin?.contactOne}</DataRow>
+                  <DataRow label="Contact Two">{p.sectionNextOfKin?.contactTwo}</DataRow>
+                  <DataRow label="Personal Doctor">{p.doctor.name}</DataRow>
+                  <DataRow label="Doctor Facility">{p.doctor.facility}</DataRow>
+                  <DataRow label="Doctor Contact">{p.doctor.phone}</DataRow>
+                </>
+              ) : <NoDataState />}
             </Panel>
 
-            <Panel title="Emergency Contact">
-              <DataRow label="Name">{p.emergency.name}</DataRow>
-              <DataRow label="Relationship">{p.emergency.relationship}</DataRow>
-              <DataRow label="Phone">{p.emergency.phone}</DataRow>
+            <Panel title="Emergency Contact" variant="summary">
+              {hasNextOfKinData ? (
+                <>
+                  <DataRow label="Name">{p.emergency.name}</DataRow>
+                  <DataRow label="Relationship">{p.emergency.relationship}</DataRow>
+                  <DataRow label="Phone">{p.emergency.phone}</DataRow>
+                </>
+              ) : <NoDataState />}
             </Panel>
 
-            <Panel title="Cultural / Religious">
-              <div style={{ fontSize: 12.5, color: 'var(--kh-text)', lineHeight: 1.6 }}>{p.cultural}</div>
+            <Panel title="Cultural / Religious" variant="summary">
+              {String(p.cultural || '').trim()
+                ? <div style={{ fontSize: 12.5, color: 'var(--kh-text)', lineHeight: 1.6 }}>{p.cultural}</div>
+                : <NoDataState />}
             </Panel>
           </div>
 
           {/* Center column */}
           <div className="col-lg-4">
-            <Panel title="Primary Diagnosis">
-              <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--kh-text)', marginBottom: 8 }}>{p.diagnosis}</div>
-              <div style={{ fontSize: 12, color: 'var(--kh-text-muted)', lineHeight: 1.6 }}>
-                <span style={{ fontWeight: 600 }}>History:</span> {p.medicalHistory}
-              </div>
+            <Panel title="Primary Diagnosis" variant="summary">
+              {String(p.diagnosis || '').trim() || hasMedicalHistoryData ? (
+                <>
+                  <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--kh-text)', marginBottom: 8 }}>{p.diagnosis || 'No diagnosis recorded'}</div>
+                  <div style={{ fontSize: 12, color: 'var(--kh-text-muted)', lineHeight: 1.6 }}>
+                    <span style={{ fontWeight: 600 }}>History:</span> {p.medicalHistory || 'No medical history recorded'}
+                  </div>
+                </>
+              ) : <NoDataState />}
             </Panel>
 
             <Panel title="Clinical Flags">
               {flags.map((f, i) => <FlagItem key={i} label={f.label} detail={f.detail} />)}
             </Panel>
 
-            <Panel title="Admission Record">
+            <Panel title="Admission Record" variant="summary">
               <DataRow label="Reg No.">{p.regNo}</DataRow>
+              <DataRow label="Date of Assessment">{p.dateOfAssessment}</DataRow>
               <DataRow label="Date Admitted">{p.enrolled}</DataRow>
               <DataRow label="Handbook Given"><YN val={p.handbookGiven} /></DataRow>
               <DataRow label="Primary Nurse">{p.nurse} ({p.nursePin})</DataRow>
               <DataRow label="Physician">{p.doctor.name}</DataRow>
               <DataRow label="Facility">{p.doctor.facility}</DataRow>
+              {!hasAdmissionChecklistData && <NoDataState text="Admission checklist data is not available from the endpoint yet." />}
             </Panel>
           </div>
 
           {/* Right column — Quick vitals */}
           <div className="col-lg-4">
             <Panel title="Latest Vitals"
+              variant="summary"
               action={<span style={{ fontSize: 10.5, color: 'var(--kh-text-muted)' }}>On admission</span>}
             >
-              <div className="row g-2">
-                <div className="col-6"><VitalTile label="Blood Pressure" value={p.vitals.bp} flag={parseInt(p.vitals.bp) >= 140} /></div>
-                <div className="col-6"><VitalTile label="Blood Sugar" value={p.vitals.sugar} flag={parseFloat(p.vitals.sugar) > 7} showFlagBorder={false} /></div>
-                <div className="col-6"><VitalTile label="SPO2" value={p.vitals.spo2} /></div>
-                <div className="col-6"><VitalTile label="Pulse" value={p.vitals.pulse + ' bpm'} /></div>
-                <div className="col-6"><VitalTile label="Temperature" value={p.vitals.temp} /></div>
-                <div className="col-6"><VitalTile label="Weight" value={p.vitals.weight} /></div>
-              </div>
+              {hasInitialVitalsData ? (
+                <div className="row g-2">
+                  <div className="col-6"><VitalTile label="Blood Pressure" value={p.vitals.bp} flag={parseInt(p.vitals.bp, 10) >= 140} /></div>
+                  <div className="col-6"><VitalTile label="Blood Sugar" value={p.vitals.sugar} flag={parseFloat(p.vitals.sugar) > 7} showFlagBorder={false} /></div>
+                  <div className="col-6"><VitalTile label="SPO2" value={p.vitals.spo2} /></div>
+                  <div className="col-6"><VitalTile label="Pulse" value={p.vitals.pulse ? `${p.vitals.pulse} bpm` : ''} /></div>
+                  <div className="col-6"><VitalTile label="Temperature" value={p.vitals.temp} /></div>
+                  <div className="col-6"><VitalTile label="Weight" value={p.vitals.weight} /></div>
+                </div>
+              ) : <NoDataState text="No initial vitals data is available for this patient." />}
             </Panel>
 
-            <Panel title="Current Medications">
-              {p.medications.split(', ').map((med, i) => (
+            <Panel title="Current Medications" variant="summary">
+              {medicationList.length > 0 ? medicationList.map((med, i) => (
                 <div key={i} className="d-flex align-items-center" style={{
                   padding: '7px 10px', borderBottom: '1px solid #f3f4f6', fontSize: 12.5,
                 }}>
                   <span style={{ color: 'var(--kh-text)', fontWeight: 500 }}>{med}</span>
                 </div>
-              ))}
+              )) : <NoDataState text="No current medications are available from the endpoint." />}
             </Panel>
           </div>
-        </div>
+          </div>
+        </>
       )}
 
       {/* ═══ CLINICAL ASSESSMENT ═══ */}
@@ -2007,68 +2342,105 @@ export default function PatientProfile() {
         <div className="row g-3">
           <div className="col-lg-6">
             <Panel title="Communication" icon={<FiUser size={14} />}>
-              <DataRow label="Communication Needs"><YN val={p.communication.needs} /></DataRow>
-              <DataRow label="Hearing Impairment"><YN val={p.communication.hearing} /></DataRow>
-              <DataRow label="Speech Impairment"><YN val={p.communication.speech} /></DataRow>
-              <DataRow label="Visual Impairment"><YN val={p.communication.visual} /></DataRow>
-              <DataRow label="Understanding Issues"><YN val={p.communication.understanding} /></DataRow>
+              {hasCommunicationData ? (
+                <>
+                  <DataRow label="Communication Needs"><YN val={p.communication.needs} /></DataRow>
+                  <DataRow label="Hearing Impairment"><YN val={p.communication.hearing} /></DataRow>
+                  <DataRow label="Speech Impairment"><YN val={p.communication.speech} /></DataRow>
+                  <DataRow label="Visual Impairment"><YN val={p.communication.visual} /></DataRow>
+                  <DataRow label="Understanding Issues"><YN val={p.communication.understanding} /></DataRow>
+                  <DataRow label="Notes">{p.sectionCommunicationStyle?.communicationNotes}</DataRow>
+                </>
+              ) : <NoDataState />}
             </Panel>
 
             <Panel title="Infection Control" icon={<FiShield size={14} />}>
-              <DataRow label="Risk Assessment Plan"><YN val={p.infection.riskPlan} /></DataRow>
-              <DataRow label="Diarrhea on Admission"><YN val={p.infection.diarrhea} /></DataRow>
+              {hasInfectionControlData ? (
+                <>
+                  <DataRow label="Risk Assessment Plan"><YN val={p.infection.riskPlan} /></DataRow>
+                  <DataRow label="Diarrhea on Admission"><YN val={p.infection.diarrhea} /></DataRow>
+                </>
+              ) : <NoDataState />}
             </Panel>
 
             <Panel title="Diabetes Management" icon={<FiActivity size={14} />} accent={p.diabetes.has ? '#d97706' : undefined}>
-              <DataRow label="Diabetes Present"><YN val={p.diabetes.has} /></DataRow>
-              <DataRow label="Care Plan Active"><YN val={p.diabetes.carePlan} /></DataRow>
-              <DataRow label="Anti-embolism Stockings"><YN val={p.diabetes.stockings} /></DataRow>
+              {hasInfectionControlData ? (
+                <>
+                  <DataRow label="Diabetes Present"><YN val={p.diabetes.has} /></DataRow>
+                  <DataRow label="Care Plan Active"><YN val={p.diabetes.carePlan} /></DataRow>
+                  <DataRow label="Patient Bed Bound"><YN val={p.diabetes.stockings} /></DataRow>
+                </>
+              ) : <NoDataState />}
             </Panel>
 
             <Panel title="Breathing" icon={<FiActivity size={14} />}>
-              <DataRow label="Breathing Difficulties"><YN val={p.breathing.difficulties} /></DataRow>
-              <DataRow label="Home O₂ / CPAP"><YN val={p.breathing.oxygen} /></DataRow>
-              <DataRow label="Current Smoker"><YN val={p.breathing.smoker} /></DataRow>
-              <DataRow label="Smoking History"><YN val={p.breathing.everSmoked} /></DataRow>
+              {hasBreathPainData ? (
+                <>
+                  <DataRow label="Breathing Difficulties"><YN val={p.breathing.difficulties} /></DataRow>
+                  <DataRow label="Home O₂ / CPAP"><YN val={p.breathing.oxygen} /></DataRow>
+                  <DataRow label="Current Smoker"><YN val={p.breathing.smoker} /></DataRow>
+                  <DataRow label="Smoking History"><YN val={p.breathing.everSmoked} /></DataRow>
+                </>
+              ) : <NoDataState />}
             </Panel>
           </div>
           <div className="col-lg-6">
             <Panel title="Pain Assessment" icon={<FiAlertTriangle size={14} />} accent={p.pain.present ? painColors[p.pain.score] : undefined}>
-              <DataRow label="Pain Present"><YN val={p.pain.present} /></DataRow>
-              <DataRow label="Pain Score">
-                <div className="d-flex align-items-center gap-2">
-                  <div style={{ display: 'flex', gap: 2 }}>
-                    {[0,1,2,3].map(s => (
-                      <div key={s} style={{
-                        width: 24, height: 8, borderRadius: 1,
-                        background: s <= p.pain.score ? painColors[p.pain.score] : '#e5e7eb',
-                      }} />
-                    ))}
-                  </div>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: painColors[p.pain.score] }}>{p.pain.score}/3 {painLabels[p.pain.score]}</span>
-                </div>
-              </DataRow>
-              <DataRow label="Location">{p.pain.location || '—'}</DataRow>
-              <DataRow label="Analgesia">{p.pain.analgesia || '—'}</DataRow>
+              {hasBreathPainData ? (
+                <>
+                  <DataRow label="Pain Present"><YN val={p.pain.present} /></DataRow>
+                  <DataRow label="Pain Score">
+                    {p.pain.score === null || p.pain.score === undefined ? (
+                      <span style={{ color: 'var(--kh-text-muted)', fontWeight: 500 }}>No data</span>
+                    ) : (
+                      <div className="d-flex align-items-center gap-2">
+                        <div style={{ display: 'flex', gap: 2 }}>
+                          {[0,1,2,3].map(s => (
+                            <div key={s} style={{
+                              width: 24, height: 8, borderRadius: 1,
+                              background: s <= p.pain.score ? painColors[p.pain.score] : '#e5e7eb',
+                            }} />
+                          ))}
+                        </div>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: painColors[p.pain.score] }}>{p.pain.score}/3 {painLabels[p.pain.score]}</span>
+                      </div>
+                    )}
+                  </DataRow>
+                  <DataRow label="Location">{p.pain.location}</DataRow>
+                  <DataRow label="Analgesia">{p.pain.analgesia}</DataRow>
+                </>
+              ) : <NoDataState />}
             </Panel>
 
             <Panel title="Psychological" icon={<FiShield size={14} />} accent={p.psych.concerns || p.psych.depression || p.psych.anxiety ? '#d97706' : undefined}>
-              <DataRow label="Concerns Flagged"><YN val={p.psych.concerns} /></DataRow>
-              <DataRow label="Depression"><YN val={p.psych.depression} /></DataRow>
-              <DataRow label="Anxiety"><YN val={p.psych.anxiety} /></DataRow>
-              <DataRow label="Dementia / Delirium"><YN val={p.psych.dementia} /></DataRow>
+              {hasHygienePsychData ? (
+                <>
+                  <DataRow label="Concerns Flagged"><YN val={p.psych.concerns} /></DataRow>
+                  <DataRow label="Depression"><YN val={p.psych.depression} /></DataRow>
+                  <DataRow label="Anxiety"><YN val={p.psych.anxiety} /></DataRow>
+                  <DataRow label="Dementia / Delirium"><YN val={p.psych.dementia} /></DataRow>
+                </>
+              ) : <NoDataState />}
             </Panel>
 
             <Panel title="Skin Integrity" icon={<FiAlertTriangle size={14} />} accent={p.skin.openWounds || p.skin.pressureUlcer ? '#ef4444' : undefined}>
-              <DataRow label="Open Wounds"><YN val={p.skin.openWounds} /></DataRow>
-              <DataRow label="Pressure Ulcer"><YN val={p.skin.pressureUlcer} /></DataRow>
+              {hasSkinMobilityData ? (
+                <>
+                  <DataRow label="Open Wounds"><YN val={p.skin.openWounds} /></DataRow>
+                  <DataRow label="Pressure Ulcer"><YN val={p.skin.pressureUlcer} /></DataRow>
+                </>
+              ) : <NoDataState />}
             </Panel>
 
             <Panel title="Mobility" icon={<FiUser size={14} />}>
-              <DataRow label="Independently Mobile"><YN val={p.mobility.independent} /></DataRow>
-              <DataRow label="Move in Bed"><YN val={p.mobility.bedMove} /></DataRow>
-              <DataRow label="Bed to Chair"><YN val={p.mobility.bedToChair} /></DataRow>
-              <DataRow label="Transfer to Toilet"><YN val={p.mobility.toilet} /></DataRow>
+              {hasSkinMobilityData ? (
+                <>
+                  <DataRow label="Independently Mobile"><YN val={p.mobility.independent} /></DataRow>
+                  <DataRow label="Move in Bed"><YN val={p.mobility.bedMove} /></DataRow>
+                  <DataRow label="Bed to Chair"><YN val={p.mobility.bedToChair} /></DataRow>
+                  <DataRow label="Transfer to Toilet"><YN val={p.mobility.toilet} /></DataRow>
+                </>
+              ) : <NoDataState />}
             </Panel>
           </div>
         </div>
@@ -3923,6 +4295,10 @@ export default function PatientProfile() {
         </div>
       )}
 
+          </div>
+        </div>
+      </div>
+
       {showUpdateModal && (
         <div
           className="kh-modal-overlay"
@@ -3946,9 +4322,8 @@ export default function PatientProfile() {
             <div className="kh-modal-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div>
                 <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--kh-text)' }}>Edit Patient Data</div>
-                <div style={{ fontSize: 11.5, color: 'var(--kh-text-muted)', marginTop: 2 }}>Updates all configured `patients/*` PATCH endpoints</div>
               </div>
-              <button onClick={() => { if (!savingProfileUpdate) setShowUpdateModal(false); }} className="btn btn-sm btn-ghost" style={{ color: 'var(--kh-text-muted)', cursor: savingProfileUpdate ? 'not-allowed' : 'pointer' }}>
+              <button onClick={() => { if (!savingProfileUpdate) setShowUpdateModal(false); }} className="patient-update-modal__close-btn" style={{ cursor: savingProfileUpdate ? 'not-allowed' : 'pointer' }}>
                 <FiX size={18} />
               </button>
             </div>
@@ -4014,11 +4389,11 @@ export default function PatientProfile() {
               </div>
             </div>
 
-            <div className="kh-modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button onClick={() => setShowUpdateModal(false)} disabled={savingProfileUpdate} className="btn btn-outline btn-sm" style={{ fontSize: 12.5, fontWeight: 700, cursor: savingProfileUpdate ? 'not-allowed' : 'pointer' }}>
+            <div className="kh-modal-footer patient-update-modal__footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button onClick={() => setShowUpdateModal(false)} disabled={savingProfileUpdate} className="patient-update-modal__action-btn patient-update-modal__action-btn--secondary" style={{ cursor: savingProfileUpdate ? 'not-allowed' : 'pointer' }}>
                 Cancel
               </button>
-              <button onClick={submitProfileUpdates} disabled={savingProfileUpdate} className="btn btn-primary btn-sm" style={{ fontSize: 12.5, fontWeight: 700, cursor: savingProfileUpdate ? 'not-allowed' : 'pointer', opacity: savingProfileUpdate ? 0.75 : 1 }}>
+              <button onClick={submitProfileUpdates} disabled={savingProfileUpdate} className="patient-update-modal__action-btn patient-update-modal__action-btn--primary" style={{ cursor: savingProfileUpdate ? 'not-allowed' : 'pointer', opacity: savingProfileUpdate ? 0.75 : 1 }}>
                 {savingProfileUpdate ? 'Saving...' : 'Save Updates'}
               </button>
             </div>
