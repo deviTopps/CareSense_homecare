@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { FiPlus, FiSearch, FiX, FiChevronRight, FiChevronLeft, FiCheck, FiSave, FiChevronsLeft, FiChevronsRight, FiUserPlus, FiCheckCircle, FiInfo, FiDownload, FiMoreHorizontal, FiUser } from '../icons/hugeicons-feather';
 import { apiFetch } from '../api';
+import { fetchAllPatients } from '../utils/patients';
 
 const patientsData = [
   { id: 'P-1001', name: 'Kwame Boateng', age: 72, gender: 'Male', diagnosis: 'Hypertension, Type 2 Diabetes', phone: '+233 24 111 2222', address: '14 Osu Badu St, Accra', region: 'Accra', nurses: ['Efua Mensah'], emergency: 'Ama Boateng (+233 20 333 4444)', status: 'active', enrolled: '2024-06-01' },
@@ -445,7 +446,7 @@ export default function Patients() {
   const [sortDir, setSortDir] = useState('asc');
   const [page, setPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(5);
-  const [patients, setPatients] = useState(patientsData);
+  const [patients, setPatients] = useState([]);
   const [assignableNurses, setAssignableNurses] = useState([]);
   const [assignModal, setAssignModal] = useState(null); // patient object or null
   const [nurseSearch, setNurseSearch] = useState('');
@@ -576,27 +577,7 @@ export default function Patients() {
     setPatientsError('');
 
     try {
-      const response = await apiFetch('/patients', { method: 'GET' });
-      let data = {};
-      try {
-        data = await response.json();
-      } catch {
-        data = {};
-      }
-
-      if (!response.ok) {
-        throw new Error(data?.message || data?.error || 'Failed to load patients.');
-      }
-
-      const patientList = Array.isArray(data)
-        ? data
-        : Array.isArray(data?.patients)
-          ? data.patients
-          : Array.isArray(data?.data)
-            ? data.data
-            : Array.isArray(data?.items)
-              ? data.items
-              : [];
+      const patientList = await fetchAllPatients();
 
       if (patientList.length > 0) {
         setPatients(patientList.map((patient, index) => normalizePatient(patient, index)));
@@ -766,27 +747,7 @@ export default function Patients() {
     setRegistrationCheck({ loading: true, exists: false, checkedValue: normalized, error: '' });
 
     try {
-      const response = await apiFetch('/patients', { method: 'GET' });
-      let data = {};
-      try {
-        data = await response.json();
-      } catch {
-        data = {};
-      }
-
-      if (!response.ok) {
-        throw new Error(data?.message || data?.error || 'Unable to validate registration number right now.');
-      }
-
-      const patientList = Array.isArray(data)
-        ? data
-        : Array.isArray(data?.patients)
-          ? data.patients
-          : Array.isArray(data?.data)
-            ? data.data
-            : Array.isArray(data?.items)
-              ? data.items
-              : [];
+      const patientList = await fetchAllPatients();
 
       const exists = patientList.some((patient) => {
         const candidate = patient?.registrationNumber || patient?.regNo || patient?.registration_number || '';

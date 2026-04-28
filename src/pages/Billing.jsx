@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { FiUsers, FiCheckCircle, FiDownload, FiCalendar, FiX, FiPlus, FiInfo, FiSmartphone, FiCreditCard } from '../icons/hugeicons-feather';
 import { BsBank2 } from 'react-icons/bs';
-import { apiFetch } from '../api';
+import { fetchAllPatients } from '../utils/patients';
 
 const RATE_PER_PATIENT = 30; // ₵ per patient per month
 
@@ -44,10 +44,31 @@ export default function Billing() {
   const [savedBank, setSavedBank]           = useState(null);
 
   useEffect(() => {
-    apiFetch('/patients')
-      .then(data => setPatientCount(Array.isArray(data) ? data.length : (data?.total ?? data?.count ?? 0)))
-      .catch(() => setPatientCount(0))
-      .finally(() => setLoadingPx(false));
+    let cancelled = false;
+
+    const loadPatientCount = async () => {
+      try {
+        const patientList = await fetchAllPatients();
+
+        if (!cancelled) {
+          setPatientCount(patientList.length);
+        }
+      } catch {
+        if (!cancelled) {
+          setPatientCount(0);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingPx(false);
+        }
+      }
+    };
+
+    loadPatientCount();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const count        = patientCount ?? 0;

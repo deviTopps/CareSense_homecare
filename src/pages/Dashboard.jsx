@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import {
   FiUsers,
@@ -15,6 +15,7 @@ import {
   FiBell,
   FiMoreHorizontal,
 } from '../icons/hugeicons-feather';
+import { fetchAllPatients } from '../utils/patients';
 
 const flaggedIssues = [
   {
@@ -166,6 +167,31 @@ const donutStyle = {
 export default function Dashboard() {
   const [flagTab, setFlagTab] = useState('all');
   const [selectedFlag, setSelectedFlag] = useState(null);
+  const [patientCount, setPatientCount] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadPatientCount = async () => {
+      try {
+        const patientList = await fetchAllPatients();
+
+        if (!cancelled) {
+          setPatientCount(patientList.length);
+        }
+      } catch {
+        if (!cancelled) {
+          setPatientCount(0);
+        }
+      }
+    };
+
+    loadPatientCount();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const filtered = flagTab === 'all' ? flaggedIssues : flaggedIssues.filter((flag) => flag.type === flagTab);
   const criticalCount = flaggedIssues.filter((flag) => flag.severity === 'critical').length;
@@ -190,8 +216,8 @@ export default function Dashboard() {
               </div>
               <div className="dashboard-agency-card__stats">
                 <div>
-                  <span>Active Patients</span>
-                  <strong>248</strong>
+                  <span>Total Patients</span>
+                  <strong>{patientCount}</strong>
                 </div>
                 <div>
                   <span>Critical Flags</span>

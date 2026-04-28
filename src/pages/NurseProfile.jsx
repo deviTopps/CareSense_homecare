@@ -9,6 +9,7 @@ import {
   FiRefreshCw, FiCheck, FiCamera, FiX, FiSave, FiPlus, FiTrash2, FiUsers,
 } from '../icons/hugeicons-feather';
 import { apiFetch, API_BASE } from '../api';
+import { fetchAllPatients } from '../utils/patients';
 import compressImage, { createThumbnailURL } from '../utils/compressImage';
 
 const ROLE_LABELS = {
@@ -682,7 +683,7 @@ export default function NurseProfile() {
       try {
         const [assignmentsRes, patientsRes] = await Promise.all([
           apiFetch('/assignments', { method: 'GET' }).catch(() => null),
-          apiFetch('/patients', { method: 'GET' }).catch(() => null),
+          fetchAllPatients().catch(() => []),
         ]);
 
         let assignmentsPayload = {};
@@ -694,23 +695,9 @@ export default function NurseProfile() {
           }
         }
 
-        let patientsPayload = {};
-        try {
-          patientsPayload = patientsRes ? await patientsRes.json() : {};
-        } catch {
-          patientsPayload = {};
-        }
+        const patientList = Array.isArray(patientsRes) ? patientsRes : [];
 
-        if (patientsRes?.ok) {
-          const patientList = Array.isArray(patientsPayload)
-            ? patientsPayload
-            : Array.isArray(patientsPayload?.patients)
-              ? patientsPayload.patients
-              : Array.isArray(patientsPayload?.data)
-                ? patientsPayload.data
-                : Array.isArray(patientsPayload?.items)
-                  ? patientsPayload.items
-                  : [];
+        if (patientList.length > 0) {
 
             const assignmentList = Array.isArray(assignmentsPayload)
               ? assignmentsPayload
