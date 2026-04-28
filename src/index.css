@@ -235,6 +235,13 @@ button, input, select, textarea {
   min-width: 0;
 }
 
+.sidebar-brand__logo {
+  display: block;
+  height: 42px;
+  width: auto;
+  object-fit: contain;
+}
+
 .sidebar-brand__mark {
   width: 40px;
   height: 40px;
@@ -458,6 +465,10 @@ button, input, select, textarea {
 .sidebar.collapsed .sidebar-brand {
   padding: 14px 10px 8px;
   justify-content: center;
+}
+
+.sidebar.collapsed .sidebar-brand__logo {
+  height: 34px;
 }
 
 .sidebar.collapsed .sidebar-nav {

@@ -45,7 +45,6 @@ const sidebarGroups = [
 ];
 
 export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleCollapse, onLogout, user }) {
-  const displayName = user ? `${user.firstName} ${user.lastName}` : 'Kulobal Care';
   const agencyName = user?.agency?.name || user?.agencyName || user?.organizationName || user?.organisationName || 'Agency Name';
   const initials = user ? `${(user.firstName?.[0] || '')}${(user.lastName?.[0] || '')}`.toUpperCase() : 'KC';
 
@@ -72,18 +71,9 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleCollapse
       >
         <div className="sidebar-panel">
           <div className="sidebar-brand">
-            {!isCollapsed && (
-              <div className="sidebar-brand__identity">
-                <span className="sidebar-brand__mark">
-                  <span />
-                  <span />
-                </span>
-                <div className="sidebar-brand__copy">
-                  <small>CareSense</small>
-                  <strong>{displayName}</strong>
-                </div>
-              </div>
-            )}
+            <div className="sidebar-brand__identity">
+              <img src="/Blue_Logo.png" alt="CareSense" className="sidebar-brand__logo" />
+            </div>
 
             <button
               type="button"
