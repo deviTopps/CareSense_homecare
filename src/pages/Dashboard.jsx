@@ -122,6 +122,12 @@ export default function Dashboard() {
   const [flagTab, setFlagTab] = useState('all');
   const [selectedFlag, setSelectedFlag] = useState(null);
   const [patientCount, setPatientCount] = useState(0);
+  const [isDashboardCardsLoading, setIsDashboardCardsLoading] = useState(true);
+  const todayLabel = new Intl.DateTimeFormat('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+  }).format(new Date());
 
   useEffect(() => {
     let cancelled = false;
@@ -136,6 +142,10 @@ export default function Dashboard() {
       } catch {
         if (!cancelled) {
           setPatientCount(0);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsDashboardCardsLoading(false);
         }
       }
     };
@@ -176,6 +186,15 @@ export default function Dashboard() {
   return (
     <motion.div className="page-wrapper dashboard-page" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25 }}>
       <div className="dashboard-shell">
+        <motion.div className="dashboard-welcome-banner" initial={{ y: 12, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.28 }}>
+          <div>
+            <span className="dashboard-welcome-banner__eyebrow">Dashboard Overview</span>
+            <h2>Welcome back</h2>
+            <p>Here’s a quick view of your patient activity, workforce status, and urgent cases for today.</p>
+          </div>
+          <div className="dashboard-welcome-banner__date">{todayLabel}</div>
+        </motion.div>
+
         <div className="dashboard-top-grid">
           {statisticCards.map((card, index) => (
             <motion.div key={card.key} className="dashboard-stat-card" initial={{ y: 12, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.28, delay: 0.06 * index }}>
@@ -183,13 +202,24 @@ export default function Dashboard() {
                 <div className="dashboard-stat-card__title">
                   <span className="dashboard-summary-card__icon"><card.Icon size={16} /></span>
                   <div>
-                  <h4>{card.title}</h4>
-                  <p>{card.note}</p>
+                    <h4>{card.title}</h4>
+                    {isDashboardCardsLoading ? (
+                      <span className="dashboard-skeleton dashboard-skeleton--text dashboard-stat-card__skeleton-note" aria-hidden="true" />
+                    ) : (
+                      <p>{card.note}</p>
+                    )}
                   </div>
                 </div>
               </div>
               <div className="dashboard-stat-card__center">
-                <strong>{card.value}</strong>
+                {isDashboardCardsLoading ? (
+                  <div className="dashboard-stat-card__loading" role="status" aria-live="polite" aria-label={`${card.title} data is loading`}>
+                    <span className="dashboard-skeleton dashboard-skeleton--value" aria-hidden="true" />
+                    <small>Loading data...</small>
+                  </div>
+                ) : (
+                  <strong>{card.value}</strong>
+                )}
               </div>
             </motion.div>
           ))}
