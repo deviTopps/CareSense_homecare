@@ -1178,81 +1178,55 @@ export default function Workforce() {
       {/* ── Delete Confirmation Modal ── */}
       {deleteTarget && (
         <div
+          className="app-modal-overlay app-modal-overlay--danger-flow"
+          role="presentation"
           onClick={() => !deleting && setDeleteTarget(null)}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 9999,
-            background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: 24,
-          }}
         >
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{
-              background: '#fff', borderRadius: 2, width: '100%', maxWidth: 420,
-              overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
-            }}
-          >
-            {/* Icon */}
-            <div style={{ padding: '32px 24px 0', textAlign: 'center' }}>
-              <div style={{
-                width: 56, height: 56, borderRadius: '50%',
-                background: '#fef2f2', border: '2px solid #fecaca',
-                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                marginBottom: 16,
-              }}>
-                <FiTrash2 size={24} style={{ color: '#dc2626' }} />
-              </div>
-              <div style={{ fontSize: 17, fontWeight: 700, color: '#111827', marginBottom: 6 }}>Delete Nurse</div>
-              <div style={{ fontSize: 13.5, color: '#6b7280', lineHeight: 1.6 }}>
-                Are you sure you want to delete <strong style={{ color: '#111827' }}>{deleteTarget.name}</strong>?
-                This action cannot be undone and all associated data will be permanently removed.
-              </div>
-            </div>
-
-            {/* Nurse info summary */}
-            <div style={{ margin: '16px 24px', padding: '10px 14px', background: '#f9fafb', borderRadius: 8, border: '1px solid #f3f4f6' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{
-                  width: 36, height: 36, borderRadius: '50%',
-                  background: 'linear-gradient(135deg, #45B6FE, #2E8FD4)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: '#fff', fontSize: 12, fontWeight: 700, flexShrink: 0,
-                }}>
-                  {deleteTarget.name !== '—' ? deleteTarget.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() : '?'}
-                </div>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{deleteTarget.name}</div>
-                  <div style={{ fontSize: 11.5, color: '#6b7280' }}>{deleteTarget.role} · {deleteTarget.email}</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Actions */}
-            <div style={{ padding: '0 24px 24px', display: 'flex', gap: 10 }}>
+          <div className="app-modal-dialog app-modal-dialog--md" role="dialog" aria-modal="true" aria-labelledby="workforce-delete-title" onClick={(e) => e.stopPropagation()}>
+            <div className="app-modal-dialog__header">
+              <h2 id="workforce-delete-title" className="app-modal-dialog__title">Delete nurse</h2>
               <button
-                onClick={() => setDeleteTarget(null)}
+                type="button"
+                className="app-modal-dialog__close"
+                aria-label="Close"
                 disabled={deleting}
-                style={{
-                  flex: 1, padding: '10px 0', borderRadius: 8, fontSize: 13, fontWeight: 700,
-                  background: '#fff', color: '#374151', border: '1px solid #d1d5db',
-                  cursor: 'pointer',
-                }}
+                onClick={() => setDeleteTarget(null)}
               >
+                <FiX size={20} strokeWidth={1.75} />
+              </button>
+            </div>
+            <div className="app-modal-dialog__body">
+              <p className="destructive-confirm-dialog__lead">
+                Are you sure you want to delete this team member? This will remove their profile from the workforce
+                directory.
+              </p>
+              <div className="destructive-confirm-dialog__warning">
+                <div className="destructive-confirm-dialog__warning-bar" aria-hidden />
+                <div className="destructive-confirm-dialog__warning-text">
+                  <strong>Warning: This action cannot be undone.</strong> All associated onboarding data and references
+                  for this nurse may be <strong>permanently lost</strong>.
+                </div>
+              </div>
+              <div className="destructive-confirm-dialog__card">
+                <div className="destructive-confirm-dialog__card-icon destructive-confirm-dialog__card-icon--brand">
+                  {deleteTarget.name !== '—'
+                    ? deleteTarget.name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase()
+                    : '?'}
+                </div>
+                <div className="destructive-confirm-dialog__card-body">
+                  <div className="destructive-confirm-dialog__card-title">{deleteTarget.name}</div>
+                  <div className="destructive-confirm-dialog__card-meta">
+                    {deleteTarget.role} · {deleteTarget.email}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="app-modal-dialog__footer">
+              <button type="button" className="app-modal-dialog__btn-cancel" disabled={deleting} onClick={() => setDeleteTarget(null)}>
                 Cancel
               </button>
-              <button
-                onClick={confirmDelete}
-                disabled={deleting}
-                style={{
-                  flex: 1, padding: '10px 0', borderRadius: 8, fontSize: 13, fontWeight: 700,
-                  background: deleting ? '#f87171' : '#dc2626', color: '#fff', border: 'none',
-                  cursor: deleting ? 'not-allowed' : 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                  opacity: deleting ? 0.8 : 1,
-                }}
-              >
-                <FiTrash2 size={13} /> {deleting ? 'Deleting…' : 'Delete Nurse'}
+              <button type="button" className="app-modal-dialog__btn-danger" disabled={deleting} onClick={confirmDelete}>
+                <FiTrash2 size={13} /> {deleting ? 'Deleting…' : 'Delete nurse'}
               </button>
             </div>
           </div>
@@ -1261,7 +1235,7 @@ export default function Workforce() {
 
       {/* ── Multi-step Registration Modal ── */}
       {showModal && (
-        <div className="modal modal-open workforce-modal" style={{ background: 'rgba(15,23,42,0.18)', backdropFilter: 'blur(10px)' }} onClick={closeModal}>
+        <div className="modal modal-open workforce-modal" onClick={closeModal}>
           <div className="modal-dialog modal-dialog-centered modal-dialog-scrollable workforce-modal-dialog" style={{ maxWidth: 1060 }} onClick={e => e.stopPropagation()}>
             <div className="modal-content kh-modal-panel workforce-modal-panel" style={{ border: 'none' }}>
 

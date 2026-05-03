@@ -1669,67 +1669,48 @@ export default function NurseProfile() {
 
       {/* ═══ DOCUMENT PREVIEW MODAL ═══ */}
       {previewDoc && (
-        <div
-          onClick={() => setPreviewDoc(null)}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 9999,
-            background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: 24,
-          }}
-        >
+        <div className="app-modal-overlay app-modal-overlay--danger-flow" role="presentation" onClick={() => setPreviewDoc(null)}>
           <div
-            onClick={e => e.stopPropagation()}
-            style={{
-              background: '#fff', borderRadius: 12, width: '100%', maxWidth: 780,
-              maxHeight: '90vh', display: 'flex', flexDirection: 'column',
-              overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
-            }}
+            className="app-modal-dialog app-modal-dialog--lg"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="nurse-doc-preview-title"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxHeight: 'min(90vh, 900px)' }}
           >
-            {/* Header */}
-            <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '14px 20px', borderBottom: '1px solid #e5e7eb', flexShrink: 0,
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <FiFileText size={18} style={{ color: '#45B6FE' }} />
-                <div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--kh-text, #1a1a2e)' }}>{previewDoc.label}</div>
-                  <div style={{ fontSize: 11.5, color: '#6b7280', marginTop: 1 }}>{previewDoc.fileName}</div>
+            <div className="app-modal-dialog__header" style={{ borderBottom: '1px solid #f3f4f6', paddingBottom: 16, marginBottom: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+                <span className="destructive-confirm-dialog__card-icon destructive-confirm-dialog__card-icon--brand" style={{ width: 40, height: 40 }} aria-hidden>
+                  <FiFileText size={18} />
+                </span>
+                <div style={{ minWidth: 0 }}>
+                  <h2 id="nurse-doc-preview-title" className="app-modal-dialog__title" style={{ fontSize: '1rem' }}>
+                    {previewDoc.label}
+                  </h2>
+                  <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {previewDoc.fileName}
+                  </div>
                 </div>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
                 {previewDoc.url && (
                   <a
                     href={previewDoc.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 5,
-                      padding: '6px 14px', borderRadius: 6, fontSize: 12, fontWeight: 600,
-                      background: '#45B6FE', color: '#fff', textDecoration: 'none',
-                      border: 'none', cursor: 'pointer',
-                    }}
+                    className="app-modal-dialog__btn-primary"
+                    style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', fontSize: 12 }}
                   >
                     <FiEye size={13} /> Open in new tab
                   </a>
                 )}
-                <button
-                  onClick={() => setPreviewDoc(null)}
-                  style={{
-                    width: 32, height: 32, borderRadius: '50%', border: '1px solid #e5e7eb',
-                    background: '#f9fafb', cursor: 'pointer', display: 'flex',
-                    alignItems: 'center', justifyContent: 'center', color: '#6b7280',
-                  }}
-                  title="Close"
-                >
-                  <FiX size={16} />
+                <button type="button" className="app-modal-dialog__close" onClick={() => setPreviewDoc(null)} aria-label="Close preview">
+                  <FiX size={20} strokeWidth={1.75} />
                 </button>
               </div>
             </div>
 
-            {/* Preview body */}
-            <div style={{ flex: 1, overflow: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f9fafb', minHeight: 300 }}>
+            <div style={{ flex: 1, overflow: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f9fafb', minHeight: 280 }}>
               {previewDoc.url && previewDoc.fileType?.startsWith?.('image') ? (
                 <img
                   src={previewDoc.url}

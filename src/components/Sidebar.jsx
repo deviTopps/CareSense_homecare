@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { NavLink } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -44,7 +45,49 @@ const sidebarGroups = [
   },
 ];
 
-export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleCollapse, onLogout, user }) {
+export default function Sidebar({
+  isOpen,
+  isCollapsed,
+  sidebarWidth = 248,
+  onSidebarResize,
+  onClose,
+  onToggleCollapse,
+  onLogout,
+  user,
+}) {
+  const resizeActive = useRef(false);
+  const startXRef = useRef(0);
+  const startWidthRef = useRef(sidebarWidth);
+
+  useEffect(() => {
+    const onMove = (e) => {
+      if (!resizeActive.current || typeof onSidebarResize !== 'function') return;
+      const dx = e.clientX - startXRef.current;
+      const next = Math.min(320, Math.max(200, startWidthRef.current + dx));
+      onSidebarResize(next);
+    };
+    const onUp = () => {
+      if (!resizeActive.current) return;
+      resizeActive.current = false;
+      document.body.classList.remove('sidebar-resizing');
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, [onSidebarResize]);
+
+  const handleResizePointerDown = (e) => {
+    if (isCollapsed || typeof onSidebarResize !== 'function') return;
+    e.preventDefault();
+    resizeActive.current = true;
+    startXRef.current = e.clientX;
+    startWidthRef.current = sidebarWidth;
+    document.body.classList.add('sidebar-resizing');
+  };
+
   const agencyName = user?.agency?.name || user?.agencyName || user?.organizationName || user?.organisationName || 'Agency Name';
   const initials = user ? `${(user.firstName?.[0] || '')}${(user.lastName?.[0] || '')}`.toUpperCase() : 'KC';
 
@@ -65,6 +108,7 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleCollapse
 
       <motion.aside
         className={`sidebar${isOpen ? ' open' : ''}${isCollapsed ? ' collapsed' : ''}`}
+        style={isCollapsed ? undefined : { width: sidebarWidth }}
         initial={{ x: -16, opacity: 0 }}
         animate={{ x: 0, opacity: 1 }}
         transition={{ duration: 0.24, ease: 'easeOut' }}
@@ -139,6 +183,17 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleCollapse
             </NavLink>
             {isCollapsed && <span className="sidebar-upgrade-card__initials">{initials}</span>}
           </div>
+
+          {!isCollapsed && typeof onSidebarResize === 'function' && (
+            <div
+              className="sidebar-resize-handle"
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize sidebar"
+              title="Drag to resize"
+              onMouseDown={handleResizePointerDown}
+            />
+          )}
         </div>
       </motion.aside>
     </>

@@ -1391,7 +1391,7 @@ export default function Patients() {
           || nr.region.toLowerCase().includes(nurseSearch.toLowerCase())
         ));
         return (
-        <div className="modal modal-open" style={{ background: 'rgba(0,0,0,0.3)', backdropFilter: 'blur(4px)', zIndex: 1060 }} onClick={() => setAssignModal(null)}>
+        <div className="modal modal-open patients-modal-shell" onClick={() => setAssignModal(null)}>
           <div className="modal-dialog modal-dialog-centered" style={{ maxWidth: 500 }} onClick={e => e.stopPropagation()}>
             <div className="modal-content kh-modal-panel" style={{ borderRadius: 20, border: '1px solid #e5e7eb', boxShadow: '0 24px 60px rgba(15,23,42,0.14)', padding: 0 }}>
               <div style={{ padding: '20px 20px 16px', borderBottom: '1px solid #eef2f7' }}>
@@ -1503,7 +1503,7 @@ export default function Patients() {
 
       {/* ═══ ADMISSION MODAL ═══ */}
       {showModal && (
-        <div className="modal modal-open" style={{ background: 'rgba(0,0,0,0.3)', backdropFilter: 'blur(4px)', zIndex: 1060 }} onClick={() => setShowModal(false)}>
+        <div className="modal modal-open patients-modal-shell" onClick={() => setShowModal(false)}>
           <div style={{ display: 'flex', height: '100vh', padding: 30, maxWidth: 'calc(100vw - 40px)', margin: '0 auto' }} onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', width: '100%', background: '#fff', borderRadius: 2, overflow: 'hidden', boxShadow: '0 24px 80px rgba(0,0,0,0.15)' }}>
               {/* LEFT: Tab Navigation */}
@@ -1589,9 +1589,9 @@ export default function Patients() {
       )}
 
       {successModal && (
-        <div className="modal modal-open" style={{ background: 'rgba(0,0,0,0.3)', backdropFilter: 'blur(4px)', zIndex: 1070 }} onClick={() => setSuccessModal(null)}>
+        <div className="modal modal-open patients-modal-shell patients-modal-shell--success" onClick={() => setSuccessModal(null)}>
           <div className="modal-dialog modal-dialog-centered" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
-            <div className="modal-content kh-modal-panel" style={{ borderRadius: 16, border: 'none', boxShadow: '0 24px 80px rgba(0,0,0,0.18)', overflow: 'hidden' }}>
+            <div className="modal-content kh-modal-panel" style={{ overflow: 'hidden' }}>
               <div style={{ padding: '28px 28px 20px', background: 'linear-gradient(135deg, #ECFDF3 0%, #F0FDF4 100%)', borderBottom: '1px solid #D1FAE5', textAlign: 'center' }}>
                 <div style={{ width: 64, height: 64, margin: '0 auto 14px', borderRadius: '50%', background: '#10B981', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>
                   <FiCheckCircle size={28} />

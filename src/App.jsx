@@ -35,6 +35,13 @@ function App() {
     if (typeof window === 'undefined') return false;
     return window.localStorage.getItem('kh-sidebar-collapsed') === 'true';
   });
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    if (typeof window === 'undefined') return 248;
+    const raw = window.localStorage.getItem('kh-sidebar-width-px');
+    const n = raw ? parseInt(raw, 10) : NaN;
+    if (!Number.isFinite(n)) return 248;
+    return Math.min(320, Math.max(200, n));
+  });
   const [isAuthenticated, setIsAuthenticated] = useState(() => isTokenValid());
   const navigate = useNavigate();
   const location = useLocation();
@@ -55,6 +62,11 @@ function App() {
     if (typeof window === 'undefined') return;
     window.localStorage.setItem('kh-sidebar-collapsed', String(sidebarCollapsed));
   }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('kh-sidebar-width-px', String(sidebarWidth));
+  }, [sidebarWidth]);
 
   const handleLogin = useCallback(() => {
     setIsAuthenticated(true);
@@ -110,10 +122,15 @@ function App() {
 
   // Layout wrapper for authenticated pages
   const AuthLayout = ({ children }) => (
-    <div className={`app-layout kh-bs-theme${sidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
+    <div
+      className={`app-layout kh-bs-theme${sidebarCollapsed ? ' sidebar-collapsed' : ''}`}
+      style={sidebarCollapsed ? undefined : { '--kh-sidebar-width': `${sidebarWidth}px` }}
+    >
       <Sidebar
         isOpen={sidebarOpen}
         isCollapsed={sidebarCollapsed}
+        sidebarWidth={sidebarWidth}
+        onSidebarResize={setSidebarWidth}
         onClose={() => setSidebarOpen(false)}
         onToggleCollapse={() => setSidebarCollapsed(prev => !prev)}
         onLogout={handleLogout}

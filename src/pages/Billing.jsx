@@ -330,13 +330,15 @@ export default function Billing() {
 
       {/* ── Pay Now Modal ── */}
       {showPayModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 20 }}>
-          <div style={{ background: '#fff', borderRadius: 7, width: '100%', maxWidth: 440, overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
-            <div style={{ padding: '16px 20px', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--kh-text)' }}>Confirm Payment</span>
-              <button onClick={() => setShowPayModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--kh-text-muted)', display: 'flex' }}><FiX size={18} /></button>
+        <div className="app-modal-overlay app-modal-overlay--danger-flow" role="presentation" onClick={() => setShowPayModal(false)}>
+          <div className="app-modal-dialog app-modal-dialog--md" role="dialog" aria-modal="true" aria-labelledby="billing-pay-title" onClick={(e) => e.stopPropagation()}>
+            <div className="app-modal-dialog__header">
+              <h2 id="billing-pay-title" className="app-modal-dialog__title">Confirm payment</h2>
+              <button type="button" className="app-modal-dialog__close" aria-label="Close" onClick={() => setShowPayModal(false)}>
+                <FiX size={20} strokeWidth={1.75} />
+              </button>
             </div>
-            <div style={{ padding: '24px 20px' }}>
+            <div className="app-modal-dialog__body" style={{ paddingBottom: 20 }}>
               {/* Summary lines */}
               {[
                 ['Active Patients', `${count}`],
@@ -358,14 +360,12 @@ export default function Billing() {
               <div style={{ fontSize: 12, color: 'var(--kh-text-muted)', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 6 }}>
                 <FiCalendar size={12} /> Covers {new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} — {nextBilling}
               </div>
-              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-                <button onClick={() => setShowPayModal(false)} style={{ background: '#f3f4f6', border: 'none', borderRadius: 7, padding: '9px 20px', fontSize: 13, fontWeight: 700, color: '#374151', cursor: 'pointer' }}>Back</button>
-                <button style={{ background: 'var(--kh-primary)', border: 'none', borderRadius: 7, padding: '9px 24px', fontSize: 13, fontWeight: 700, color: '#fff', cursor: 'pointer' }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'var(--kh-primary-dark)'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'var(--kh-primary)'}>
-                  Confirm & Pay {fmt(total)}
-                </button>
-              </div>
+            </div>
+            <div className="app-modal-dialog__footer">
+              <button type="button" className="app-modal-dialog__btn-cancel" onClick={() => setShowPayModal(false)}>Back</button>
+              <button type="button" className="app-modal-dialog__btn-primary" onClick={() => setShowPayModal(false)}>
+                Confirm &amp; pay {fmt(total)}
+              </button>
             </div>
           </div>
         </div>
@@ -373,13 +373,16 @@ export default function Billing() {
 
       {/* ── Add Bank Account Modal ── */}
       {showAddBank && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 20 }}>
-          <div style={{ background: '#fff', borderRadius: 7, width: '100%', maxWidth: 420, overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
-            <div style={{ padding: '16px 20px', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--kh-text)' }}>Add Bank Account</span>
-              <button onClick={() => setShowAddBank(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--kh-text-muted)', display: 'flex' }}><FiX size={18} /></button>
+        <div className="app-modal-overlay app-modal-overlay--danger-flow" role="presentation" onClick={() => setShowAddBank(false)}>
+          <div className="app-modal-dialog app-modal-dialog--md" role="dialog" aria-modal="true" aria-labelledby="billing-bank-title" onClick={(e) => e.stopPropagation()}>
+            <div className="app-modal-dialog__header">
+              <h2 id="billing-bank-title" className="app-modal-dialog__title">Add bank account</h2>
+              <button type="button" className="app-modal-dialog__close" aria-label="Close" onClick={() => setShowAddBank(false)}>
+                <FiX size={20} strokeWidth={1.75} />
+              </button>
             </div>
-            <form onSubmit={handleSaveBank} style={{ padding: '24px 20px' }}>
+            <form onSubmit={handleSaveBank} noValidate>
+              <div className="app-modal-dialog__body" style={{ paddingBottom: 12 }}>
               {[
                 { field: 'bankName',      label: 'Bank Name',          placeholder: 'e.g. GCB Bank, Ecobank' },
                 { field: 'accountName',   label: 'Account Name',       placeholder: 'Full name on account' },
@@ -400,9 +403,10 @@ export default function Billing() {
                   />
                 </div>
               ))}
-              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 8 }}>
-                <button type="button" onClick={() => setShowAddBank(false)} style={{ background: '#f3f4f6', border: 'none', borderRadius: 7, padding: '9px 20px', fontSize: 13, fontWeight: 700, color: '#374151', cursor: 'pointer' }}>Cancel</button>
-                <button type="submit" style={{ background: 'var(--kh-primary)', border: 'none', borderRadius: 7, padding: '9px 20px', fontSize: 13, fontWeight: 700, color: '#fff', cursor: 'pointer' }}>Save Account</button>
+              </div>
+              <div className="app-modal-dialog__footer">
+                <button type="button" className="app-modal-dialog__btn-cancel" onClick={() => setShowAddBank(false)}>Cancel</button>
+                <button type="submit" className="app-modal-dialog__btn-primary">Save account</button>
               </div>
             </form>
           </div>

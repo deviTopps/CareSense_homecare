@@ -107,9 +107,9 @@ export default function Scheduling() {
 
       {/* Cancel Confirmation Modal */}
       {cancelTarget && (
-        <div className="modal d-block" style={{ background: 'rgba(0,0,0,0.25)', backdropFilter: 'blur(4px)', zIndex: 1060 }} onClick={() => setCancelTarget(null)}>
+        <div className="modal d-block" style={{ zIndex: 1060 }} onClick={() => setCancelTarget(null)}>
           <div className="modal-dialog modal-dialog-centered" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
-            <div className="modal-content" style={{ borderRadius: 16, border: 'none', boxShadow: '0 20px 60px rgba(0,0,0,0.12)' }}>
+            <div className="modal-content">
               <div className="modal-body" style={{ padding: '32px 28px', textAlign: 'center' }}>
                 <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#fef2f2', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
                   <FiXCircle size={28} style={{ color: '#dc2626' }} />
@@ -146,9 +146,9 @@ export default function Scheduling() {
 
       {/* Modal */}
       {showModal && (
-        <div className="modal d-block" style={{ background: 'rgba(0,0,0,0.25)', backdropFilter: 'blur(4px)' }} onClick={() => setShowModal(false)}>
+        <div className="modal d-block" onClick={() => setShowModal(false)}>
           <div className="modal-dialog modal-dialog-centered modal-premium" onClick={e => e.stopPropagation()}>
-            <div className="modal-content" style={{ borderRadius: 16, border: 'none', boxShadow: '0 20px 60px rgba(0,0,0,0.12)' }}>
+            <div className="modal-content">
               <div className="modal-header" style={{ borderBottom: '1px solid var(--kh-border-light)', padding: '20px 24px' }}>
                 <h6 className="modal-title" style={{ fontWeight: 700, fontSize: 16 }}>Schedule Visit</h6>
                 <button className="btn-close" onClick={() => setShowModal(false)} />

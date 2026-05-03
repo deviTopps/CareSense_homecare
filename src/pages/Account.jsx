@@ -175,76 +175,53 @@ export default function Account() {
 
       {/* Delete confirmation modal */}
       {showDeleteModal && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          zIndex: 9999, padding: 20,
-        }}>
-          <div style={{
-            background: '#fff', borderRadius: 2, width: '100%', maxWidth: 440,
-            boxShadow: '0 20px 60px rgba(0,0,0,0.2)', overflow: 'hidden',
-          }}>
-            {/* Modal header */}
-            <div style={{ padding: '16px 20px', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <FiTrash2 size={16} style={{ color: '#111827' }} />
-                <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--kh-text)' }}>Delete Account</span>
-              </div>
-              <button onClick={() => { setShowDeleteModal(false); setDeleteConfirmText(''); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--kh-text-muted)', display: 'flex' }}>
-                <FiX size={18} />
+        <div className="app-modal-overlay app-modal-overlay--danger-flow" role="presentation" onClick={() => { setShowDeleteModal(false); setDeleteConfirmText(''); }}>
+          <div className="destructive-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="account-delete-title" onClick={(e) => e.stopPropagation()}>
+            <div className="destructive-confirm-dialog__header">
+              <h2 id="account-delete-title" className="destructive-confirm-dialog__title">Delete account</h2>
+              <button
+                type="button"
+                className="destructive-confirm-dialog__close"
+                aria-label="Close"
+                onClick={() => { setShowDeleteModal(false); setDeleteConfirmText(''); }}
+              >
+                <FiX size={20} strokeWidth={1.75} />
               </button>
             </div>
-
-            {/* Modal body */}
-            <div style={{ padding: '24px 24px 20px' }}>
-              <div style={{ background: '#f8f9fa', borderRadius: 2, padding: '12px 14px', marginBottom: 20, display: 'flex', gap: 10 }}>
-                <FiAlertTriangle size={15} style={{ color: '#111827', flexShrink: 0, marginTop: 1 }} />
-                <div style={{ fontSize: 12.5, color: '#374151', lineHeight: 1.6 }}>
-                  This will <strong>permanently delete</strong> your account, all nurses, patient records, schedules and documents. <strong>This cannot be undone.</strong>
+            <div className="destructive-confirm-dialog__body">
+              <div className="destructive-confirm-dialog__warning">
+                <div className="destructive-confirm-dialog__warning-bar" aria-hidden />
+                <div className="destructive-confirm-dialog__warning-text">
+                  This will <strong>permanently delete</strong> your account, all nurses, patient records, schedules and
+                  documents. <strong>This cannot be undone.</strong>
                 </div>
               </div>
 
-              <div style={{ marginBottom: 20 }}>
-                <label style={{ display: 'block', fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#6b7280', marginBottom: 8 }}>
-                  Type <strong style={{ color: '#111827' }}>{confirmWord}</strong> to confirm
-                </label>
+              <label className="destructive-confirm-dialog__input-label" htmlFor="account-delete-confirm">
+                To delete, type <strong>{confirmWord}</strong> below
+              </label>
+              <div className="destructive-confirm-dialog__input-wrap">
+                <span className="destructive-confirm-dialog__input-icon destructive-confirm-dialog__input-icon--danger" aria-hidden>
+                  <FiTrash2 size={16} />
+                </span>
                 <input
+                  id="account-delete-confirm"
+                  className="destructive-confirm-dialog__input"
                   type="text"
+                  autoComplete="off"
                   value={deleteConfirmText}
-                  onChange={e => setDeleteConfirmText(e.target.value)}
+                  onChange={(e) => setDeleteConfirmText(e.target.value)}
                   placeholder={confirmWord}
-                  style={{
-                    width: '100%', padding: '10px 0', fontSize: 14, fontWeight: 700,
-                    border: 'none', borderBottom: `2px solid ${deleteConfirmText === confirmWord ? '#111827' : '#e5e7eb'}`,
-                    background: 'transparent', outline: 'none', color: '#111827',
-                    letterSpacing: deleteConfirmText ? '2px' : 'normal',
-                    transition: 'border-color 0.15s',
-                  }}
                 />
               </div>
-
-              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-                <button
-                  onClick={() => { setShowDeleteModal(false); setDeleteConfirmText(''); }}
-                  style={{ background: '#f3f4f6', border: 'none', borderRadius: 2, padding: '9px 20px', fontSize: 13, fontWeight: 700, color: '#374151', cursor: 'pointer' }}
-                >
-                  Cancel
-                </button>
-                <button
-                  disabled={deleteConfirmText !== confirmWord}
-                  style={{
-                    background: deleteConfirmText === confirmWord ? '#ef4444' : '#f3f4f6',
-                    border: 'none', borderRadius: 2, padding: '9px 20px',
-                    fontSize: 13, fontWeight: 700,
-                    color: deleteConfirmText === confirmWord ? '#fff' : '#9ca3af',
-                    cursor: deleteConfirmText === confirmWord ? 'pointer' : 'not-allowed',
-                    display: 'flex', alignItems: 'center', gap: 7,
-                    transition: 'background 0.15s',
-                  }}
-                >
-                  <FiTrash2 size={13} /> Permanently Delete
-                </button>
-              </div>
+            </div>
+            <div className="destructive-confirm-dialog__footer">
+              <button type="button" className="destructive-confirm-dialog__btn-cancel" onClick={() => { setShowDeleteModal(false); setDeleteConfirmText(''); }}>
+                Cancel
+              </button>
+              <button type="button" className="destructive-confirm-dialog__btn-danger" disabled={deleteConfirmText !== confirmWord}>
+                <FiTrash2 size={13} /> Permanently delete
+              </button>
             </div>
           </div>
         </div>

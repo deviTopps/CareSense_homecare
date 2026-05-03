@@ -8,6 +8,8 @@ import {
   FiMoreHorizontal,
   FiUser,
   FiUsers,
+  FiChevronLeft,
+  FiChevronRight,
 } from '../icons/hugeicons-feather';
 import { fetchAllPatients } from '../utils/patients';
 
@@ -98,6 +100,13 @@ const FLAG_TABS = [
   { key: 'Missed Visit', label: 'Missed Visit' },
 ];
 
+const WORKSPACE_TABS = [
+  { key: 'overview', label: 'Overview' },
+  { key: 'watchlist', label: 'Watchlist' },
+  { key: 'activity', label: 'Activity' },
+  { key: 'programs', label: 'Programs' },
+];
+
 const severityStyle = {
   critical: { bg: '#fef2f2', color: '#dc2626', border: '#fecaca' },
   high: { bg: '#fff7ed', color: '#ea580c', border: '#fed7aa' },
@@ -118,16 +127,142 @@ const activityFeed = [
   { title: 'Wilson Baptista reassigned an emergency visit', time: '09:05', accent: 'green' },
 ];
 
+function FlagDetailPanel({ flag, onClose, dense }) {
+  const hPad = dense ? '12px 14px' : '18px 24px';
+  const gapSm = dense ? '10px' : '14px';
+
+  return (
+    <>
+      <div style={{ padding: dense ? '10px 14px' : hPad, borderBottom: '1px solid #eef2f7', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#f8fafc' }}>
+        <div className="d-flex align-items-center gap-2">
+          <div style={{ width: dense ? 36 : 44, height: dense ? 36 : 44, borderRadius: '50%', background: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <FiAlertTriangle size={dense ? 15 : 18} style={{ color: '#fff' }} />
+          </div>
+          <div>
+            <div style={{ fontSize: dense ? 14 : 16, fontWeight: 800, color: '#111827' }} id={dense ? undefined : 'dashboard-flag-detail-title'}>Flagged Alert — {flag.id}</div>
+            <div style={{ fontSize: 11.5, color: '#6b7280' }}>{flag.type} · {flag.severity.toUpperCase()}</div>
+          </div>
+        </div>
+        <button type="button" onClick={onClose} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '6px 8px', cursor: 'pointer', color: '#6b7280', display: 'flex' }} aria-label="Close"><FiX size={16} /></button>
+      </div>
+
+      <div style={{ padding: dense ? '10px 14px' : hPad, borderBottom: '1px solid #f3f4f6', background: '#fcfcfd' }}>
+        <div className="d-flex align-items-center gap-2">
+          <div style={{ width: dense ? 44 : 52, height: dense ? 44 : 52, borderRadius: '50%', background: '#1f5e59', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: dense ? 14 : 16 }}>
+            {flag.patient.split(' ').map((name) => name[0]).join('')}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="d-flex align-items-center gap-2 flex-wrap">
+              <span style={{ fontSize: dense ? 15 : 17, fontWeight: 800, color: 'var(--kh-text)' }}>{flag.patient}</span>
+              <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Flagged</span>
+            </div>
+            <div style={{ fontSize: 11.5, color: 'var(--kh-text-muted)', marginTop: 2, display: 'flex', flexWrap: 'wrap', gap: dense ? 8 : 12 }}>
+              <span><FiMapPin size={11} style={{ marginRight: 4 }} />{flag.region}</span>
+              <span><FiPhone size={11} style={{ marginRight: 4 }} />{flag.nurse}</span>
+              <span>ID: <strong>{flag.patientId}</strong></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ padding: dense ? '10px 14px' : '14px 24px', background: '#fff7ed', borderBottom: '1px solid #fed7aa' }}>
+        <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#c2410c', marginBottom: 4 }}>Flag reason</div>
+        <div style={{ fontSize: dense ? 13 : 14, fontWeight: 600, color: '#9a3412', lineHeight: 1.45 }}>{flag.reason}</div>
+      </div>
+
+      <div style={{ padding: dense ? '12px 14px' : '22px 24px', flex: 1, minHeight: 0, overflow: 'auto' }} className="dashboard-flag-detail__body">
+        <div className="row g-3">
+          <div className="col-lg-7">
+            <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--kh-text-muted)', marginBottom: gapSm }}>Activity timeline</div>
+            {flag.activities.map((activity, index) => (
+              <div key={`${activity.time}-${activity.action}`} className="d-flex gap-2">
+                <div className="d-flex flex-column align-items-center" style={{ width: 18 }}>
+                  <div style={{ width: 10, height: 10, borderRadius: '50%', background: activity.status === 'alert' ? '#ef4444' : activity.status === 'done' ? '#1f5e59' : '#ca8a04', border: `2px solid ${activity.status === 'alert' ? '#fecaca' : activity.status === 'done' ? '#bbf7d0' : '#fde68a'}` }} />
+                  {index < flag.activities.length - 1 && <div style={{ width: 2, flex: 1, background: '#e5e7eb', minHeight: dense ? 24 : 32 }} />}
+                </div>
+                <div style={{ paddingBottom: dense ? 12 : 16, flex: 1 }}>
+                  <div className="d-flex align-items-center gap-2 flex-wrap">
+                    <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--kh-text-muted)', fontVariantNumeric: 'tabular-nums' }}>{activity.time}</span>
+                    <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--kh-text)' }}>{activity.action}</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--kh-text-muted)', marginTop: 2 }}>{activity.note}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="col-lg-5">
+            <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--kh-text-muted)', marginBottom: gapSm }}>Vitals</div>
+            <div className="row g-2 mb-3">
+              {Object.entries(flag.vitals).map(([key, value]) => {
+                const labels = { bp: 'BP', sugar: 'Glucose', pulse: 'Pulse', temp: 'Temp', spo2: 'SpO2' };
+                const isFlag = (key === 'bp' && parseInt(value, 10) >= 140) || (key === 'sugar' && parseFloat(value) > 7) || (key === 'spo2' && parseInt(value, 10) < 95);
+                return (
+                  <div key={key} className="col-6">
+                    <div style={{ padding: dense ? '8px 10px' : '12px 14px', border: '1px solid #e5e7eb', borderRadius: dense ? 10 : 14, background: isFlag ? '#fef2f2' : '#fafbfc' }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--kh-text-muted)' }}>{labels[key] || key}</div>
+                      <div style={{ fontSize: dense ? 14 : 16, fontWeight: 800, color: isFlag ? '#dc2626' : 'var(--kh-text)', marginTop: 3 }}>{value}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--kh-text-muted)', marginBottom: 8 }}>Medications</div>
+            {flag.medications.map((medication) => (
+              <div key={medication} className="d-flex align-items-center gap-2" style={{ padding: '6px 0', borderBottom: '1px solid #f3f4f6' }}>
+                <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#84cc16', flexShrink: 0 }} />
+                <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--kh-text)' }}>{medication}</span>
+              </div>
+            ))}
+
+            <div style={{ marginTop: 12, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--kh-text-muted)', marginBottom: 6 }}>Diagnosis</div>
+            <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--kh-text)', lineHeight: 1.4 }}>{flag.diagnosis}</div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ padding: dense ? '10px 14px' : '16px 24px', borderTop: '1px solid #f3f4f6', background: '#fafbfc', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 11, color: 'var(--kh-text-muted)' }}>By <strong>{flag.flaggedBy}</strong> · {flag.flaggedDate}</div>
+        <div className="d-flex gap-2">
+          <button type="button" onClick={onClose} className="btn btn-kh-outline" style={{ fontSize: 12 }}>Close</button>
+          <button type="button" className="btn btn-kh-primary" style={{ fontSize: 12, background: '#ef4444', borderColor: '#ef4444' }}>Resolve</button>
+        </div>
+      </div>
+    </>
+  );
+}
+
 export default function Dashboard() {
+  const [workspaceTab, setWorkspaceTab] = useState('overview');
   const [flagTab, setFlagTab] = useState('all');
   const [selectedFlag, setSelectedFlag] = useState(null);
+  const [watchlistInspectorOpen, setWatchlistInspectorOpen] = useState(true);
   const [patientCount, setPatientCount] = useState(0);
   const [isDashboardCardsLoading, setIsDashboardCardsLoading] = useState(true);
+  const [wideLayout, setWideLayout] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(min-width: 992px)').matches,
+  );
+
   const todayLabel = new Intl.DateTimeFormat('en-US', {
     weekday: 'long',
     month: 'long',
     day: 'numeric',
   }).format(new Date());
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const mq = window.matchMedia('(min-width: 992px)');
+    const handler = () => setWideLayout(mq.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+
+  useEffect(() => {
+    if (workspaceTab !== 'watchlist') {
+      setSelectedFlag(null);
+    }
+  }, [workspaceTab]);
 
   useEffect(() => {
     let cancelled = false;
@@ -183,53 +318,76 @@ export default function Dashboard() {
     },
   ];
 
+  const showDockedInspector = workspaceTab === 'watchlist' && wideLayout && selectedFlag && watchlistInspectorOpen;
+  const showFlagModal = selectedFlag && (!wideLayout || workspaceTab !== 'watchlist' || !watchlistInspectorOpen);
+
   return (
     <motion.div className="page-wrapper dashboard-page" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25 }}>
       <div className="dashboard-shell">
-        <motion.div className="dashboard-welcome-banner" initial={{ y: 12, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.28 }}>
-          <div>
-            <span className="dashboard-welcome-banner__eyebrow">Dashboard Overview</span>
-            <h2>Welcome back</h2>
-            <p>Here’s a quick view of your patient activity, workforce status, and urgent cases for today.</p>
+        <div className="dashboard-workspace-bar" role="tablist" aria-label="Dashboard workspace">
+          {WORKSPACE_TABS.map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              role="tab"
+              aria-selected={workspaceTab === tab.key}
+              className={`dashboard-workspace-tab${workspaceTab === tab.key ? ' active' : ''}`}
+              onClick={() => setWorkspaceTab(tab.key)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        <motion.div className="dashboard-welcome-banner dashboard-welcome-banner--compact" initial={{ y: 8, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.22 }}>
+          <div className="dashboard-welcome-banner__lead">
+            <span className="dashboard-welcome-banner__eyebrow">Dashboard</span>
+            Welcome back — patient activity, workforce, and escalations.
           </div>
           <div className="dashboard-welcome-banner__date">{todayLabel}</div>
         </motion.div>
 
-        <div className="dashboard-top-grid">
-          {statisticCards.map((card, index) => (
-            <motion.div key={card.key} className="dashboard-stat-card" initial={{ y: 12, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.28, delay: 0.06 * index }}>
-              <div className="dashboard-section-header compact">
-                <div className="dashboard-stat-card__title">
-                  <span className="dashboard-summary-card__icon"><card.Icon size={16} /></span>
-                  <div>
-                    <h4>{card.title}</h4>
+        {workspaceTab === 'overview' && (
+          <>
+            <div className="dashboard-top-grid">
+              {statisticCards.map((card, index) => (
+                <motion.div key={card.key} className="dashboard-stat-card" initial={{ y: 8, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.24, delay: 0.04 * index }}>
+                  <div className="dashboard-section-header compact">
+                    <div className="dashboard-stat-card__title">
+                      <span className="dashboard-summary-card__icon"><card.Icon size={16} /></span>
+                      <div>
+                        <h4>{card.title}</h4>
+                        {isDashboardCardsLoading ? (
+                          <span className="dashboard-skeleton dashboard-skeleton--text dashboard-stat-card__skeleton-note" aria-hidden="true" />
+                        ) : (
+                          <p>{card.note}</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="dashboard-stat-card__center">
                     {isDashboardCardsLoading ? (
-                      <span className="dashboard-skeleton dashboard-skeleton--text dashboard-stat-card__skeleton-note" aria-hidden="true" />
+                      <div className="dashboard-stat-card__loading" role="status" aria-live="polite" aria-label={`${card.title} data is loading`}>
+                        <span className="dashboard-skeleton dashboard-skeleton--value" aria-hidden="true" />
+                        <small>Loading data...</small>
+                      </div>
                     ) : (
-                      <p>{card.note}</p>
+                      <strong>{card.value}</strong>
                     )}
                   </div>
-                </div>
-              </div>
-              <div className="dashboard-stat-card__center">
-                {isDashboardCardsLoading ? (
-                  <div className="dashboard-stat-card__loading" role="status" aria-live="polite" aria-label={`${card.title} data is loading`}>
-                    <span className="dashboard-skeleton dashboard-skeleton--value" aria-hidden="true" />
-                    <small>Loading data...</small>
-                  </div>
-                ) : (
-                  <strong>{card.value}</strong>
-                )}
-              </div>
-            </motion.div>
-          ))}
-        </div>
+                </motion.div>
+              ))}
+            </div>
 
-        <div className="dashboard-main-grid">
-          <motion.div className="dashboard-activity-card" initial={{ y: 12, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.28, delay: 0.2 }}>
+            <p className="dashboard-workspace-hint">Use the workspace tabs above for watchlist, live activity, and program budgets.</p>
+          </>
+        )}
+
+        {workspaceTab === 'activity' && (
+          <motion.div className="dashboard-activity-card" initial={{ y: 8, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.22 }}>
             <div className="dashboard-section-header compact">
               <div>
-                <h4>Recent Activity</h4>
+                <h4>Recent activity</h4>
                 <p>Today</p>
               </div>
               <button type="button" className="dashboard-icon-ghost"><FiMoreHorizontal size={15} /></button>
@@ -246,11 +404,13 @@ export default function Dashboard() {
               ))}
             </div>
           </motion.div>
+        )}
 
-          <motion.div className="dashboard-programs-card dashboard-programs-card--tall" initial={{ y: 12, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.28, delay: 0.24 }}>
+        {workspaceTab === 'programs' && (
+          <motion.div className="dashboard-programs-card dashboard-programs-card--tall" initial={{ y: 8, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.22 }}>
             <div className="dashboard-section-header compact">
               <div>
-                <h4>Care Programs</h4>
+                <h4>Care programs</h4>
                 <p>Total savings</p>
               </div>
               <button type="button" className="dashboard-link-btn">+ Add Plan</button>
@@ -275,167 +435,116 @@ export default function Dashboard() {
               ))}
             </div>
           </motion.div>
+        )}
 
-          <motion.div className="dashboard-watchlist-card" initial={{ y: 12, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.28, delay: 0.26 }}>
-            <div className="dashboard-section-header">
-              <div>
-                <h4>Critical Watchlist</h4>
-                <p>Flagged patient exceptions and operational alerts</p>
-              </div>
-              <div className="dashboard-watchlist-card__filters">
-                {FLAG_TABS.map((tab) => {
-                  const count = tab.key === 'all' ? flaggedIssues.length : flaggedIssues.filter((issue) => issue.type === tab.key).length;
-                  return (
-                    <button
-                      key={tab.key}
-                      type="button"
-                      onClick={() => setFlagTab(tab.key)}
-                      className={`dashboard-tab-pill${flagTab === tab.key ? ' active' : ''}`}
-                    >
-                      <span>{tab.label}</span>
-                      <small>{count}</small>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="dashboard-watchlist-table">
-              <div className="dashboard-watchlist-table__head">
-                <span>Patient</span>
-                <span>Concern</span>
-                <span>Severity</span>
-                <span>Region</span>
-                <span>Date</span>
-                <span>Action</span>
-              </div>
-              <div className="dashboard-watchlist-table__body">
-                {filtered.map((flag) => {
-                  const sev = severityStyle[flag.severity];
-                  return (
-                    <button key={flag.id} type="button" className="dashboard-watchlist-row" onClick={() => setSelectedFlag(flag)}>
-                      <span>
-                        <strong>{flag.patient}</strong>
-                        <small>{flag.patientId}</small>
-                      </span>
-                      <span>
-                        <strong>{flag.type}</strong>
-                        <small>{flag.reason}</small>
-                      </span>
-                      <span>
-                        <em style={{ background: sev.bg, color: sev.color, borderColor: sev.border }}>{flag.severity}</em>
-                      </span>
-                      <span>{flag.region}</span>
-                      <span>{flag.flaggedDate}</span>
-                      <span className="dashboard-watchlist-row__action">View</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </motion.div>
-        </div>
-      </div>
-
-      {selectedFlag && (
-        <div className="kh-modal-overlay" style={{ zIndex: 2000 }} onClick={() => setSelectedFlag(null)}>
-          <div onClick={(event) => event.stopPropagation()} style={{ background: '#fff', borderRadius: 24, width: '100%', maxWidth: 920, maxHeight: '90vh', overflow: 'auto', boxShadow: '0 24px 80px rgba(15, 23, 42, 0.24)' }}>
-            <div style={{ padding: '18px 24px', borderBottom: '1px solid #eef2f7', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#f8fafc' }}>
-              <div className="d-flex align-items-center gap-3">
-                <div style={{ width: 44, height: 44, borderRadius: '50%', background: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <FiAlertTriangle size={18} style={{ color: '#fff' }} />
-                </div>
+        {workspaceTab === 'watchlist' && (
+          <motion.div
+            className={`dashboard-watchlist-workspace${showDockedInspector ? '' : ' dashboard-watchlist-workspace--single'}`}
+            initial={{ y: 8, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ duration: 0.22 }}
+          >
+            <div className="dashboard-watchlist-card dashboard-watchlist-card--workspace">
+              <div className="dashboard-section-header dashboard-section-header--toolbar">
                 <div>
-                  <div style={{ fontSize: 16, fontWeight: 800, color: '#111827' }}>Flagged Alert — {selectedFlag.id}</div>
-                  <div style={{ fontSize: 12.5, color: '#6b7280' }}>{selectedFlag.type} · {selectedFlag.severity.toUpperCase()}</div>
+                  <h4>Critical watchlist</h4>
+                  <p>Flagged exceptions · {filtered.length} shown</p>
                 </div>
-              </div>
-              <button onClick={() => setSelectedFlag(null)} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '8px 10px', cursor: 'pointer', color: '#6b7280', display: 'flex' }}><FiX size={16} /></button>
-            </div>
-
-            <div style={{ padding: '18px 24px', borderBottom: '1px solid #f3f4f6', background: '#fcfcfd' }}>
-              <div className="d-flex align-items-center gap-3">
-                <div style={{ width: 52, height: 52, borderRadius: '50%', background: '#1f5e59', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: 16 }}>
-                  {selectedFlag.patient.split(' ').map((name) => name[0]).join('')}
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div className="d-flex align-items-center gap-2">
-                    <span style={{ fontSize: 17, fontWeight: 800, color: 'var(--kh-text)' }}>{selectedFlag.patient}</span>
-                    <span style={{ fontSize: 10.5, fontWeight: 700, padding: '3px 9px', borderRadius: 999, background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Flagged</span>
-                  </div>
-                  <div style={{ fontSize: 12.5, color: 'var(--kh-text-muted)', marginTop: 2, display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-                    <span><FiMapPin size={11} style={{ marginRight: 4 }} />{selectedFlag.region}</span>
-                    <span><FiPhone size={11} style={{ marginRight: 4 }} />Assigned Nurse: {selectedFlag.nurse}</span>
-                    <span>Patient ID: <strong>{selectedFlag.patientId}</strong></span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div style={{ padding: '14px 24px', background: '#fff7ed', borderBottom: '1px solid #fed7aa' }}>
-              <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#c2410c', marginBottom: 5 }}>Flag Reason</div>
-              <div style={{ fontSize: 14, fontWeight: 600, color: '#9a3412' }}>{selectedFlag.reason}</div>
-            </div>
-
-            <div style={{ padding: '22px 24px' }}>
-              <div className="row g-4">
-                <div className="col-lg-7">
-                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--kh-text-muted)', marginBottom: 14 }}>Patient Activity Timeline</div>
-                  {selectedFlag.activities.map((activity, index) => (
-                    <div key={`${activity.time}-${activity.action}`} className="d-flex gap-3">
-                      <div className="d-flex flex-column align-items-center" style={{ width: 20 }}>
-                        <div style={{ width: 11, height: 11, borderRadius: '50%', background: activity.status === 'alert' ? '#ef4444' : activity.status === 'done' ? '#1f5e59' : '#ca8a04', border: `2px solid ${activity.status === 'alert' ? '#fecaca' : activity.status === 'done' ? '#bbf7d0' : '#fde68a'}` }} />
-                        {index < selectedFlag.activities.length - 1 && <div style={{ width: 2, flex: 1, background: '#e5e7eb', minHeight: 32 }} />}
-                      </div>
-                      <div style={{ paddingBottom: 16, flex: 1 }}>
-                        <div className="d-flex align-items-center gap-2">
-                          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--kh-text-muted)', fontVariantNumeric: 'tabular-nums' }}>{activity.time}</span>
-                          <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--kh-text)' }}>{activity.action}</span>
-                        </div>
-                        <div style={{ fontSize: 12.5, color: 'var(--kh-text-muted)', marginTop: 3 }}>{activity.note}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="col-lg-5">
-                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--kh-text-muted)', marginBottom: 14 }}>Current Vitals</div>
-                  <div className="row g-2 mb-4">
-                    {Object.entries(selectedFlag.vitals).map(([key, value]) => {
-                      const labels = { bp: 'Blood Pressure', sugar: 'Blood Sugar', pulse: 'Pulse', temp: 'Temperature', spo2: 'SPO2' };
-                      const isFlag = (key === 'bp' && parseInt(value, 10) >= 140) || (key === 'sugar' && parseFloat(value) > 7) || (key === 'spo2' && parseInt(value, 10) < 95);
+                <div className="dashboard-watchlist-toolbar">
+                  {wideLayout && (
+                    <button
+                      type="button"
+                      className="dashboard-toolbar-btn"
+                      onClick={() => setWatchlistInspectorOpen((o) => !o)}
+                      title={watchlistInspectorOpen ? 'Hide detail pane' : 'Show detail pane'}
+                    >
+                      {watchlistInspectorOpen ? <FiChevronRight size={16} /> : <FiChevronLeft size={16} />}
+                      <span>Detail</span>
+                    </button>
+                  )}
+                  <div className="dashboard-watchlist-card__filters">
+                    {FLAG_TABS.map((tab) => {
+                      const count = tab.key === 'all' ? flaggedIssues.length : flaggedIssues.filter((issue) => issue.type === tab.key).length;
                       return (
-                        <div key={key} className="col-6">
-                          <div style={{ padding: '12px 14px', border: '1px solid #e5e7eb', borderRadius: 16, background: isFlag ? '#fef2f2' : '#fafbfc' }}>
-                            <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--kh-text-muted)' }}>{labels[key] || key}</div>
-                            <div style={{ fontSize: 16, fontWeight: 800, color: isFlag ? '#dc2626' : 'var(--kh-text)', marginTop: 4 }}>{value}</div>
-                          </div>
-                        </div>
+                        <button
+                          key={tab.key}
+                          type="button"
+                          onClick={() => setFlagTab(tab.key)}
+                          className={`dashboard-tab-pill${flagTab === tab.key ? ' active' : ''}`}
+                        >
+                          <span>{tab.label}</span>
+                          <small>{count}</small>
+                        </button>
                       );
                     })}
                   </div>
+                </div>
+              </div>
 
-                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--kh-text-muted)', marginBottom: 10 }}>Active Medications</div>
-                  {selectedFlag.medications.map((medication) => (
-                    <div key={medication} className="d-flex align-items-center gap-2" style={{ padding: '8px 0', borderBottom: '1px solid #f3f4f6' }}>
-                      <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#84cc16', flexShrink: 0 }} />
-                      <span style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--kh-text)' }}>{medication}</span>
-                    </div>
-                  ))}
-
-                  <div style={{ marginTop: 16, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--kh-text-muted)', marginBottom: 8 }}>Diagnosis</div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--kh-text)' }}>{selectedFlag.diagnosis}</div>
+              <div className="dashboard-watchlist-table">
+                <div className="dashboard-watchlist-table__head">
+                  <span>Patient</span>
+                  <span>Concern</span>
+                  <span>Severity</span>
+                  <span>Region</span>
+                  <span>Date</span>
+                  <span>Action</span>
+                </div>
+                <div className="dashboard-watchlist-table__body">
+                  {filtered.map((flag) => {
+                    const sev = severityStyle[flag.severity];
+                    return (
+                      <button
+                        key={flag.id}
+                        type="button"
+                        className={`dashboard-watchlist-row${selectedFlag?.id === flag.id ? ' dashboard-watchlist-row--active' : ''}`}
+                        onClick={() => {
+                          setSelectedFlag(flag);
+                          if (wideLayout) setWatchlistInspectorOpen(true);
+                        }}
+                      >
+                        <span>
+                          <strong>{flag.patient}</strong>
+                          <small>{flag.patientId}</small>
+                        </span>
+                        <span>
+                          <strong>{flag.type}</strong>
+                          <small>{flag.reason}</small>
+                        </span>
+                        <span>
+                          <em style={{ background: sev.bg, color: sev.color, borderColor: sev.border }}>{flag.severity}</em>
+                        </span>
+                        <span>{flag.region}</span>
+                        <span>{flag.flaggedDate}</span>
+                        <span className="dashboard-watchlist-row__action">View</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </div>
 
-            <div style={{ padding: '16px 24px', borderTop: '1px solid #f3f4f6', background: '#fafbfc', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              <div style={{ fontSize: 12, color: 'var(--kh-text-muted)' }}>Flagged by <strong>{selectedFlag.flaggedBy}</strong> on {selectedFlag.flaggedDate}</div>
-              <div className="d-flex gap-2">
-                <button onClick={() => setSelectedFlag(null)} className="btn btn-kh-outline" style={{ fontSize: 12.5 }}>Close</button>
-                <button className="btn btn-kh-primary" style={{ fontSize: 12.5, background: '#ef4444', borderColor: '#ef4444' }}>Resolve Flag</button>
-              </div>
-            </div>
+            {showDockedInspector && (
+              <aside className="dashboard-flag-inspector" aria-label="Flag detail">
+                <div className="dashboard-flag-inspector__inner">
+                  <FlagDetailPanel flag={selectedFlag} onClose={() => setSelectedFlag(null)} dense />
+                </div>
+              </aside>
+            )}
+          </motion.div>
+        )}
+      </div>
+
+      {showFlagModal && selectedFlag && (
+        <div className="kh-modal-overlay" style={{ zIndex: 2000 }} onClick={() => setSelectedFlag(null)} role="presentation">
+          <div
+            onClick={(event) => event.stopPropagation()}
+            style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 920, maxHeight: '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 80px rgba(15, 23, 42, 0.24)' }}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="dashboard-flag-detail-title"
+          >
+            <FlagDetailPanel flag={selectedFlag} onClose={() => setSelectedFlag(null)} dense={false} />
           </div>
         </div>
       )}

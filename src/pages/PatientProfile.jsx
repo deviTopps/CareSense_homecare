@@ -5,8 +5,9 @@ import {
   FiArrowLeft, FiPhone, FiMail, FiMapPin, FiCalendar,
   FiUser, FiHeart, FiActivity, FiShield, FiFileText, FiEdit2,
   FiAlertTriangle, FiAlertCircle, FiCheckCircle, FiThermometer, FiClipboard,
-  FiPrinter, FiMoreHorizontal, FiClock, FiPlus, FiX, FiSend, FiRefreshCw,
-  FiSearch, FiBell, FiChevronDown, FiChevronRight, FiBarChart2
+  FiMoreHorizontal, FiClock, FiPlus, FiX, FiSend, FiRefreshCw,
+  FiSearch, FiBell, FiChevronDown, FiChevronRight, FiBarChart2,
+  FiTrash2, FiGrid,
 } from '../icons/hugeicons-feather';
 import compressImage from '../utils/compressImage';
 import { API_BASE, apiFetch, getToken, getUser } from '../api';
@@ -188,15 +189,15 @@ const FlagItem = ({ label, detail }) => (
 );
 
 const TABS = [
-  { key: 'chart', label: 'Chart Summary', icon: <FiClipboard size={14} /> },
-  { key: 'clinical', label: 'Clinical Assessment', icon: <FiActivity size={14} /> },
-  { key: 'vitals', label: 'Vitals', icon: <FiThermometer size={14} /> },
-  { key: 'medications', label: 'Medications', icon: <FiFileText size={14} /> },
-  { key: 'care', label: 'Lifestyle Records', icon: <FiHeart size={14} /> },
-  { key: 'notes', label: 'Nurse Notes', icon: <FiEdit2 size={14} /> },
-  { key: 'incidents', label: 'Incident Reports', icon: <FiAlertTriangle size={14} /> },
-  { key: 'careplan', label: 'Care Plan', icon: <FiCheckCircle size={14} /> },
-  { key: 'checkliststatus', label: 'Checklist Status', icon: <FiBarChart2 size={14} /> },
+  { key: 'chart', label: 'General', icon: <FiGrid size={14} /> },
+  { key: 'medications', label: 'Medications' },
+  { key: 'clinical', label: 'Clinical' },
+  { key: 'vitals', label: 'Vitals' },
+  { key: 'care', label: 'Lifestyle records' },
+  { key: 'notes', label: 'Nurse Note' },
+  { key: 'incidents', label: 'Incident Report' },
+  { key: 'careplan', label: 'Care Plan' },
+  { key: 'checkliststatus', label: 'Checklist', icon: <FiBarChart2 size={14} /> },
 ];
 
 const Panel = ({ title, icon, accent, children, action, variant = 'default', bodyClassName = '' }) => {
@@ -734,8 +735,8 @@ function normalizePatientProfile(rawPatient, fallbackId) {
     preferredName: rawPatient?.preferredName || firstName || '',
     age: rawPatient?.age ?? '',
     gender: rawPatient?.gender || '',
-    dob: rawPatient?.dateOfBirth || rawPatient?.dob || '',
-    dateOfAssessment: rawPatient?.dateOfAssessment || '',
+    dob: toDateInputValue(rawPatient?.dateOfBirth || rawPatient?.dob || ''),
+    dateOfAssessment: toDateInputValue(rawPatient?.dateOfAssessment || ''),
     diagnosis: rawPatient?.diagnosis || rawPatient?.primaryDiagnosis || '',
     phone: rawPatient?.contactNumber || rawPatient?.phone || '',
     email: rawPatient?.email || '',
@@ -755,7 +756,7 @@ function normalizePatientProfile(rawPatient, fallbackId) {
       phone: nextOfKin?.personalDoctorContact || '',
     },
     status: rawPatient?.status || '',
-    enrolled: rawPatient?.dateOfAdmission || rawPatient?.enrolled || '',
+    enrolled: toDateInputValue(rawPatient?.dateOfAdmission || rawPatient?.enrolled || ''),
     regNo: rawPatient?.registrationNumber || '',
     profileImage,
     cultural: nextOfKin?.spiritualNeed || rawPatient?.cultural || '',
@@ -1191,38 +1192,6 @@ function extractDrugList(payload) {
   return [];
 }
 
-function extractNurseList(payload) {
-  if (Array.isArray(payload)) return payload;
-  if (Array.isArray(payload?.nurses)) return payload.nurses;
-  if (Array.isArray(payload?.data)) return payload.data;
-  if (Array.isArray(payload?.data?.nurses)) return payload.data.nurses;
-  if (Array.isArray(payload?.items)) return payload.items;
-  if (payload?.nurse && typeof payload.nurse === 'object') return [payload.nurse];
-  if (payload?.data?.nurse && typeof payload.data.nurse === 'object') return [payload.data.nurse];
-  return [];
-}
-
-function normalizeVitalNurseOption(rawNurse) {
-  const raw = rawNurse && typeof rawNurse === 'object' ? rawNurse : {};
-  const firstName = String(raw?.firstName || raw?.personal?.firstName || raw?.nurse?.firstName || '').trim();
-  const lastName = String(raw?.lastName || raw?.personal?.lastName || raw?.nurse?.lastName || '').trim();
-  const name = String(
-    raw?.name
-    || raw?.fullName
-    || raw?.staffName
-    || raw?.nurseName
-    || raw?.nurse?.name
-    || `${firstName} ${lastName}`.trim()
-  ).trim();
-
-  if (!name) return null;
-
-  return {
-    id: raw?._id || raw?.id || raw?.nurseId || raw?.staffId || raw?.nurse?._id || raw?.nurse?.id || `name:${name.toLowerCase()}`,
-    name,
-  };
-}
-
 function createVitalForm(recordedBy = '') {
   return {
     date: new Date().toISOString().slice(0, 10),
@@ -1274,6 +1243,30 @@ function toVitalTimeString(value, fallbackTime) {
   return parsed.toTimeString().slice(0, 5);
 }
 
+/** API may return takenBy/recordedBy as a string id, display name, or populated user object */
+function vitalRecorderDisplayName(value) {
+  if (value == null || value === '') return '';
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return String(value).trim();
+  }
+  if (typeof value !== 'object') return '';
+  const u = value?.user;
+  const fromUser = u && (typeof u === 'string' ? u : vitalRecorderDisplayName(u));
+  const direct =
+    value?.name
+    || value?.fullName
+    || value?.displayName
+    || value?.staffName
+    || value?.nurseName
+    || value?.label
+    || fromUser;
+  if (direct) return String(direct).trim();
+  const first = value?.firstName || value?.givenName || '';
+  const last = value?.lastName || value?.familyName || '';
+  const combined = `${first} ${last}`.trim();
+  return combined || '';
+}
+
 function normalizeVitalRecord(rawVital, fallback = {}) {
   const raw = rawVital && typeof rawVital === 'object' ? rawVital : {};
   const systolic = String(raw?.bloodPressureSystolic || raw?.systolic || fallback?.bloodPressureSystolic || '').trim();
@@ -1297,7 +1290,10 @@ function normalizeVitalRecord(rawVital, fallback = {}) {
     temp: String(raw?.temperature ?? fallback?.temp ?? '').trim(),
     weight: String(raw?.weight ?? fallback?.weight ?? '').trim(),
     urinalysis: String(raw?.urinalysis ?? fallback?.urinalysis ?? '').trim(),
-    recordedBy: String(raw?.takenBy || raw?.recordedBy || fallback?.recordedBy || '').trim(),
+    recordedBy:
+      vitalRecorderDisplayName(raw?.takenBy)
+      || vitalRecorderDisplayName(raw?.recordedBy)
+      || vitalRecorderDisplayName(fallback?.recordedBy),
     notes: String(raw?.notes || fallback?.notes || '').trim(),
   };
 }
@@ -1308,6 +1304,105 @@ function sortVitalRecords(records) {
     const rightDate = new Date(`${right.date || '1970-01-01'}T${right.time || '00:00'}`);
     return rightDate - leftDate;
   });
+}
+
+function extractCarePlanList(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.carePlans)) return payload.carePlans;
+  if (Array.isArray(payload?.items)) return payload.items;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (
+    payload?.data
+    && typeof payload.data === 'object'
+    && !Array.isArray(payload.data)
+    && String(payload.data.task || '').trim()
+  ) {
+    return [payload.data];
+  }
+  if (Array.isArray(payload?.data?.carePlans)) return payload.data.carePlans;
+  if (Array.isArray(payload?.results)) return payload.results;
+  if (payload?.carePlan && typeof payload.carePlan === 'object') return [payload.carePlan];
+  if (payload?.data?.carePlan && typeof payload.data.carePlan === 'object') return [payload.data.carePlan];
+  /* Root-level single object: { patientId, task, category, frequency, priority, description } */
+  if (
+    payload
+    && typeof payload === 'object'
+    && !Array.isArray(payload)
+    && String(payload.task || '').trim()
+  ) {
+    return [payload];
+  }
+  return [];
+}
+
+function carePlanDerivedId(row) {
+  const r = row && typeof row === 'object' ? row : {};
+  const s = [
+    r.patientId,
+    r.task,
+    r.category,
+    r.frequency,
+    r.priority,
+    r.description ?? r.notes ?? '',
+  ].join('\x1e');
+  let h = 5381;
+  for (let i = 0; i < s.length; i += 1) {
+    h = ((h << 5) + h) ^ s.charCodeAt(i);
+  }
+  return `cp-${(h >>> 0).toString(36)}`;
+}
+
+function normalizeCarePlanRecord(raw, fallback = {}) {
+  const r = raw && typeof raw === 'object' ? raw : {};
+  const createdRaw = r.createdAt || r.createdDate || r.date || r.updatedAt || fallback.createdDate || '';
+  const createdDate = createdRaw
+    ? (String(createdRaw).includes('T') ? String(createdRaw).split('T')[0] : String(createdRaw).slice(0, 10))
+    : new Date().toISOString().slice(0, 10);
+  const desc = r.description ?? r.notes ?? fallback.notes ?? '';
+  const checked = Boolean(
+    r.completed ?? r.isCompleted ?? r.checked ?? r.isChecked ?? fallback.checked ?? false,
+  );
+  const explicitId = r.id ?? r._id ?? r.carePlanId ?? fallback.id;
+  return {
+    id: explicitId != null && String(explicitId).trim() !== '' ? explicitId : carePlanDerivedId(r),
+    patientId: String(r.patientId ?? fallback.patientId ?? '').trim(),
+    task: String(r.task ?? fallback.task ?? '').trim(),
+    category: String(r.category ?? fallback.category ?? 'Other').trim() || 'Other',
+    frequency: String(r.frequency ?? fallback.frequency ?? 'Daily').trim() || 'Daily',
+    priority: String(r.priority ?? fallback.priority ?? 'Medium').trim() || 'Medium',
+    notes: String(desc ?? '').trim(),
+    checked,
+    createdDate: /^\d{4}-\d{2}-\d{2}$/.test(createdDate) ? createdDate : new Date().toISOString().slice(0, 10),
+  };
+}
+
+function sortCarePlanItems(items) {
+  const priorityOrder = { High: 0, Medium: 1, Low: 2 };
+  return [...items].sort((a, b) => {
+    if (a.checked !== b.checked) return a.checked ? 1 : -1;
+    const pd = (priorityOrder[a.priority] ?? 1) - (priorityOrder[b.priority] ?? 1);
+    if (pd !== 0) return pd;
+    return String(a.task || '').localeCompare(String(b.task || ''));
+  });
+}
+
+function buildCarePlanApiBody(patientId, form, options = {}) {
+  const pid = String(patientId || '').trim();
+  const body = {
+    patientId: pid,
+    task: String(form.task ?? '').trim(),
+    category: form.category,
+    frequency: form.frequency,
+    priority: form.priority,
+  };
+  const desc = String(form.notes ?? '').trim();
+  if (desc) {
+    body.description = desc;
+  }
+  if (options.completed !== undefined) {
+    body.completed = Boolean(options.completed);
+  }
+  return body;
 }
 
 /* ── Nurse Notes helpers ── */
@@ -1425,18 +1520,279 @@ function sortNurseNotes(notes) {
   });
 }
 
+/* ─── Incident report API helpers ─── */
+const INCIDENT_TYPE_LABELS = ['Fall', 'Medication Error', 'Skin Breakdown', 'Behavioral', 'Equipment Failure', 'Missed Visit', 'Injury', 'Allergic Reaction', 'Infection', 'Other'];
+const INCIDENT_TYPE_TO_API = INCIDENT_TYPE_LABELS.reduce((acc, label) => {
+  acc[label] = label.toLowerCase().replace(/\s+/g, '-');
+  return acc;
+}, {});
+const INCIDENT_TYPE_FROM_API = Object.entries(INCIDENT_TYPE_TO_API).reduce((acc, [label, api]) => {
+  acc[api] = label;
+  acc[api.replace(/-/g, ' ')] = label;
+  acc[label.toLowerCase()] = label;
+  return acc;
+}, {});
+
+const INCIDENT_SEVERITY_TO_API = { Minor: 'low', Moderate: 'moderate', Serious: 'high', Critical: 'critical' };
+const INCIDENT_SEVERITY_FROM_API = { low: 'Minor', minor: 'Minor', moderate: 'Moderate', medium: 'Moderate', high: 'Serious', serious: 'Serious', critical: 'Critical' };
+
+function incidentTypeToApi(label) {
+  if (!label) return '';
+  return INCIDENT_TYPE_TO_API[label] || String(label).toLowerCase().replace(/\s+/g, '-');
+}
+
+function incidentTypeFromApi(value, fallback = 'Fall') {
+  if (!value) return fallback;
+  const v = String(value).trim();
+  if (INCIDENT_TYPE_FROM_API[v]) return INCIDENT_TYPE_FROM_API[v];
+  if (INCIDENT_TYPE_FROM_API[v.toLowerCase()]) return INCIDENT_TYPE_FROM_API[v.toLowerCase()];
+  return v.charAt(0).toUpperCase() + v.slice(1).toLowerCase();
+}
+
+function incidentSeverityToApi(label) {
+  if (!label) return '';
+  return INCIDENT_SEVERITY_TO_API[label] || String(label).toLowerCase();
+}
+
+function incidentSeverityFromApi(value, fallback = 'Minor') {
+  if (!value) return fallback;
+  const v = String(value).trim().toLowerCase();
+  return INCIDENT_SEVERITY_FROM_API[v] || (v.charAt(0).toUpperCase() + v.slice(1));
+}
+
+/** PATCH /incidents/:id — API uses snake_case; UI uses `in-progress`. */
+function incidentStatusToApi(uiStatus) {
+  const s = String(uiStatus || 'open').trim().toLowerCase().replace(/_/g, '-');
+  if (s === 'in-progress') return 'in_progress';
+  if (s === 'resolved') return 'resolved';
+  if (s === 'open') return 'open';
+  return s.replace(/-/g, '_');
+}
+
+function incidentStatusFromApi(value, fallback = 'open') {
+  if (value == null || value === '') return fallback;
+  const v = String(value).trim().toLowerCase().replace(/_/g, '-');
+  if (v === 'wip' || v === 'inprogress') return 'in-progress';
+  if (v === 'in-progress') return 'in-progress';
+  if (v === 'resolved' || v === 'closed') return 'resolved';
+  if (v === 'open' || v === 'pending') return 'open';
+  return v || fallback;
+}
+
+function incidentDateToApi(value) {
+  if (!value) return '';
+  const s = String(value).trim();
+  if (/^\d{2}-\d{2}-\d{4}$/.test(s)) return s;
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+    const [y, m, d] = s.slice(0, 10).split('-');
+    return `${d}-${m}-${y}`;
+  }
+  const parsed = new Date(s);
+  if (!Number.isNaN(parsed.getTime())) {
+    const iso = parsed.toISOString().slice(0, 10);
+    const [y, m, d] = iso.split('-');
+    return `${d}-${m}-${y}`;
+  }
+  return s;
+}
+
+function incidentDateFromApi(value, fallback) {
+  if (!value) return fallback || new Date().toISOString().slice(0, 10);
+  const s = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  if (/^\d{2}-\d{2}-\d{4}$/.test(s)) {
+    const [d, m, y] = s.split('-');
+    return `${y}-${m}-${d}`;
+  }
+  const parsed = new Date(s);
+  if (!Number.isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10);
+  return fallback || s;
+}
+
+function incidentTimeToApi(value) {
+  if (!value) return '';
+  const s = String(value).trim();
+  const ampmMatch = s.match(/^(\d{1,2}):(\d{2})\s*(AM|PM|am|pm)$/);
+  if (ampmMatch) return `${String(ampmMatch[1]).padStart(2, '0')}:${ampmMatch[2]}${ampmMatch[3].toUpperCase()}`;
+  const t24 = s.match(/^(\d{1,2}):(\d{2})/);
+  if (t24) {
+    let h = parseInt(t24[1], 10);
+    const min = t24[2];
+    if (Number.isNaN(h)) return s;
+    const period = h >= 12 ? 'PM' : 'AM';
+    h = h % 12;
+    if (h === 0) h = 12;
+    return `${String(h).padStart(2, '0')}:${min}${period}`;
+  }
+  return s;
+}
+
+function incidentTimeFromApi(value, fallback) {
+  if (!value) return fallback || new Date().toTimeString().slice(0, 5);
+  const s = String(value).trim();
+  const m = s.match(/^(\d{1,2}):(\d{2})\s*(AM|PM|am|pm)$/);
+  if (m) {
+    let h = parseInt(m[1], 10);
+    const period = m[3].toUpperCase();
+    if (period === 'PM' && h < 12) h += 12;
+    if (period === 'AM' && h === 12) h = 0;
+    return `${String(h).padStart(2, '0')}:${m[2]}`;
+  }
+  if (/^\d{1,2}:\d{2}/.test(s)) return s.slice(0, 5).padStart(5, '0');
+  return fallback || s;
+}
+
+function extractIncidentList(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.incidents)) return payload.incidents;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.data?.incidents)) return payload.data.incidents;
+  if (Array.isArray(payload?.results)) return payload.results;
+  if (payload?.incident && typeof payload.incident === 'object') return [payload.incident];
+  if (payload?.data?.incident && typeof payload.data.incident === 'object') return [payload.data.incident];
+  return [];
+}
+
+function isUnknownReporterLabel(name) {
+  const s = String(name || '').trim();
+  if (!s) return true;
+  return /^unknown$/i.test(s);
+}
+
+function nurseObjectToDisplayName(nurse) {
+  if (!nurse || typeof nurse !== 'object') return '';
+  const combined = `${nurse.firstName || ''} ${nurse.lastName || ''}`.trim();
+  return String(nurse.name || nurse.fullName || combined || '').trim();
+}
+
+function normalizeIncident(rawIncident, fallback = {}) {
+  const raw = rawIncident && typeof rawIncident === 'object' ? rawIncident : {};
+  const nestedNurseName = nurseObjectToDisplayName(raw?.nurse);
+  return {
+    id: raw?.id || raw?._id || raw?.incidentId || fallback?.id || `inc-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    nurseId: String(raw?.nurseId || (typeof raw?.nurse === 'object' ? raw?.nurse?.id || raw?.nurse?._id : '') || fallback?.nurseId || '').trim(),
+    patientId: String(raw?.patientId || (typeof raw?.patient === 'object' ? raw?.patient?.id || raw?.patient?._id : raw?.patient) || fallback?.patientId || '').trim(),
+    date: incidentDateFromApi(raw?.date, fallback?.date),
+    time: incidentTimeFromApi(raw?.time, fallback?.time),
+    type: incidentTypeFromApi(raw?.incidentType ?? raw?.type, fallback?.type),
+    severity: incidentSeverityFromApi(raw?.severity, fallback?.severity),
+    location: String(raw?.location || fallback?.location || '').trim(),
+    description: String(raw?.description || fallback?.description || '').trim(),
+    immediateAction: String(raw?.actionTaken ?? raw?.immediateAction ?? fallback?.immediateAction ?? '').trim(),
+    injuryDetails: String(raw?.injuryDetail ?? raw?.injuryDetails ?? fallback?.injuryDetails ?? '').trim(),
+    followUp: String(raw?.followUpPlan ?? raw?.followUp ?? fallback?.followUp ?? '').trim(),
+    witnesses: String(raw?.witnesses ?? fallback?.witnesses ?? '').trim(),
+    physicianNotified: Boolean(raw?.physicianNotified ?? fallback?.physicianNotified ?? false),
+    familyNotified: Boolean(raw?.familyNotified ?? fallback?.familyNotified ?? false),
+    status: incidentStatusFromApi(raw?.status ?? fallback?.status, 'open'),
+    reportedBy: String(
+      raw?.reportedBy
+      || raw?.nurseName
+      || raw?.reportedByName
+      || raw?.reporterName
+      || nestedNurseName
+      || fallback?.reportedBy
+      || ''
+    ).trim(),
+    timestamp: raw?.createdAt || raw?.recordedAt || raw?.updatedAt || fallback?.timestamp || '',
+  };
+}
+
+function sortIncidents(items) {
+  return [...items].sort((a, b) => {
+    const left = new Date(`${a.date || '1970-01-01'}T${a.time || '00:00'}`);
+    const right = new Date(`${b.date || '1970-01-01'}T${b.time || '00:00'}`);
+    return right - left;
+  });
+}
+
+function isUuidV4ish(s) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(s || '').trim());
+}
+
+function isLikelyMongoObjectId(s) {
+  return /^[a-f\d]{24}$/i.test(String(s || '').trim());
+}
+
+function collectNurseIdCandidates(raw) {
+  const out = [];
+  const push = (v) => {
+    if (v == null) return;
+    const s = String(v).trim();
+    if (s && !out.includes(s)) out.push(s);
+  };
+  if (!raw || typeof raw !== 'object') return out;
+
+  push(raw.nurseId);
+  push(raw.uuid);
+  push(raw.publicId);
+  push(raw.id);
+  push(raw.userId);
+  push(raw.accountId);
+
+  if (raw.user && typeof raw.user === 'object') {
+    push(raw.user.nurseId);
+    push(raw.user.id);
+    push(raw.user._id);
+  }
+  if (raw.nurse && typeof raw.nurse === 'object') {
+    push(raw.nurse.nurseId);
+    push(raw.nurse.id);
+    push(raw.nurse._id);
+  }
+
+  push(raw._id);
+  return out;
+}
+
+/**
+ * Nurses from GET /nurses often expose both a Mongo _id and a UUID the API expects on related routes.
+ * Prefer UUID (and non–ObjectId strings) for POST /incidents `nurseId`.
+ */
+function normalizeIncidentNurseRow(n) {
+  const raw = n && typeof n === 'object' ? n : {};
+  const candidates = collectNurseIdCandidates(raw);
+  if (!candidates.length) return null;
+
+  const uuid = candidates.find(isUuidV4ish);
+  const apiId = uuid || candidates.find((c) => !isLikelyMongoObjectId(c)) || candidates[0];
+  const idsForMatch = [...new Set(candidates)];
+
+  const first = raw.firstName || '';
+  const last = raw.lastName || '';
+  const name = String(raw.name || `${first} ${last}`).trim();
+  if (!name) return null;
+  const jobTitle = String(raw.jobTitle || raw.specialisation || raw.specialization || '').trim();
+  return { id: apiId, name, jobTitle, idsForMatch };
+}
+
 function resolveCurrentNurseId(currentUser, tokenPayload) {
-  return String(
-    currentUser?.nurseId
-    || currentUser?.id
-    || currentUser?._id
-    || currentUser?.userId
-    || currentUser?.staffId
-    || tokenPayload?.nurseId
-    || tokenPayload?.id
-    || tokenPayload?.sub
-    || ''
-  ).trim();
+  const candidates = [];
+  const push = (v) => {
+    if (v == null) return;
+    const s = String(v).trim();
+    if (s && !candidates.includes(s)) candidates.push(s);
+  };
+
+  push(currentUser?.nurseId);
+  push(tokenPayload?.nurseId);
+  push(currentUser?.id);
+  push(currentUser?._id);
+  push(currentUser?.userId);
+  push(currentUser?.staffId);
+  push(tokenPayload?.userId);
+  push(tokenPayload?.id);
+  push(tokenPayload?.sub);
+
+  if (!candidates.length) return '';
+
+  const uuid = candidates.find(isUuidV4ish);
+  if (uuid) return uuid;
+
+  const nonMongo = candidates.find((c) => !isLikelyMongoObjectId(c));
+  if (nonMongo) return nonMongo;
+
+  return candidates[0] || '';
 }
 
 export default function PatientProfile() {
@@ -1700,6 +2056,7 @@ export default function PatientProfile() {
   const [addedMeds, setAddedMeds] = useState([]);
   const [deletedExistingMeds, setDeletedExistingMeds] = useState([]);
   const [confirmDelete, setConfirmDelete] = useState(null); // { type: 'existing'|'added', id: number, name: string }
+  const [medDeleteConfirmInput, setMedDeleteConfirmInput] = useState('');
   const [showMedForm, setShowMedForm] = useState(false);
   const [editingMedicationId, setEditingMedicationId] = useState(null);
   const [medicationSaveError, setMedicationSaveError] = useState('');
@@ -1716,15 +2073,15 @@ export default function PatientProfile() {
   const [vitalRecords, setVitalRecords] = useState([]);
   const [showVitalsMegaModal, setShowVitalsMegaModal] = useState(false);
   const [showNotesMegaModal, setShowNotesMegaModal] = useState(false);
+  const [showIncidentsMegaModal, setShowIncidentsMegaModal] = useState(false);
+  const [showMedicationsMegaModal, setShowMedicationsMegaModal] = useState(false);
+  const [showGenerateReportModal, setShowGenerateReportModal] = useState(false);
   const [showVitalForm, setShowVitalForm] = useState(false);
   const [vitalForm, setVitalForm] = useState(() => createVitalForm(currentUserName));
   const [expandedVital, setExpandedVital] = useState(null);
   const [savingVital, setSavingVital] = useState(false);
   const [vitalSaveError, setVitalSaveError] = useState('');
   const [editingVitalId, setEditingVitalId] = useState(null);
-  const [vitalNurseOptions, setVitalNurseOptions] = useState([]);
-  const [vitalNursesLoading, setVitalNursesLoading] = useState(false);
-  const [vitalNursesError, setVitalNursesError] = useState('');
 
   /* Reminder state */
   const [showReminderForm, setShowReminderForm] = useState(null); // med id
@@ -1795,65 +2152,11 @@ export default function PatientProfile() {
     }
   }, []);
 
-  const loadVitalNurseOptions = useCallback(async () => {
-    setVitalNursesLoading(true);
-    setVitalNursesError('');
-
-    try {
-      const response = await apiFetch('/nurses', { method: 'GET' });
-      const responseText = await response.text().catch(() => '');
-      let payload = {};
-
-      if (responseText) {
-        try {
-          payload = JSON.parse(responseText);
-        } catch {
-          payload = { message: responseText };
-        }
-      }
-
-      if (!response.ok) {
-        throw new Error(payload?.message || payload?.error || 'Unable to load nurses right now.');
-      }
-
-      const normalizedNurses = extractNurseList(payload)
-        .map(normalizeVitalNurseOption)
-        .filter((nurse) => nurse?.id && nurse?.name)
-        .reduce((result, nurse) => {
-          if (result.some((entry) => entry.id === nurse.id || entry.name.toLowerCase() === nurse.name.toLowerCase())) {
-            return result;
-          }
-
-          result.push(nurse);
-          return result;
-        }, [])
-        .sort((left, right) => left.name.localeCompare(right.name));
-
-      setVitalNurseOptions(normalizedNurses);
-      if (normalizedNurses.length === 0) {
-        setVitalNursesError('No nurses are available yet.');
-      }
-    } catch (error) {
-      setVitalNurseOptions([]);
-      setVitalNursesError(error?.message || 'Unable to load nurses right now.');
-    } finally {
-      setVitalNursesLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
     if (showMedForm) {
       loadDrugCatalog();
     }
   }, [showMedForm, loadDrugCatalog]);
-
-  useEffect(() => {
-    if (!showVitalForm) return;
-    if (vitalNursesLoading) return;
-    if (vitalNurseOptions.length > 0) return;
-
-    loadVitalNurseOptions();
-  }, [showVitalForm, vitalNursesLoading, vitalNurseOptions.length, loadVitalNurseOptions]);
 
   /* Filtered drug list */
   const filteredDrugs = drugCatalog.filter(d =>
@@ -1995,6 +2298,12 @@ export default function PatientProfile() {
 
   const confirmDeleteMed = async () => {
     if (!confirmDelete || deletingMedication) return;
+
+    if (medDeleteConfirmInput.trim() !== String(confirmDelete.name || '').trim()) {
+      setMedicationDeleteError(`Type the medication name exactly as shown to confirm deletion.`);
+      return;
+    }
+    setMedicationDeleteError('');
 
     if (confirmDelete.type === 'existing') {
       setDeletedExistingMeds(prev => [...prev, confirmDelete.id]);
@@ -2170,7 +2479,7 @@ export default function PatientProfile() {
       temp: record.temp || '',
       weight: record.weight || '',
       urinalysis: record.urinalysis || '',
-      recordedBy: record.recordedBy || currentUserName || p?.nurse || '',
+      recordedBy: vitalRecorderDisplayName(record.recordedBy) || currentUserName || vitalRecorderDisplayName(p?.nurse) || '',
       notes: record.notes || '',
     });
     setShowVitalForm(true);
@@ -2191,7 +2500,7 @@ export default function PatientProfile() {
     const agencyId = resolveAgencyId(remotePatient) || resolveAgencyId(p) || resolveAgencyId(currentUser) || resolveAgencyId(tokenPayload);
 
     const { systolic, diastolic } = splitBloodPressure(vitalForm.bp);
-    const recordedBy = String(vitalForm.recordedBy || currentUserName || p?.nurse || '').trim();
+    const recordedBy = (vitalRecorderDisplayName(vitalForm.recordedBy) || currentUserName || vitalRecorderDisplayName(p?.nurse) || '').trim();
 
     const payload = {
       patientId: effectivePatientId,
@@ -2516,13 +2825,9 @@ export default function PatientProfile() {
   };
 
   /* ── Incident Report state ── */
-  const INCIDENT_TYPES = ['Fall', 'Medication Error', 'Skin Breakdown', 'Behavioral', 'Equipment Failure', 'Missed Visit', 'Injury', 'Allergic Reaction', 'Infection', 'Other'];
+  const INCIDENT_TYPES = INCIDENT_TYPE_LABELS;
   const INCIDENT_SEVERITIES = ['Minor', 'Moderate', 'Serious', 'Critical'];
-  const [incidents, setIncidents] = useState([
-    { id: 1, date: '2026-03-22', time: '14:05', reportedBy: 'Efua Mensah, RN', type: 'Fall', severity: 'Moderate', location: 'Bedroom — bedside', description: 'Patient slipped during bed-to-chair transfer. Grabbed side rail but lost footing. Assisted to floor safely by nurse. Bruising noted on left hip — no visible fracture. Patient alert and oriented after incident.', immediateAction: 'Ice pack applied to left hip. Vitals checked — BP 142/88, Pulse 92, stable. Patient kept in bed for observation. Physician notified.', witnesses: 'Nurse Efua Mensah', injuryDetails: 'Bruising on left hip, no open wound, no fracture suspected', followUp: 'X-ray ordered to rule out hairline fracture. Fall risk reassessment scheduled. Bed rails raised.', status: 'open', physicianNotified: true, familyNotified: true },
-    { id: 2, date: '2026-03-18', time: '10:15', reportedBy: 'Amina Mensah, RN', type: 'Medication Error', severity: 'Minor', location: 'Patient home — living room', description: 'Omeprazole 40mg administered instead of prescribed 20mg during morning medication round. Error identified by nurse upon reviewing medication chart 15 minutes after administration.', immediateAction: 'Patient monitored for 2 hours. No adverse reaction observed. Physician Dr. Kwesi Asare notified immediately. Incident documented.', witnesses: 'Patient (self-report of receiving pill)', injuryDetails: 'No adverse reaction or injury', followUp: 'Double-check protocol reinforced. Medication labels reviewed. No further action needed — single dose overage within safe limits per physician.', status: 'resolved', physicianNotified: true, familyNotified: false },
-    { id: 3, date: '2026-03-10', time: '08:30', reportedBy: 'Grace Osei, RN', type: 'Skin Breakdown', severity: 'Moderate', location: 'Patient home — bedroom', description: 'Stage 2 pressure ulcer identified on sacral area during morning personal care. Approximately 3cm x 2cm area of partial-thickness skin loss. Surrounding skin erythematous.', immediateAction: 'Wound cleaned with normal saline. Hydrocolloid dressing applied. Repositioning schedule initiated — every 2 hours. Nutrition assessment requested.', witnesses: 'Nurse Grace Osei', injuryDetails: 'Stage 2 pressure ulcer, sacral area, 3cm x 2cm', followUp: 'Wound care plan initiated. Pressure-relieving mattress requested. Daily wound assessment. Dietitian referral for protein supplementation.', status: 'in-progress', physicianNotified: true, familyNotified: true },
-  ]);
+  const [incidents, setIncidents] = useState([]);
   const [showIncidentForm, setShowIncidentForm] = useState(false);
   const [incidentForm, setIncidentForm] = useState({
     date: new Date().toISOString().slice(0, 10), time: new Date().toTimeString().slice(0, 5),
@@ -2532,79 +2837,749 @@ export default function PatientProfile() {
   });
   const [incidentFilter, setIncidentFilter] = useState('All');
   const [expandedIncident, setExpandedIncident] = useState(null);
+  const [incidentsLoading, setIncidentsLoading] = useState(false);
+  const [incidentsError, setIncidentsError] = useState('');
+  const [savingIncident, setSavingIncident] = useState(false);
+  const [incidentSaveError, setIncidentSaveError] = useState('');
+  const [deletingIncidentId, setDeletingIncidentId] = useState(null);
+  const [confirmDeleteIncident, setConfirmDeleteIncident] = useState(null);
+  const [incidentDeleteModalError, setIncidentDeleteModalError] = useState('');
+  const [updatingIncidentStatusId, setUpdatingIncidentStatusId] = useState(null);
+  const [editingIncidentId, setEditingIncidentId] = useState(null);
+  const [incidentNurses, setIncidentNurses] = useState([]);
+  const [incidentNursesLoading, setIncidentNursesLoading] = useState(false);
+  const [incidentNursesError, setIncidentNursesError] = useState('');
 
-  const handleAddIncident = () => {
-    if (!incidentForm.description.trim() || !incidentForm.type) return;
-    const newIncident = { ...incidentForm, id: Date.now(), status: 'open' };
-    setIncidents(prev => [newIncident, ...prev]);
+  const resetIncidentForm = () => {
+    setEditingIncidentId(null);
     setIncidentForm({
       date: new Date().toISOString().slice(0, 10), time: new Date().toTimeString().slice(0, 5),
-      reportedBy: '', type: 'Fall', severity: 'Minor', location: '',
+      reportedBy: String(currentUserName || '').trim(),
+      type: 'Fall', severity: 'Minor', location: '',
       description: '', immediateAction: '', witnesses: '', injuryDetails: '', followUp: '',
       physicianNotified: false, familyNotified: false,
     });
-    setShowIncidentForm(false);
+    setIncidentSaveError('');
   };
-  const handleDeleteIncident = (id) => {
-    setIncidents(prev => prev.filter(inc => inc.id !== id));
-    if (expandedIncident === id) setExpandedIncident(null);
+
+  const loadIncidents = useCallback(async () => {
+    const patientIdValue = String(effectivePatientId || '').trim();
+    if (!patientIdValue) {
+      setIncidents([]);
+      return;
+    }
+    setIncidentsLoading(true);
+    setIncidentsError('');
+    try {
+      const response = await apiFetch(`/incidents/patient/${encodeURIComponent(patientIdValue)}`, { method: 'GET' });
+      const responseText = await response.text().catch(() => '');
+      let payload = {};
+      if (responseText) {
+        try { payload = JSON.parse(responseText); } catch { payload = { message: responseText }; }
+      }
+      console.debug('[incidents] GET response', { status: response.status, payload });
+      if (!response.ok) {
+        if (response.status === 404) {
+          setIncidents([]);
+          return;
+        }
+        throw new Error(payload?.message || payload?.error || 'Unable to load incident reports.');
+      }
+      const items = extractIncidentList(payload)
+        .map((item) => normalizeIncident(item, { patientId: patientIdValue }))
+        .filter((item) => item.description || item.type);
+      // Merge: if the server hasn't yet caught up, keep any locally-known incidents
+      // that aren't in the response (so a just-created entry survives an eager refetch).
+      setIncidents((prev) => {
+        const serverIds = new Set(items.map((it) => String(it.id)));
+        const stillLocal = prev.filter((it) => !serverIds.has(String(it.id)) && String(it.id).startsWith('inc-'));
+        return sortIncidents([...items, ...stillLocal]);
+      });
+    } catch (error) {
+      setIncidentsError(error?.message || 'Unable to load incident reports.');
+    } finally {
+      setIncidentsLoading(false);
+    }
+  }, [effectivePatientId]);
+
+  useEffect(() => {
+    loadIncidents();
+  }, [loadIncidents]);
+
+  const loadIncidentNurses = useCallback(async () => {
+    setIncidentNursesLoading(true);
+    setIncidentNursesError('');
+    try {
+      const response = await apiFetch('/nurses', { method: 'GET' });
+      let data = {};
+      try { data = await response.json(); } catch { data = {}; }
+      if (!response.ok) throw new Error(data?.message || data?.error || 'Failed to load nurses.');
+      const list = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.nurses) ? data.nurses
+        : Array.isArray(data?.data) ? data.data
+        : Array.isArray(data?.items) ? data.items
+        : [];
+      const normalized = list
+        .map(normalizeIncidentNurseRow)
+        .filter(Boolean)
+        .sort((a, b) => a.name.localeCompare(b.name));
+      setIncidentNurses(normalized);
+    } catch (error) {
+      setIncidentNurses([]);
+      setIncidentNursesError(error?.message || 'Unable to load nurses.');
+    } finally {
+      setIncidentNursesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (showIncidentsMegaModal && incidentNurses.length === 0 && !incidentNursesLoading) {
+      loadIncidentNurses();
+    }
+  }, [showIncidentsMegaModal, incidentNurses.length, incidentNursesLoading, loadIncidentNurses]);
+
+  useEffect(() => {
+    if (!incidentNurses.length) return;
+    setIncidents((prev) => {
+      let changed = false;
+      const next = prev.map((it) => {
+        if (!isUnknownReporterLabel(it.reportedBy)) return it;
+        const nid = String(it.nurseId || '').trim();
+        if (!nid) return it;
+        const row = incidentNurses.find((n) => n.idsForMatch.includes(nid));
+        if (!row?.name) return it;
+        changed = true;
+        return { ...it, reportedBy: row.name };
+      });
+      return changed ? next : prev;
+    });
+  }, [incidentNurses]);
+
+  const handleAddIncident = async () => {
+    if (savingIncident) return;
+    if (!incidentForm.description.trim() || !incidentForm.type) {
+      setIncidentSaveError('Description and type are required.');
+      return;
+    }
+    const pref = String(incidentForm.reportedBy || '').trim();
+    if (!pref) {
+      setIncidentSaveError('Please enter who reported this incident.');
+      return;
+    }
+    const sessionNurse = String(currentNurseId || '').trim();
+    const lower = pref.toLowerCase();
+    const nameMatch = incidentNurses.find(
+      (n) => n.name && n.name.trim().toLowerCase() === lower
+    );
+    const idMatch = !nameMatch
+      ? incidentNurses.find((n) => n.idsForMatch.includes(pref))
+      : null;
+    const rowMatch = nameMatch || idMatch;
+    let reportingNurseId = '';
+    if (rowMatch) {
+      reportingNurseId = rowMatch.id;
+    } else if (sessionNurse) {
+      reportingNurseId = sessionNurse;
+    }
+    reportingNurseId = String(reportingNurseId || '').trim();
+    if (incidentNurses.length) {
+      const rowForPost = incidentNurses.find((n) => n.idsForMatch.includes(reportingNurseId));
+      if (rowForPost) reportingNurseId = rowForPost.id;
+    }
+    if (!reportingNurseId) {
+      setIncidentSaveError('Sign in to file a report, or enter a nurse name that matches your roster.');
+      return;
+    }
+
+    const apiPayload = {
+      nurseId: reportingNurseId,
+      patientId: String(effectivePatientId || '').trim(),
+      date: incidentDateToApi(incidentForm.date),
+      time: incidentTimeToApi(incidentForm.time),
+      incidentType: incidentTypeToApi(incidentForm.type),
+      severity: incidentSeverityToApi(incidentForm.severity),
+      location: incidentForm.location || '',
+      description: incidentForm.description.trim(),
+      actionTaken: incidentForm.immediateAction || '',
+      injuryDetail: incidentForm.injuryDetails || '',
+      followUpPlan: incidentForm.followUp || '',
+      physicianNotified: Boolean(incidentForm.physicianNotified),
+      familyNotified: Boolean(incidentForm.familyNotified),
+    };
+
+    setSavingIncident(true);
+    setIncidentSaveError('');
+    console.debug('[incidents] POST payload', apiPayload);
+    try {
+      const response = await apiFetch('/incidents', {
+        method: 'POST',
+        body: JSON.stringify(apiPayload),
+      });
+      const responseText = await response.text().catch(() => '');
+      let data = {};
+      if (responseText) {
+        try { data = JSON.parse(responseText); } catch { data = { message: responseText }; }
+      }
+      console.debug('[incidents] POST response', { status: response.status, data });
+
+      // Treat as failure if HTTP status is non-OK OR body explicitly signals failure.
+      const bodyExplicitlyFailed =
+        data && (data.success === false || data.ok === false || (data.error && !data.id && !data._id && !data.incident));
+      if (!response.ok || bodyExplicitlyFailed) {
+        const errMsg =
+          data?.message
+          || data?.data?.message
+          || (typeof data?.error === 'string' ? data.error : data?.error?.message)
+          || `Save failed (HTTP ${response.status}).`;
+        throw new Error(errMsg);
+      }
+
+      const reporterRow = incidentNurses.find((n) => n.idsForMatch.includes(String(reportingNurseId)));
+      const reporterFallback = String(rowMatch?.name || pref || reporterRow?.name || currentUserName || '').trim();
+      const savedIncident = normalizeIncident(
+        data?.incident || data?.data?.incident || data?.data || data,
+        {
+          patientId: effectivePatientId,
+          nurseId: reportingNurseId,
+          date: incidentForm.date,
+          time: incidentForm.time,
+          type: incidentForm.type,
+          severity: incidentForm.severity,
+          location: incidentForm.location,
+          description: incidentForm.description,
+          immediateAction: incidentForm.immediateAction,
+          injuryDetails: incidentForm.injuryDetails,
+          followUp: incidentForm.followUp,
+          witnesses: incidentForm.witnesses,
+          physicianNotified: incidentForm.physicianNotified,
+          familyNotified: incidentForm.familyNotified,
+          reportedBy: reporterFallback,
+          status: 'open',
+        }
+      );
+
+      // Add optimistically. We do NOT immediately refetch — if the backend has any
+      // commit delay, an eager GET could return an empty list and wipe the just-saved
+      // entry from view. Refresh button + tab re-open will re-sync from the server.
+      setIncidents((prev) => {
+        const without = prev.filter((it) => String(it.id) !== String(savedIncident.id));
+        return sortIncidents([savedIncident, ...without]);
+      });
+      resetIncidentForm();
+      setShowIncidentForm(false);
+
+      // Soft re-sync after a beat — far enough out for typical commit latency.
+      setTimeout(() => { loadIncidents(); }, 1200);
+    } catch (error) {
+      console.error('[incidents] POST failed', error);
+      setIncidentSaveError(error?.message || 'Unable to save incident report.');
+    } finally {
+      setSavingIncident(false);
+    }
   };
-  const handleUpdateIncidentStatus = (id, newSt) => {
-    setIncidents(prev => prev.map(inc => inc.id === id ? { ...inc, status: newSt } : inc));
+
+  const handleUpdateIncident = async () => {
+    if (savingIncident) return;
+    const incidentId = String(editingIncidentId || '').trim();
+    if (!incidentId) return;
+
+    if (!incidentForm.description.trim() || !incidentForm.type) {
+      setIncidentSaveError('Description and type are required.');
+      return;
+    }
+    const pref = String(incidentForm.reportedBy || '').trim();
+    if (!pref) {
+      setIncidentSaveError('Please enter who reported this incident.');
+      return;
+    }
+    const sessionNurse = String(currentNurseId || '').trim();
+    const lower = pref.toLowerCase();
+    const nameMatch = incidentNurses.find(
+      (n) => n.name && n.name.trim().toLowerCase() === lower
+    );
+    const idMatch = !nameMatch
+      ? incidentNurses.find((n) => n.idsForMatch.includes(pref))
+      : null;
+    const rowMatch = nameMatch || idMatch;
+    let reportingNurseId = '';
+    if (rowMatch) {
+      reportingNurseId = rowMatch.id;
+    } else if (sessionNurse) {
+      reportingNurseId = sessionNurse;
+    }
+    reportingNurseId = String(reportingNurseId || '').trim();
+    if (incidentNurses.length) {
+      const rowForPost = incidentNurses.find((n) => n.idsForMatch.includes(reportingNurseId));
+      if (rowForPost) reportingNurseId = rowForPost.id;
+    }
+    if (!reportingNurseId) {
+      setIncidentSaveError('Sign in to update this report, or enter a nurse name that matches your roster.');
+      return;
+    }
+
+    const currentInc = incidents.find((i) => String(i.id) === incidentId);
+    const statusPayload = incidentStatusToApi(currentInc?.status ?? 'open');
+
+    const apiPayload = {
+      nurseId: reportingNurseId,
+      patientId: String(effectivePatientId || '').trim(),
+      date: incidentDateToApi(incidentForm.date),
+      time: incidentTimeToApi(incidentForm.time),
+      incidentType: incidentTypeToApi(incidentForm.type),
+      severity: incidentSeverityToApi(incidentForm.severity),
+      location: incidentForm.location || '',
+      description: incidentForm.description.trim(),
+      actionTaken: incidentForm.immediateAction || '',
+      injuryDetail: incidentForm.injuryDetails || '',
+      followUpPlan: incidentForm.followUp || '',
+      physicianNotified: Boolean(incidentForm.physicianNotified),
+      familyNotified: Boolean(incidentForm.familyNotified),
+      status: statusPayload,
+    };
+
+    setSavingIncident(true);
+    setIncidentSaveError('');
+    console.debug('[incidents] PATCH payload', incidentId, apiPayload);
+    try {
+      const response = await apiFetch(`/incidents/${encodeURIComponent(incidentId)}`, {
+        method: 'PATCH',
+        body: JSON.stringify(apiPayload),
+      });
+      const responseText = await response.text().catch(() => '');
+      let data = {};
+      if (responseText) {
+        try { data = JSON.parse(responseText); } catch { data = { message: responseText }; }
+      }
+      console.debug('[incidents] PATCH response', { status: response.status, data });
+
+      const bodyExplicitlyFailed =
+        data && (data.success === false || data.ok === false || (data.error && !data.id && !data._id && !data.incident));
+      if (!response.ok || bodyExplicitlyFailed) {
+        const errMsg =
+          data?.message
+          || data?.data?.message
+          || (typeof data?.error === 'string' ? data.error : data?.error?.message)
+          || `Update failed (HTTP ${response.status}).`;
+        throw new Error(errMsg);
+      }
+
+      const reporterRow = incidentNurses.find((n) => n.idsForMatch.includes(String(reportingNurseId)));
+      const reporterFallback = String(rowMatch?.name || pref || reporterRow?.name || currentUserName || '').trim();
+      const updatedIncident = normalizeIncident(
+        data?.incident || data?.data?.incident || data?.data || data || {},
+        {
+          id: incidentId,
+          patientId: effectivePatientId,
+          nurseId: reportingNurseId,
+          date: incidentForm.date,
+          time: incidentForm.time,
+          type: incidentForm.type,
+          severity: incidentForm.severity,
+          location: incidentForm.location,
+          description: incidentForm.description,
+          immediateAction: incidentForm.immediateAction,
+          injuryDetails: incidentForm.injuryDetails,
+          followUp: incidentForm.followUp,
+          witnesses: incidentForm.witnesses,
+          physicianNotified: incidentForm.physicianNotified,
+          familyNotified: incidentForm.familyNotified,
+          reportedBy: reporterFallback,
+          status: currentInc?.status ?? 'open',
+        }
+      );
+
+      setIncidents((prev) => {
+        const without = prev.filter((it) => String(it.id) !== String(updatedIncident.id));
+        return sortIncidents([updatedIncident, ...without]);
+      });
+      resetIncidentForm();
+      setShowIncidentForm(false);
+      setTimeout(() => { loadIncidents(); }, 1200);
+    } catch (error) {
+      console.error('[incidents] PATCH failed', error);
+      setIncidentSaveError(error?.message || 'Unable to update incident report.');
+    } finally {
+      setSavingIncident(false);
+    }
   };
+
+  const performDeleteIncident = async (id) => {
+    const incidentId = String(id || '').trim();
+    if (!incidentId || deletingIncidentId === incidentId) return false;
+    setDeletingIncidentId(incidentId);
+    setIncidentsError('');
+    try {
+      const response = await apiFetch(`/incidents/${encodeURIComponent(incidentId)}`, { method: 'DELETE' });
+      if (!response.ok && response.status !== 404) {
+        const responseText = await response.text().catch(() => '');
+        let data = {};
+        if (responseText) {
+          try { data = JSON.parse(responseText); } catch { data = { message: responseText }; }
+        }
+        throw new Error(data?.message || data?.error || 'Unable to delete incident.');
+      }
+      setIncidents((prev) => prev.filter((inc) => String(inc.id) !== String(incidentId)));
+      if (expandedIncident === incidentId) setExpandedIncident(null);
+      return true;
+    } catch (error) {
+      setIncidentDeleteModalError(error?.message || 'Unable to delete incident.');
+      return false;
+    } finally {
+      setDeletingIncidentId(null);
+    }
+  };
+
+  const requestDeleteIncident = (id) => {
+    const incidentId = String(id || '').trim();
+    if (!incidentId || deletingIncidentId === incidentId) return;
+    setIncidentDeleteModalError('');
+    setConfirmDeleteIncident({ id: incidentId });
+  };
+
+  const confirmDeleteIncidentAction = async () => {
+    if (!confirmDeleteIncident?.id) return;
+    const targetId = confirmDeleteIncident.id;
+    const ok = await performDeleteIncident(targetId);
+    if (ok) {
+      setConfirmDeleteIncident(null);
+      setIncidentDeleteModalError('');
+      if (String(editingIncidentId) === String(targetId)) {
+        setShowIncidentForm(false);
+        resetIncidentForm();
+      }
+    }
+  };
+
+  const handleDeleteIncident = requestDeleteIncident;
+
+  const handleUpdateIncidentStatus = async (id, newStatus) => {
+    const incidentId = String(id || '').trim();
+    if (!incidentId || updatingIncidentStatusId === incidentId) return;
+
+    const previous = incidents;
+    const statusPayload = incidentStatusToApi(newStatus);
+
+    setUpdatingIncidentStatusId(incidentId);
+    setIncidentsError('');
+    setIncidents((prev) =>
+      prev.map((inc) => (String(inc.id) === incidentId ? { ...inc, status: newStatus } : inc))
+    );
+
+    try {
+      const response = await apiFetch(`/incidents/${encodeURIComponent(incidentId)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: statusPayload }),
+      });
+      const responseText = await response.text().catch(() => '');
+      let data = {};
+      if (responseText) {
+        try {
+          data = JSON.parse(responseText);
+        } catch {
+          data = { message: responseText };
+        }
+      }
+
+      const bodyFailed =
+        data && (data.success === false || data.ok === false || (data.error && !data.data && !data.incident && !data.id));
+
+      if (!response.ok || bodyFailed) {
+        throw new Error(data?.message || data?.error || `Update failed (HTTP ${response.status}).`);
+      }
+
+      const updatedRaw = data?.data ?? data?.incident ?? (data?.id ? data : null);
+      if (updatedRaw && typeof updatedRaw === 'object') {
+        setIncidents((prev) =>
+          sortIncidents(
+            prev.map((inc) =>
+              String(inc.id) === incidentId ? normalizeIncident(updatedRaw, inc) : inc
+            )
+          )
+        );
+      }
+    } catch (error) {
+      setIncidents(previous);
+      setIncidentsError(error?.message || 'Unable to update incident.');
+    } finally {
+      setUpdatingIncidentStatusId(null);
+    }
+  };
+
+  const incidentIdIsPersisted = (id) => {
+    const s = String(id || '').trim();
+    return Boolean(s) && !s.startsWith('inc-');
+  };
+
   const filteredIncidents = incidents
     .filter(inc => incidentFilter === 'All' || inc.type === incidentFilter)
     .sort((a, b) => new Date(b.date + ' ' + b.time) - new Date(a.date + ' ' + a.time));
   const getIncidentSeverityStyle = (sev) => {
-    const styles = { Minor: { bg: '#F0F7FE', color: '#1565A0', border: '#BAE0FD' }, Moderate: { bg: '#fefce8', color: '#ca8a04', border: '#fef08a' }, Serious: { bg: '#fff7ed', color: '#ea580c', border: '#fed7aa' }, Critical: { bg: '#fef2f2', color: '#dc2626', border: '#fecaca' } };
+    const styles = {
+      Minor:    { bg: '#fefce8', color: '#a16207', border: '#eab308' },
+      Moderate: { bg: '#eff6ff', color: '#1d4ed8', border: '#3b82f6' },
+      Serious:  { bg: '#fef3c7', color: '#92400e', border: '#d97706' },
+      Critical: { bg: '#fee2e2', color: '#991b1b', border: '#ef4444' },
+    };
     return styles[sev] || styles.Minor;
   };
   const getIncidentStatusStyle = (st) => {
-    const styles = { open: { bg: '#fef2f2', color: '#dc2626', border: '#fecaca', label: 'Open' }, 'in-progress': { bg: '#eff6ff', color: '#2563eb', border: '#bfdbfe', label: 'In Progress' }, resolved: { bg: '#F0F7FE', color: '#1565A0', border: '#BAE0FD', label: 'Resolved' } };
+    const styles = {
+      open:          { bg: '#ffffff', color: '#374151', border: '#d1d5db', label: 'Open' },
+      'in-progress': { bg: '#f3f4f6', color: '#4b5563', border: '#d1d5db', label: 'In Progress' },
+      resolved:      { bg: '#f9fafb', color: '#6b7280', border: '#e5e7eb', label: 'Resolved' },
+    };
     return styles[st] || styles.open;
   };
+
+  const pendingDeleteIncidentDetail = confirmDeleteIncident
+    ? incidents.find((i) => String(i.id) === String(confirmDeleteIncident.id))
+    : null;
+  const incidentDeleteDialogBusy = Boolean(
+    confirmDeleteIncident
+    && deletingIncidentId
+    && String(deletingIncidentId) === String(confirmDeleteIncident.id)
+  );
 
   /* ── Care Plan state ── */
   const CARE_CATEGORIES = ['Personal Care', 'Medication Management', 'Nutrition & Diet', 'Mobility & Exercise', 'Wound Care', 'Monitoring & Vitals', 'Emotional Support', 'Hygiene', 'Safety', 'Therapy', 'Other'];
   const CARE_FREQUENCIES = ['Daily', 'Twice Daily', 'Three Times Daily', 'Weekly', 'Twice Weekly', 'Biweekly', 'Monthly', 'As Needed', 'Once'];
   const CARE_PRIORITIES = ['High', 'Medium', 'Low'];
-  const [carePlanItems, setCarePlanItems] = useState([
-    { id: 1, task: 'Assist patient with morning bath and oral hygiene', category: 'Personal Care', frequency: 'Daily', priority: 'High', notes: 'Patient requires help getting in and out of the tub. Use non-slip mat.', checked: true, createdDate: '2026-03-01' },
-    { id: 2, task: 'Administer morning medications as prescribed', category: 'Medication Management', frequency: 'Daily', priority: 'High', notes: 'Metformin 500mg, Amlodipine 5mg, Aspirin 75mg — after breakfast.', checked: true, createdDate: '2026-03-01' },
-    { id: 3, task: 'Blood pressure and blood glucose monitoring', category: 'Monitoring & Vitals', frequency: 'Twice Daily', priority: 'High', notes: 'Record BP and blood sugar morning and evening. Flag if BP > 140/90 or glucose > 10 mmol/L.', checked: false, createdDate: '2026-03-01' },
-    { id: 4, task: 'Prepare balanced diabetic-friendly meals', category: 'Nutrition & Diet', frequency: 'Three Times Daily', priority: 'Medium', notes: 'Low-sugar, low-sodium meals. Include vegetables and lean protein. Avoid fried foods.', checked: false, createdDate: '2026-03-02' },
-    { id: 5, task: 'Assisted walking exercise around the compound', category: 'Mobility & Exercise', frequency: 'Daily', priority: 'Medium', notes: '15–20 minutes gentle walk. Use walking frame. Stop if patient reports dizziness or pain.', checked: false, createdDate: '2026-03-02' },
-    { id: 6, task: 'Change wound dressing on left lower leg', category: 'Wound Care', frequency: 'Twice Weekly', priority: 'High', notes: 'Clean with normal saline. Apply hydrocolloid dressing. Monitor for signs of infection.', checked: false, createdDate: '2026-03-05' },
-    { id: 7, task: 'Engage patient in conversation and companionship', category: 'Emotional Support', frequency: 'Daily', priority: 'Low', notes: 'Discuss daily news, family updates. Encourage participation in light activities. Monitor mood.', checked: false, createdDate: '2026-03-01' },
-    { id: 8, task: 'Ensure home environment is hazard-free', category: 'Safety', frequency: 'Weekly', priority: 'Medium', notes: 'Check for loose rugs, wet floors, poor lighting. Ensure grab bars in bathroom are secure.', checked: false, createdDate: '2026-03-03' },
-  ]);
+  const [carePlanItems, setCarePlanItems] = useState([]);
   const [showCarePlanForm, setShowCarePlanForm] = useState(false);
   const [carePlanForm, setCarePlanForm] = useState({ task: '', category: 'Personal Care', frequency: 'Daily', priority: 'Medium', notes: '' });
   const [carePlanFilter, setCarePlanFilter] = useState('All');
   const [editingCarePlan, setEditingCarePlan] = useState(null);
   const [confirmDeleteCarePlan, setConfirmDeleteCarePlan] = useState(null);
+  const [carePlanDeleteError, setCarePlanDeleteError] = useState('');
+  const [carePlanLoading, setCarePlanLoading] = useState(false);
+  const [carePlanLoadError, setCarePlanLoadError] = useState('');
+  const [savingCarePlan, setSavingCarePlan] = useState(false);
+  const [carePlanSaveError, setCarePlanSaveError] = useState('');
+  const [deletingCarePlanId, setDeletingCarePlanId] = useState(null);
 
-  const handleAddCarePlanItem = () => {
-    if (!carePlanForm.task.trim()) return;
-    if (editingCarePlan) {
-      setCarePlanItems(prev => prev.map(item => item.id === editingCarePlan ? { ...item, ...carePlanForm } : item));
-      setEditingCarePlan(null);
-    } else {
-      const newItem = { ...carePlanForm, id: Date.now(), checked: false, createdDate: new Date().toISOString().slice(0, 10) };
-      setCarePlanItems(prev => [...prev, newItem]);
+  const loadCarePlans = useCallback(async () => {
+    const patientIdValue = String(effectivePatientId || '').trim();
+    if (!patientIdValue) {
+      setCarePlanItems([]);
+      return;
     }
-    setCarePlanForm({ task: '', category: 'Personal Care', frequency: 'Daily', priority: 'Medium', notes: '' });
-    setShowCarePlanForm(false);
+    setCarePlanLoading(true);
+    setCarePlanLoadError('');
+    try {
+      let response = await apiFetch(`/care-plan/patient/${encodeURIComponent(patientIdValue)}`, { method: 'GET' });
+      if (!response.ok && response.status === 404) {
+        response = await apiFetch(`/care-plans/patient/${encodeURIComponent(patientIdValue)}`, { method: 'GET' });
+      }
+      const responseText = await response.text().catch(() => '');
+      let payload = {};
+      if (responseText) {
+        try {
+          payload = JSON.parse(responseText);
+        } catch {
+          payload = { message: responseText };
+        }
+      }
+      if (!response.ok) {
+        setCarePlanItems([]);
+        if (response.status !== 404) {
+          setCarePlanLoadError(payload?.message || payload?.error || 'Unable to load care plan.');
+        }
+        return;
+      }
+      const items = extractCarePlanList(payload)
+        .map((row) => normalizeCarePlanRecord(row, { patientId: patientIdValue }))
+        .filter((item) => item.task);
+      setCarePlanItems(sortCarePlanItems(items));
+    } catch (error) {
+      setCarePlanItems([]);
+      setCarePlanLoadError(error?.message || 'Unable to load care plan.');
+    } finally {
+      setCarePlanLoading(false);
+    }
+  }, [effectivePatientId]);
+
+  useEffect(() => {
+    loadCarePlans();
+  }, [loadCarePlans]);
+
+  const postCarePlanCreate = async (fullBody, patientId) => {
+    const pid = encodeURIComponent(patientId);
+
+    const attempts = [
+      ['POST', '/care-plan', fullBody],
+      ['POST', `/care-plan/patient/${pid}`, fullBody],
+      ['PUT', `/care-plan/patient/${pid}`, fullBody],
+      ['POST', '/care-plans', fullBody],
+      ['POST', `/care-plans/patient/${pid}`, fullBody],
+    ];
+
+    let last404Detail = '';
+    for (const [method, path, body] of attempts) {
+      const response = await apiFetch(path, {
+        method,
+        body: JSON.stringify(body),
+      });
+      const lastText = await response.text().catch(() => '');
+      let data = {};
+      if (lastText) {
+        try {
+          data = JSON.parse(lastText);
+        } catch {
+          data = { message: lastText };
+        }
+      }
+      if (response.ok) {
+        return { data };
+      }
+      const msg = data?.message || data?.error || (typeof data === 'string' ? data : '');
+      const textErr = typeof lastText === 'string' ? lastText.trim() : '';
+      const combined = (typeof msg === 'string' && msg.trim() ? msg : textErr) || `HTTP ${response.status}`;
+      if (response.status !== 404) {
+        throw new Error(combined);
+      }
+      last404Detail = combined;
+    }
+    throw new Error(
+      last404Detail
+        || 'Care plan API returned "Not found" for every tried create path. Confirm POST /care-plan is deployed.',
+    );
   };
-  const handleToggleCarePlanItem = (id) => {
-    setCarePlanItems(prev => prev.map(item => item.id === id ? { ...item, checked: !item.checked } : item));
+
+  const handleAddCarePlanItem = async () => {
+    if (!carePlanForm.task.trim() || savingCarePlan) return;
+    const pid = String(effectivePatientId || '').trim();
+    if (!pid) {
+      setCarePlanSaveError('Patient is not loaded. Save the profile or open a patient record first.');
+      return;
+    }
+    setSavingCarePlan(true);
+    setCarePlanSaveError('');
+    try {
+      const body = buildCarePlanApiBody(pid, carePlanForm, {});
+      const isEditing = Boolean(editingCarePlan);
+      if (isEditing) {
+        let patchResponse = await apiFetch(`/care-plan/${encodeURIComponent(editingCarePlan)}`, {
+          method: 'PATCH',
+          body: JSON.stringify(body),
+        });
+        if (!patchResponse.ok && patchResponse.status === 404) {
+          patchResponse = await apiFetch(`/care-plans/${encodeURIComponent(editingCarePlan)}`, {
+            method: 'PATCH',
+            body: JSON.stringify(body),
+          });
+        }
+        const responseText = await patchResponse.text().catch(() => '');
+        let data = {};
+        if (responseText) {
+          try {
+            data = JSON.parse(responseText);
+          } catch {
+            data = { message: responseText };
+          }
+        }
+        if (!patchResponse.ok) {
+          const msg = data?.message || data?.error || `Unable to update care plan item (${patchResponse.status}).`;
+          throw new Error(typeof msg === 'string' ? msg : 'Unable to update care plan item.');
+        }
+        const saved = normalizeCarePlanRecord(data?.carePlan || data?.data || data, {
+          patientId: pid,
+          id: editingCarePlan,
+          task: carePlanForm.task,
+          category: carePlanForm.category,
+          frequency: carePlanForm.frequency,
+          priority: carePlanForm.priority,
+          notes: carePlanForm.notes,
+          checked: carePlanItems.find((i) => String(i.id) === String(editingCarePlan))?.checked,
+        });
+        if (!saved.task) {
+          await loadCarePlans();
+        } else {
+          setCarePlanItems((prev) => sortCarePlanItems(
+            prev.map((item) => (String(item.id) === String(editingCarePlan) ? { ...item, ...saved } : item)),
+          ));
+        }
+      } else {
+        await postCarePlanCreate(body, pid);
+        await loadCarePlans();
+      }
+      setCarePlanForm({ task: '', category: 'Personal Care', frequency: 'Daily', priority: 'Medium', notes: '' });
+      setEditingCarePlan(null);
+      setShowCarePlanForm(false);
+    } catch (error) {
+      setCarePlanSaveError(error?.message || 'Could not save care plan item.');
+    } finally {
+      setSavingCarePlan(false);
+    }
   };
-  const handleDeleteCarePlanItem = () => {
+  const handleToggleCarePlanItem = async (id) => {
+    const item = carePlanItems.find((i) => String(i.id) === String(id));
+    if (!item) return;
+    const pid = String(effectivePatientId || '').trim();
+    if (!pid) return;
+    const next = !item.checked;
+    setCarePlanItems((prev) => sortCarePlanItems(prev.map((i) => (String(i.id) === String(id) ? { ...i, checked: next } : i))));
+    try {
+      const body = buildCarePlanApiBody(pid, {
+        task: item.task,
+        category: item.category,
+        frequency: item.frequency,
+        priority: item.priority,
+        notes: item.notes,
+      }, { completed: next });
+      const response = await apiFetch(`/care-plan/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      });
+      let toggleRes = response;
+      if (!toggleRes.ok && toggleRes.status === 404) {
+        toggleRes = await apiFetch(`/care-plans/${encodeURIComponent(id)}`, {
+          method: 'PATCH',
+          body: JSON.stringify(body),
+        });
+      }
+      if (!toggleRes.ok) {
+        const responseText = await toggleRes.text().catch(() => '');
+        throw new Error(responseText || 'Update failed');
+      }
+    } catch {
+      setCarePlanItems((prev) => sortCarePlanItems(prev.map((i) => (String(i.id) === String(id) ? { ...i, checked: !next } : i))));
+    }
+  };
+
+  const handleDeleteCarePlanItem = async () => {
     if (!confirmDeleteCarePlan) return;
-    setCarePlanItems(prev => prev.filter(item => item.id !== confirmDeleteCarePlan.id));
-    setConfirmDeleteCarePlan(null);
+    const deleteId = confirmDeleteCarePlan.id;
+    setCarePlanDeleteError('');
+    setDeletingCarePlanId(deleteId);
+    try {
+      let response = await apiFetch(`/care-plans/${encodeURIComponent(deleteId)}`, { method: 'DELETE' });
+      if (!response.ok && response.status === 404) {
+        response = await apiFetch(`/care-plan/${encodeURIComponent(deleteId)}`, { method: 'DELETE' });
+      }
+      const responseText = await response.text().catch(() => '');
+      let data = {};
+      if (responseText) {
+        try {
+          data = JSON.parse(responseText);
+        } catch {
+          data = { message: responseText };
+        }
+      }
+      if (!response.ok) {
+        throw new Error(data?.message || data?.error || 'Unable to remove care plan item.');
+      }
+      setCarePlanItems((prev) => prev.filter((item) => String(item.id) !== String(deleteId)));
+      setConfirmDeleteCarePlan(null);
+      await loadCarePlans();
+    } catch (error) {
+      setCarePlanDeleteError(error?.message || 'Unable to remove care plan item.');
+    } finally {
+      setDeletingCarePlanId(null);
+    }
   };
   const handleEditCarePlanItem = (item) => {
+    setCarePlanSaveError('');
     setCarePlanForm({ task: item.task, category: item.category, frequency: item.frequency, priority: item.priority, notes: item.notes });
     setEditingCarePlan(item.id);
     setShowCarePlanForm(true);
@@ -2619,6 +3594,9 @@ export default function PatientProfile() {
   const carePlanProgress = carePlanItems.length > 0
     ? Math.round((carePlanItems.filter(i => i.checked).length / carePlanItems.length) * 100)
     : 0;
+  const carePlanCompletedCount = carePlanItems.filter((i) => i.checked).length;
+  const carePlanRemainingCount = carePlanItems.length - carePlanCompletedCount;
+  const carePlanHighOpenCount = carePlanItems.filter((i) => i.priority === 'High' && !i.checked).length;
   const getCarePriorityStyle = (p) => {
     const styles = { High: { bg: '#fef2f2', color: '#dc2626', border: '#fecaca' }, Medium: { bg: '#fffbeb', color: '#d97706', border: '#fde68a' }, Low: { bg: '#F0F7FE', color: '#1565A0', border: '#BAE0FD' } };
     return styles[p] || styles.Medium;
@@ -3220,7 +4198,7 @@ export default function PatientProfile() {
       setVitalSaveError('');
       setVitalForm((prev) => ({
         ...createVitalForm(currentUserName),
-        recordedBy: prev.recordedBy || currentUserName || p?.nurse || '',
+        recordedBy: vitalRecorderDisplayName(prev.recordedBy) || currentUserName || vitalRecorderDisplayName(p?.nurse) || '',
       }));
     }
   }, [showVitalForm, editingVitalId, currentUserName, p?.nurse]);
@@ -3229,8 +4207,20 @@ export default function PatientProfile() {
     if (!confirmDelete) {
       setMedicationDeleteError('');
       setDeletingMedication(false);
+      setMedDeleteConfirmInput('');
+    } else {
+      setMedDeleteConfirmInput('');
+      setMedicationDeleteError('');
     }
   }, [confirmDelete]);
+
+  useEffect(() => {
+    if (!confirmDeleteCarePlan) {
+      setCarePlanDeleteError('');
+    } else {
+      setCarePlanDeleteError('');
+    }
+  }, [confirmDeleteCarePlan]);
 
   useEffect(() => {
     setAvatarImageError(false);
@@ -3370,6 +4360,40 @@ export default function PatientProfile() {
       status: latestVitalRecord ? 'Updated' : hasInitialVitalsData ? 'On file' : 'No data',
     },
   ];
+  const patientNameParts = (() => {
+    const full = String(p.name || '').trim();
+    if (!full) return { first: '—', last: '—' };
+    const parts = full.split(/\s+/);
+    if (parts.length === 1) return { first: parts[0], last: '—' };
+    return { first: parts.slice(0, -1).join(' '), last: parts[parts.length - 1] };
+  })();
+  const sidebarAllergies = (() => {
+    const rows = [];
+    if (p.nutrition?.allergies) {
+      rows.push({ label: 'Food allergy noted', severity: 'Medium', tone: 'med' });
+    }
+    const d = String(p.diagnosis || '');
+    if (/allerg/i.test(d)) {
+      const head = d.split(',')[0].trim().slice(0, 56);
+      if (head) rows.push({ label: head, severity: 'High', tone: 'high' });
+    }
+    if (!rows.length) {
+      rows.push({ label: 'No allergies recorded', severity: null, tone: 'none' });
+    }
+    return rows;
+  })();
+  const sidebarLanguage = String(p.region || p.cultural || 'English').split('—')[0].trim().slice(0, 24) || 'English';
+  const sidebarHeightDisplay = String(p.sectionInitialVitals?.height || p.sectionInitialVitals?.Height || '').trim() || '—';
+  const sidebarNotesPreview = (() => {
+    const raw = String(filteredNotes[0]?.content || '')
+      .replace(/<br\s*\/?>/gi, ', ')
+      .replace(/<[^>]+>/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (raw) return raw.length > 280 ? `${raw.slice(0, 280)}…` : raw;
+    if (String(p.diagnosis || '').trim()) return String(p.diagnosis).trim();
+    return 'No notes yet.';
+  })();
 
   const handlePrimaryAction = () => {
     if (p.phone) {
@@ -3387,20 +4411,23 @@ export default function PatientProfile() {
   };
 
   const handleProfileTabChange = (nextTab) => {
-    if (nextTab === 'vitals') {
-      setShowNotesMegaModal(false);
-      setShowVitalsMegaModal(true);
-      return;
-    }
-
-    if (nextTab === 'notes') {
+    const closeAll = () => {
       setShowVitalsMegaModal(false);
-      setShowNotesMegaModal(true);
-      return;
-    }
+      setShowNotesMegaModal(false);
+      setShowIncidentsMegaModal(false);
+      setShowMedicationsMegaModal(false);
+      setShowIncidentForm(false);
+      setConfirmDeleteIncident(null);
+      setIncidentDeleteModalError('');
+      resetIncidentForm();
+    };
 
-    setShowVitalsMegaModal(false);
-    setShowNotesMegaModal(false);
+    if (nextTab === 'vitals') { closeAll(); setShowVitalsMegaModal(true); return; }
+    if (nextTab === 'notes') { closeAll(); setShowNotesMegaModal(true); return; }
+    if (nextTab === 'incidents') { closeAll(); setShowIncidentsMegaModal(true); loadIncidents(); return; }
+    if (nextTab === 'medications') { closeAll(); setShowMedicationsMegaModal(true); return; }
+
+    closeAll();
     setTab(nextTab);
   };
 
@@ -3487,219 +4514,131 @@ export default function PatientProfile() {
         </div>
       )}
       <div className="nurse-profile-shell">
-        <div className="nurse-profile-topbar">
-          <div className="nurse-profile-topbar__left">
-            <button onClick={() => navigate('/patients')} className="nurse-profile-icon-btn"><FiArrowLeft size={15} /></button>
-            <div className="nurse-profile-breadcrumbs">
-              <span>Patients</span>
-              <FiChevronRight size={12} />
-              <span className="is-current">{p.name}</span>
-            </div>
+        <input type="file" accept="image/*" ref={fileRef} onChange={handlePhoto} style={{ display: 'none' }} />
+        <div className="nurse-profile-topbar pp-pharm-topbar">
+          <div className="nurse-profile-topbar__left pp-pharm-topbar__left">
+            <button type="button" className="pp-pharm-back" onClick={() => navigate('/patients')}>
+              <FiArrowLeft size={16} />
+              Patients
+            </button>
           </div>
-          <div className="nurse-profile-topbar__actions">
-            <button type="button" title="Print" className="nurse-profile-icon-btn" onClick={() => window.print()}><FiPrinter size={14} /></button>
-            <button type="button" title="Edit" className="nurse-profile-icon-btn nurse-profile-icon-btn--primary" onClick={() => setShowUpdateModal(true)}><FiEdit2 size={14} /></button>
-            <button type="button" title="Refresh" className="nurse-profile-icon-btn" onClick={loadPatientProfile}><FiRefreshCw size={14} /></button>
+          <div className="pp-pharm-topbar__actions">
+            <button type="button" className="pp-pharm-btn-yellow" onClick={() => setShowGenerateReportModal(true)}>
+              Generate Report
+            </button>
+            <button
+              type="button"
+              className="pp-pharm-btn-yellow"
+              onClick={() => setShowUpdateModal(true)}
+            >
+              Edit
+            </button>
+            <button
+              type="button"
+              className="pp-pharm-btn-yellow pp-pharm-btn-yellow--icon"
+              title="More options"
+              onClick={() => setShowUpdateModal(true)}
+            >
+              <FiMoreHorizontal size={18} />
+            </button>
+            <button type="button" className="pp-pharm-icon-quiet" title="Refresh" onClick={loadPatientProfile}>
+              <FiRefreshCw size={16} />
+            </button>
           </div>
         </div>
 
-        {/* ═══ Premium Hero ═══ */}
-        <input type="file" accept="image/*" ref={fileRef} onChange={handlePhoto} style={{ display: 'none' }} />
-        <section className="pp-hero" aria-label="Patient overview">
-          <div className="pp-hero__inner">
-            <div className="pp-hero__avatar-wrap">
-              <div
-                onClick={() => fileRef.current?.click()}
-                title="Upload patient photo"
-                className="pp-hero__avatar"
-                role="button"
-                tabIndex={0}
-              >
-                <img
-                  src={avatarDisplaySrc}
-                  alt={showAvatarImage ? p.name : 'Default patient profile avatar'}
-                  loading="lazy"
-                  onError={() => { if (showAvatarImage) setAvatarImageError(true); }}
-                />
-                <div className="pp-hero__avatar-overlay">
-                  <FiUser size={18} />
-                  <span>{showAvatarImage ? 'Update photo' : 'Add photo'}</span>
+        <div className="pp-pharm-desk">
+          <aside className="pp-pharm-sidebar" aria-label="Patient summary">
+            <div className="pp-pharm-side-card pp-pharm-side-card--profile">
+              <div className="pp-pharm-side-profile">
+                <div
+                  className="pp-pharm-side-profile__photo"
+                  onClick={() => fileRef.current?.click()}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileRef.current?.click(); } }}
+                  role="button"
+                  tabIndex={0}
+                  title="Upload patient photo"
+                >
+                  <img
+                    src={avatarDisplaySrc}
+                    alt={showAvatarImage ? p.name : 'Patient'}
+                    loading="lazy"
+                    onError={() => { if (showAvatarImage) setAvatarImageError(true); }}
+                  />
+                </div>
+                <div className="pp-pharm-side-profile__body">
+                  <h2 className="pp-pharm-side-profile__name">{p.name}</h2>
+                  <div className={`pp-pharm-side-profile__status${patientStatusClass}`}>{patientStatusLabel}</div>
+                  <dl className="pp-pharm-side-profile__facts">
+                    <div><dt>Gender</dt><dd>{p.gender || '—'}</dd></div>
+                    <div><dt>Age</dt><dd>{p.age != null && p.age !== '' ? p.age : '—'}</dd></div>
+                    <div><dt>Language</dt><dd>{sidebarLanguage}</dd></div>
+                    <div><dt>Height</dt><dd>{sidebarHeightDisplay}</dd></div>
+                  </dl>
+                  {(photoUploading || photoUploadSuccess || photoUploadError) && (
+                    <div className={`pp-pharm-side-profile__photo-msg${photoUploadError ? ' is-error' : ''}${photoUploadSuccess ? ' is-success' : ''}`}>
+                      {photoUploading ? 'Uploading photo…' : (photoUploadSuccess || photoUploadError)}
+                    </div>
+                  )}
                 </div>
               </div>
-              <span
-                className={`pp-hero__status-dot${p.status === 'active' ? '' : ' is-pending'}`}
-                title={`Status: ${patientStatusLabel}`}
-              />
             </div>
 
-            <div className="pp-hero__identity">
-              <span className="pp-hero__eyebrow">
-                <FiHeart size={11} /> Patient profile
-              </span>
-              <h1 className="pp-hero__name">
-                {p.name}
-                <span className={`pp-hero__pill${p.status === 'active' ? ' is-active' : ' is-pending'}`}>
-                  <FiCheckCircle size={11} /> {patientStatusLabel}
-                </span>
-                {p.regNo && (
-                  <span className="pp-hero__pill"><FiClipboard size={11} /> {p.regNo}</span>
-                )}
-              </h1>
-              <div className="pp-hero__chips">
-                {p.dob && (
-                  <span className="pp-hero__chip">
-                    <FiCalendar size={13} />
-                    <span>DOB: <strong>{p.dob}</strong>{p.age ? ` · ${p.age} yrs` : ''}{p.gender ? ` · ${p.gender}` : ''}</span>
-                  </span>
-                )}
-                {p.phone && (
-                  <span className="pp-hero__chip">
-                    <FiPhone size={13} />
-                    <strong>{p.phone}</strong>
-                  </span>
-                )}
-                {p.address && (
-                  <span className="pp-hero__chip">
-                    <FiMapPin size={13} />
-                    <span>{p.address}</span>
-                  </span>
-                )}
-                {p.nurse && (
-                  <span className="pp-hero__chip">
-                    <FiShield size={13} />
-                    <span>Nurse: <strong>{p.nurse}</strong></span>
-                  </span>
-                )}
-              </div>
-              {(photoUploading || photoUploadSuccess || photoUploadError) && (
-                <div className={`pp-hero__upload-status${photoUploadError ? ' is-error' : ''}${photoUploadSuccess ? ' is-success' : ''}`}>
-                  {photoUploading
-                    ? 'Uploading patient photo…'
-                    : photoUploadSuccess || photoUploadError}
-                </div>
-              )}
-            </div>
-
-            <div className="pp-hero__actions">
-              <button type="button" className="pp-hero__cta" onClick={handlePrimaryAction}>
-                <FiPhone size={14} /> Contact patient
+            <div className="pp-pharm-side-card">
+              <div className="pp-pharm-side-card__title">Allergies</div>
+              <ul className="pp-pharm-allergy-list">
+                {sidebarAllergies.map((row) => (
+                  <li key={`${row.label}-${row.tone}`}>
+                    <span className="pp-pharm-allergy-list__name">{row.label}</span>
+                    {row.severity && (
+                      <span className={`pp-pharm-allergy-list__sev pp-pharm-allergy-list__sev--${row.tone}`}>{row.severity}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              <button type="button" className="pp-pharm-side-muted-link" onClick={() => setTab('clinical')}>
+                + Add allergy
               </button>
-              <div className="pp-hero__action-row">
-                <button type="button" className="pp-hero__icon-btn" title="Generate report" onClick={() => window.print()}>
-                  <FiFileText size={15} />
-                </button>
-                <button type="button" className="pp-hero__icon-btn" title="Edit profile" onClick={() => setShowUpdateModal(true)}>
-                  <FiEdit2 size={15} />
-                </button>
-                <button type="button" className="pp-hero__icon-btn" title="Refresh" onClick={loadPatientProfile}>
-                  <FiRefreshCw size={15} />
-                </button>
-                {!photoUploading && canRefreshStoredPhoto && (
-                  <button
-                    type="button"
-                    className="pp-hero__icon-btn"
-                    title={photoRefreshLoading ? 'Refreshing stored photo…' : 'Refresh stored photo'}
-                    onClick={handleRefreshStoredPhoto}
-                    disabled={photoRefreshLoading}
-                    style={photoRefreshLoading ? { opacity: 0.6, cursor: 'not-allowed' } : undefined}
-                  >
-                    <FiUser size={15} />
-                  </button>
-                )}
-              </div>
             </div>
-          </div>
-        </section>
 
-        {/* ═══ KPI Strip ═══ */}
-        <section className="pp-kpi-grid" aria-label="Patient highlights">
-          <button type="button" className={`pp-kpi${p.status === 'active' ? ' pp-kpi--success' : ' pp-kpi--warn'}`} onClick={() => setShowUpdateModal(true)}>
-            <span className="pp-kpi__icon"><FiCheckCircle size={18} /></span>
-            <span className="pp-kpi__label">Care status</span>
-            <span className="pp-kpi__value">{patientStatusLabel}</span>
-            <span className="pp-kpi__hint">{p.enrolled ? `Enrolled ${p.enrolled}` : 'No enrollment date'}</span>
-          </button>
-          <button type="button" className="pp-kpi pp-kpi--info" onClick={() => handleProfileTabChange('vitals')}>
-            <span className="pp-kpi__icon"><FiActivity size={18} /></span>
-            <span className="pp-kpi__label">Latest vitals</span>
-            <span className="pp-kpi__value">{latestDisplayedVitals.bp || '—'}<span style={{ fontSize: 13, fontWeight: 600, color: 'var(--pp-ink-3)', marginLeft: 6 }}>{latestDisplayedVitals.spo2 ? `· SpO₂ ${latestDisplayedVitals.spo2}` : ''}</span></span>
-            <span className="pp-kpi__hint">{latestVitalSummary}</span>
-          </button>
-          <button type="button" className="pp-kpi" onClick={() => setTab('medications')}>
-            <span className="pp-kpi__icon"><FiFileText size={18} /></span>
-            <span className="pp-kpi__label">Active medications</span>
-            <span className="pp-kpi__value">{activeMedicationRecords.length}</span>
-            <span className="pp-kpi__hint">{medicationOralCount > 0 ? `${medicationOralCount} oral` : 'No oral meds'}{medicationReminderCount > 0 ? ` · ${medicationReminderCount} reminders` : ''}</span>
-          </button>
-          <button type="button" className={`pp-kpi${flags.length > 0 && flags[0].status !== 'ok' ? ' pp-kpi--danger' : ''}`} onClick={() => setTab('clinical')}>
-            <span className="pp-kpi__icon"><FiAlertTriangle size={18} /></span>
-            <span className="pp-kpi__label">Clinical flags</span>
-            <span className="pp-kpi__value">{flags.length > 0 && flags[0].status !== 'ok' ? flags.length : 0}</span>
-            <span className="pp-kpi__hint">{flags[0]?.label || 'No active flags'}</span>
-          </button>
-        </section>
+            <div className="pp-pharm-side-card">
+              <div className="pp-pharm-side-card__title">Notes</div>
+              <p className="pp-pharm-side-notes">{sidebarNotesPreview}</p>
+              <button type="button" className="pp-pharm-side-muted-link" onClick={() => handleProfileTabChange('notes')}>
+                Open Nurse Note
+              </button>
+            </div>
 
-        {/* ═══ About / Highlights / Quick access ═══ */}
-        <section className="pp-about-grid">
-          <div className="pp-card-v2">
-            <div className="pp-card-v2__header">
-              <span className="pp-card-v2__title">Profile details</span>
-              <button type="button" className="pp-card-v2__action" onClick={() => setShowUpdateModal(true)}>Edit</button>
+            <div className="pp-pharm-side-quick">
+              <button type="button" className="pp-pharm-side-quick__btn" onClick={() => handleProfileTabChange('vitals')}>
+                <FiActivity size={14} /> Vitals
+              </button>
+              <button type="button" className="pp-pharm-side-quick__btn" onClick={() => handleProfileTabChange('medications')}>
+                <FiFileText size={14} /> Medications
+              </button>
+              <button type="button" className="pp-pharm-side-quick__btn" onClick={handlePrimaryAction}>
+                <FiPhone size={14} /> Call
+              </button>
             </div>
-            <div className="pp-detail-grid">
-              {patientProfileDetails.map((item) => (
-                <div key={item.label} className="pp-detail-item">
-                  <span>{item.label}</span>
-                  <strong>{item.value}</strong>
-                </div>
-              ))}
-            </div>
-          </div>
+          </aside>
 
-          <div className="pp-card-v2">
-            <div className="pp-card-v2__header">
-              <span className="pp-card-v2__title">Care highlights</span>
-              <button type="button" className="pp-card-v2__action" onClick={() => setTab('clinical')}>Clinical view</button>
-            </div>
-            <div className="pp-highlight-list">
-              {patientHighlights.map((item, index) => (
-                <div key={`${item}-${index}`} className="pp-highlight-item">{item}</div>
-              ))}
-            </div>
-          </div>
-
-          <div className="pp-card-v2 patient-profile-quick-access-card">
-            <div className="pp-card-v2__header">
-              <span className="pp-card-v2__title">Quick access</span>
-              <button type="button" className="pp-card-v2__action" onClick={() => setTab('chart')}>Open summary</button>
-            </div>
-            <div className="pp-quick-list">
-              {[
-                { key: 'vitals', label: 'Vitals Records', hint: latestVitalSummary, icon: <FiThermometer size={14} /> },
-                { key: 'medications', label: 'Medication List', hint: `${activeMedicationRecords.length} active items`, icon: <FiFileText size={14} /> },
-                { key: 'notes', label: 'Nurse Notes', hint: `${nurseNotes.length} entries recorded`, icon: <FiEdit2 size={14} /> },
-              ].map((item) => (
-                <button key={item.key} type="button" className="pp-quick-item" onClick={() => handleProfileTabChange(item.key)}>
-                  <span className="pp-quick-item__icon">{item.icon}</span>
-                  <span className="pp-quick-item__content">
-                    <strong>{item.label}</strong>
-                    <small>{item.hint}</small>
-                  </span>
-                  <FiChevronRight size={14} style={{ marginLeft: 'auto', color: 'var(--pp-ink-4)' }} />
-                </button>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <div className="kh-card nurse-profile-board">
-          <div className="nurse-profile-tabs">
+          <main className="pp-pharm-main">
+        <div className="kh-card nurse-profile-board pp-pharm-board">
+          <div className="nurse-profile-tabs pp-pharm-tabs">
             {TABS.map((item) => (
-              <button key={item.key} type="button" onClick={() => handleProfileTabChange(item.key)} className={`nurse-profile-tab${tab === item.key || (item.key === 'vitals' && showVitalsMegaModal) || (item.key === 'notes' && showNotesMegaModal) ? ' active' : ''}`}>
-                {item.icon} {item.label}
-                {item.key !== 'chart' && <span className="nurse-profile-tab__dot is-ready" />}
+              <button key={item.key} type="button" onClick={() => handleProfileTabChange(item.key)} className={`nurse-profile-tab${tab === item.key || (item.key === 'vitals' && showVitalsMegaModal) || (item.key === 'notes' && showNotesMegaModal) || (item.key === 'incidents' && showIncidentsMegaModal) || (item.key === 'medications' && showMedicationsMegaModal) ? ' active' : ''}`}>
+                {item.icon}
+                {item.label}
               </button>
             ))}
+            <button
+              type="button"
+              className="nurse-profile-tab pp-pharm-tab-plus"
+              title="Edit profile"
+              onClick={() => setShowUpdateModal(true)}
+            >
+              <FiPlus size={14} />
+            </button>
           </div>
 
           <div className="nurse-profile-board__content">
@@ -3707,6 +4646,78 @@ export default function PatientProfile() {
       {/* ═══ CHART SUMMARY ═══ */}
       {tab === 'chart' && (
         <>
+          <div className="pp-pharm-general-stack">
+            <div className="pp-pharm-panel">
+              <div className="pp-pharm-panel__section-title">Personal details</div>
+              <div className="pp-pharm-personal-grid">
+                <div><span className="pp-pharm-field-label">Last name</span><span className="pp-pharm-field-value">{patientNameParts.last}</span></div>
+                <div><span className="pp-pharm-field-label">First name</span><span className="pp-pharm-field-value">{patientNameParts.first}</span></div>
+                <div><span className="pp-pharm-field-label">Salutation</span><span className="pp-pharm-field-value">—</span></div>
+                <div><span className="pp-pharm-field-label">Birthdate</span><span className="pp-pharm-field-value">{p.dob || '—'}</span></div>
+                <div className="pp-pharm-personal-grid__wide"><span className="pp-pharm-field-label">Address</span><span className="pp-pharm-field-value">{p.address || '—'}</span></div>
+                <div><span className="pp-pharm-field-label">Phone</span><span className="pp-pharm-field-value">{p.phone || '—'}</span></div>
+                <div><span className="pp-pharm-field-label">Email</span><span className="pp-pharm-field-value">{p.email || '—'}</span></div>
+              </div>
+
+              <div className="pp-pharm-panel__section-title pp-pharm-panel__section-title--mt">Care routing</div>
+              <div className="pp-pharm-faux-selects">
+                <div><span className="pp-pharm-faux-label">Delivery type</span><div className="pp-pharm-faux-select">Home visit (default)</div></div>
+                <div><span className="pp-pharm-faux-label">Care route</span><div className="pp-pharm-faux-select">{p.region || p.gps || '—'}</div></div>
+                <div><span className="pp-pharm-faux-label">Risk level</span><div className="pp-pharm-faux-select">{flags[0]?.label || 'Standard'}</div></div>
+                <div><span className="pp-pharm-faux-label">Service line 1</span><div className="pp-pharm-faux-select">{p.nurse ? 'Assigned RN' : 'Unassigned'}</div></div>
+                <div><span className="pp-pharm-faux-label">Service line 2</span><div className="pp-pharm-faux-select">{String(p.diagnosis || 'General care').slice(0, 42)}{String(p.diagnosis || '').length > 42 ? '…' : ''}</div></div>
+              </div>
+              <div className="pp-pharm-inline-meta">
+                <span className="pp-pharm-inline-meta__label">Handbook</span>
+                <span className="pp-pharm-inline-meta__value">{p.handbookGiven ? 'On file' : 'Not recorded'}</span>
+              </div>
+              <div className="pp-pharm-check-row">
+                <label className="pp-pharm-check"><input type="checkbox" readOnly checked={Boolean(p.handbookGiven)} /> Cultural preferences documented</label>
+                <label className="pp-pharm-check"><input type="checkbox" readOnly checked={hasNextOfKinData} /> Emergency contacts verified</label>
+                <label className="pp-pharm-check"><input type="checkbox" readOnly checked={Boolean(p.doctor?.name)} /> Physician on file</label>
+              </div>
+            </div>
+
+            <div className="pp-pharm-panel pp-pharm-panel--table">
+              <div className="pp-pharm-used-head">
+                <h3 className="pp-pharm-used-title">Used drugs</h3>
+                <button type="button" className="pp-pharm-used-add" onClick={() => handleProfileTabChange('medications')}>
+                  <FiPlus size={14} /> Add drug
+                </button>
+              </div>
+              <div className="pp-pharm-table-wrap">
+                <table className="pp-pharm-used-table">
+                  <thead>
+                    <tr>
+                      <th>Brand name</th>
+                      <th>Generic name</th>
+                      <th>Strength</th>
+                      <th>Pack</th>
+                      <th>Form</th>
+                      <th>Care team notes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {activeMedicationRecords.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="pp-pharm-used-table__empty">No medications on file — add from Medications.</td>
+                      </tr>
+                    ) : activeMedicationRecords.map((med, idx) => (
+                      <tr key={`${med.drug}-${idx}`}>
+                        <td><strong>{med.drug || '—'}</strong></td>
+                        <td>—</td>
+                        <td>{med.dosage && med.dosage !== '—' ? med.dosage : '—'}</td>
+                        <td>—</td>
+                        <td>{med.route || '—'}</td>
+                        <td className="pp-pharm-used-table__notes">{med.frequency && med.frequency !== '—' ? med.frequency : (med.notes || '—')}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
           <div className="nurse-profile-overview-grid" style={{ marginBottom: 18 }}>
             <div className="nurse-profile-card nurse-profile-card--timeline">
               <div className="nurse-profile-card-heading nurse-profile-card-heading--with-action">
@@ -4070,28 +5081,14 @@ export default function PatientProfile() {
                           </div>
                           <div className="patient-vital-modal__field patient-vital-modal__field--wide">
                             <label className="patient-vital-modal__label">Recorded By</label>
-                            <select
+                            <input
                               className="patient-vital-modal__input"
+                              type="text"
                               value={vitalForm.recordedBy}
                               onChange={e => setVitalForm(f => ({ ...f, recordedBy: e.target.value }))}
-                              disabled={vitalNursesLoading}
-                            >
-                              <option value="">
-                                {vitalNursesLoading ? 'Loading nurses...' : 'Select a nurse'}
-                              </option>
-                              {vitalNurseOptions.map((nurseOption) => (
-                                <option key={nurseOption.id} value={nurseOption.name}>{nurseOption.name}</option>
-                              ))}
-                              {!vitalNurseOptions.some((nurseOption) => nurseOption.name === currentUserName) && currentUserName ? (
-                                <option value={currentUserName}>{currentUserName}</option>
-                              ) : null}
-                              {!vitalNurseOptions.some((nurseOption) => nurseOption.name === p?.nurse) && p?.nurse ? (
-                                <option value={p.nurse}>{p.nurse}</option>
-                              ) : null}
-                            </select>
-                            {vitalNursesError && (
-                              <div className="patient-vital-modal__section-copy">{vitalNursesError}</div>
-                            )}
+                              placeholder="Nurse or staff name"
+                              autoComplete="name"
+                            />
                           </div>
                         </div>
                       </div>
@@ -4280,8 +5277,8 @@ export default function PatientProfile() {
                           </td>
                           <td style={{ padding: '10px 12px' }}>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                              <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--kh-text)' }}>{r.recordedBy || '—'}</span>
-                              <span style={{ fontSize: 10.5, color: 'var(--kh-text-muted)' }}>{p?.nurse || 'No nurse assigned'}</span>
+                              <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--kh-text)' }}>{vitalRecorderDisplayName(r.recordedBy) || '—'}</span>
+                              <span style={{ fontSize: 10.5, color: 'var(--kh-text-muted)' }}>{vitalRecorderDisplayName(p?.nurse) || 'No nurse assigned'}</span>
                             </div>
                           </td>
                           <td style={{ padding: '10px 12px' }}>
@@ -4399,7 +5396,7 @@ export default function PatientProfile() {
                       <td style={{ padding: '10px 12px' }}>
                         <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--kh-text)' }}>{p.vitals.weight}</span>
                       </td>
-                      <td style={{ padding: '10px 12px', fontSize: 12, color: 'var(--kh-text-muted)', fontWeight: 500 }}>{p.nurse}</td>
+                      <td style={{ padding: '10px 12px', fontSize: 12, color: 'var(--kh-text-muted)', fontWeight: 500 }}>{vitalRecorderDisplayName(p.nurse) || '—'}</td>
                       <td style={{ padding: '10px 12px' }}>
                         <span style={{ fontSize: 10, fontWeight: 700, color: '#45B6FE' }}>Baseline</span>
                       </td>
@@ -4413,20 +5410,53 @@ export default function PatientProfile() {
         </div>
       )}
 
-      {/* ═══ MEDICATIONS ═══ */}
-      {tab === 'medications' && (
-        <div className="row g-3">
-          <div className="col-lg-12">
-            <Panel title="Active Medications" icon={<FiFileText size={14} />} accent="#45B6FE" bodyClassName="patient-medications-panel"
-              action={
-                <div className="patient-medications-panel__action">
-                  <span className="patient-medications-panel__count">{activeMedicationRecords.length} active</span>
-                  <button onClick={() => { setShowMedForm(true); setDrugSearch(''); setShowCustomDrug(false); setShowDrugDropdown(false); }} className="patient-medications-panel__add-btn">
-                    <FiPlus size={13} /> Add Medication
-                  </button>
+      {/* ═══ MEDICATIONS — MEGA MODAL ═══ */}
+      {showMedicationsMegaModal && (
+        <div
+          className="patient-medications-mega-modal"
+          onClick={() => { if (!showMedForm && !showReminderForm) setShowMedicationsMegaModal(false); }}
+        >
+          <div
+            className="patient-medications-mega-modal__panel"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Active medications"
+          >
+            <div className="patient-medications-mega-modal__header">
+              <div className="patient-medications-mega-modal__header-copy">
+                <span className="patient-medications-mega-modal__eyebrow">Medication management</span>
+                <div className="patient-medications-mega-modal__title-row">
+                  <span className="patient-medications-mega-modal__title-icon"><FiFileText size={20} /></span>
+                  <div>
+                    <h3>
+                      Active Medications
+                      <span className="patient-medications-mega-modal__count">{activeMedicationRecords.length}</span>
+                    </h3>
+                    <p>Review, prescribe, and schedule reminders for {p.name}. Drug catalog is sourced live from <code>/drugs</code>.</p>
+                  </div>
                 </div>
-              }
-            >
+              </div>
+              <div className="patient-medications-mega-modal__actions">
+                <button
+                  type="button"
+                  className="patient-medications-mega-modal__add-btn"
+                  onClick={() => { setShowMedForm(true); setDrugSearch(''); setShowCustomDrug(false); setShowDrugDropdown(false); }}
+                >
+                  <FiPlus size={14} /> Add Medication
+                </button>
+                <button
+                  type="button"
+                  className="patient-medications-mega-modal__close"
+                  onClick={() => { if (!showMedForm && !showReminderForm) setShowMedicationsMegaModal(false); }}
+                  aria-label="Close medications"
+                >
+                  <FiX size={14} />
+                </button>
+              </div>
+            </div>
+
+            <div className="patient-medications-mega-modal__body">
               {/* Add Medication Modal */}
               {showMedForm && (
                 <div
@@ -5016,7 +6046,7 @@ export default function PatientProfile() {
               ) : (
                 <NoDataState text="No active medications have been recorded for this patient yet." />
               )}
-            </Panel>
+            </div>
           </div>
         </div>
       )}
@@ -5409,628 +6439,839 @@ export default function PatientProfile() {
         </div>
       )}
 
-      {/* ═══ INCIDENT REPORTS ═══ */}
-      {tab === 'incidents' && (
-        <div>
-          {/* Header */}
-          <div style={{
-            background: '#fff', borderRadius: 2, border: '1px solid #e5e7eb',
-            marginBottom: 16, overflow: 'hidden',
-          }}>
-            <div style={{
-              padding: '14px 18px', borderBottom: '1px solid #e5e7eb',
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              borderLeft: '3px solid #dc2626',
-            }}>
-              <div className="d-flex align-items-center gap-2">
-                <FiAlertTriangle size={15} style={{ color: '#dc2626' }} />
-                <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--kh-text)' }}>Incident Reports</span>
-                <span style={{
-                  fontSize: 11, fontWeight: 700, background: '#dc2626', color: '#fff',
-                  padding: '2px 8px', borderRadius: 10, marginLeft: 4,
-                }}>{incidents.length}</span>
-                {incidents.filter(i => i.status === 'open').length > 0 && (
-                  <span style={{
-                    fontSize: 10, fontWeight: 700, background: '#fef2f2', color: '#dc2626',
-                    padding: '2px 8px', borderRadius: 10, border: '1px solid #fecaca',
-                  }}>{incidents.filter(i => i.status === 'open').length} Open</span>
-                )}
+      {/* ═══ INCIDENT REPORTS — MEGA MODAL ═══ */}
+      {showIncidentsMegaModal && (
+        <div
+          className="patient-incidents-mega-modal"
+          onClick={() => {
+            setShowIncidentForm(false);
+            resetIncidentForm();
+            setConfirmDeleteIncident(null);
+            setIncidentDeleteModalError('');
+            setShowIncidentsMegaModal(false);
+          }}
+        >
+          <div
+            className="patient-incidents-mega-modal__panel"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Incident reports"
+          >
+            {/* Modal header */}
+            <div className="patient-incidents-mega-modal__header">
+              <div className="patient-incidents-mega-modal__header-copy">
+                <span className="patient-incidents-mega-modal__eyebrow">Safety incidents</span>
+                <div className="patient-incidents-mega-modal__title-row">
+                  <span className="patient-incidents-mega-modal__title-icon"><FiAlertTriangle size={20} /></span>
+                  <div>
+                    <h3>
+                      Incident Reports
+                      <span className="patient-incidents-mega-modal__count">{incidents.length}</span>
+                      {incidents.filter(i => i.status === 'open').length > 0 && (
+                        <span className="patient-incidents-mega-modal__open-pill">
+                          {incidents.filter(i => i.status === 'open').length} Open
+                        </span>
+                      )}
+                      {incidentsLoading && (
+                        <span className="patient-incidents-mega-modal__open-pill">Loading…</span>
+                      )}
+                    </h3>
+                    <p>File and track safety incidents for {p.name}. Records sync to the patient timeline immediately.</p>
+                  </div>
+                </div>
               </div>
-              <div className="d-flex align-items-center gap-2">
-                <select
-                  value={incidentFilter}
-                  onChange={e => setIncidentFilter(e.target.value)}
-                  style={{
-                    fontSize: 12, padding: '6px 10px', borderRadius: 2,
-                    border: '1px solid #d1d5db', color: 'var(--kh-text)', cursor: 'pointer',
-                    background: '#fff',
-                  }}
-                >
-                  <option value="All">All Types</option>
-                  {INCIDENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
+              <div className="patient-incidents-mega-modal__actions">
                 <button
-                  onClick={() => setShowIncidentForm(!showIncidentForm)}
-                  style={{
-                    padding: '7px 16px', fontSize: 12, fontWeight: 700, borderRadius: 2, cursor: 'pointer',
-                    background: showIncidentForm ? '#fff' : '#dc2626',
-                    color: showIncidentForm ? '#dc2626' : '#fff',
-                    border: showIncidentForm ? '1px solid #dc2626' : 'none',
-                    display: 'flex', alignItems: 'center', gap: 5,
+                  type="button"
+                  className="patient-incidents-mega-modal__add-btn"
+                  onClick={() => {
+                    if (!showIncidentForm) {
+                      resetIncidentForm();
+                      setShowIncidentForm(true);
+                    } else {
+                      setShowIncidentForm(false);
+                      resetIncidentForm();
+                    }
                   }}
                 >
-                  {showIncidentForm ? <><FiX size={13} /> Cancel</> : <><FiPlus size={13} /> Report Incident</>}
+                  {showIncidentForm ? <><FiX size={14} /> {editingIncidentId ? 'Close editor' : 'Cancel'}</> : <><FiPlus size={14} /> Report Incident</>}
+                </button>
+                <button
+                  type="button"
+                  className="patient-incidents-mega-modal__close"
+                  onClick={() => {
+                    setShowIncidentForm(false);
+                    resetIncidentForm();
+                    setConfirmDeleteIncident(null);
+                    setIncidentDeleteModalError('');
+                    setShowIncidentsMegaModal(false);
+                  }}
+                  aria-label="Close incident reports"
+                >
+                  <FiX size={14} />
                 </button>
               </div>
             </div>
 
-            {/* Add Incident Form */}
-            {showIncidentForm && (
-              <div style={{ padding: '18px', background: '#fef8f8', borderBottom: '1px solid #e5e7eb' }}>
-                <div className="row g-2 mb-3">
-                  <div className="col-md-3">
-                    <label style={{ fontSize: 11, fontWeight: 600, color: '#991b1b', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <FiCalendar size={11} /> Date
-                    </label>
-                    <input type="date" value={incidentForm.date} onChange={e => setIncidentForm({ ...incidentForm, date: e.target.value })}
-                      style={{ width: '100%', padding: '8px 10px', fontSize: 12.5, borderRadius: 3, border: '1px solid #d1d5db', background: '#fff' }} />
-                  </div>
-                  <div className="col-md-2">
-                    <label style={{ fontSize: 11, fontWeight: 600, color: '#991b1b', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <FiClock size={11} /> Time
-                    </label>
-                    <input type="time" value={incidentForm.time} onChange={e => setIncidentForm({ ...incidentForm, time: e.target.value })}
-                      style={{ width: '100%', padding: '8px 10px', fontSize: 12.5, borderRadius: 3, border: '1px solid #d1d5db', background: '#fff' }} />
-                  </div>
-                  <div className="col-md-3">
-                    <label style={{ fontSize: 11, fontWeight: 600, color: '#991b1b', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <FiUser size={11} /> Reported By
-                    </label>
-                    <input type="text" placeholder="Nurse name" value={incidentForm.reportedBy} onChange={e => setIncidentForm({ ...incidentForm, reportedBy: e.target.value })}
-                      style={{ width: '100%', padding: '8px 10px', fontSize: 12.5, borderRadius: 3, border: '1px solid #d1d5db', background: '#fff' }} />
-                  </div>
-                  <div className="col-md-2">
-                    <label style={{ fontSize: 11, fontWeight: 600, color: '#991b1b', marginBottom: 4 }}>Incident Type</label>
-                    <select value={incidentForm.type} onChange={e => setIncidentForm({ ...incidentForm, type: e.target.value })}
-                      style={{ width: '100%', padding: '8px 10px', fontSize: 12.5, borderRadius: 3, border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer' }}>
-                      {INCIDENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                    </select>
-                  </div>
-                  <div className="col-md-2">
-                    <label style={{ fontSize: 11, fontWeight: 600, color: '#991b1b', marginBottom: 4 }}>Severity</label>
-                    <select value={incidentForm.severity} onChange={e => setIncidentForm({ ...incidentForm, severity: e.target.value })}
-                      style={{ width: '100%', padding: '8px 10px', fontSize: 12.5, borderRadius: 3, border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer' }}>
-                      {INCIDENT_SEVERITIES.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                  </div>
-                </div>
-
-                <div className="row g-2 mb-3">
-                  <div className="col-md-12">
-                    <label style={{ fontSize: 11, fontWeight: 600, color: '#991b1b', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <FiMapPin size={11} /> Location of Incident
-                    </label>
-                    <input type="text" placeholder="e.g. Bedroom — bedside, Bathroom, Kitchen..." value={incidentForm.location} onChange={e => setIncidentForm({ ...incidentForm, location: e.target.value })}
-                      style={{ width: '100%', padding: '8px 10px', fontSize: 12.5, borderRadius: 3, border: '1px solid #d1d5db', background: '#fff' }} />
-                  </div>
-                </div>
-
-                <div className="mb-3">
-                  <label style={{ fontSize: 11, fontWeight: 600, color: '#991b1b', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <FiAlertTriangle size={11} /> Incident Description *
-                  </label>
-                  <textarea rows={3} placeholder="Describe what happened in detail..." value={incidentForm.description}
-                    onChange={e => setIncidentForm({ ...incidentForm, description: e.target.value })}
-                    style={{ width: '100%', padding: '10px 12px', fontSize: 12.5, borderRadius: 3, border: '1px solid #d1d5db', background: '#fff', resize: 'vertical', lineHeight: 1.6 }} />
-                </div>
-
-                <div className="mb-3">
-                  <label style={{ fontSize: 11, fontWeight: 600, color: '#991b1b', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <FiShield size={11} /> Immediate Action Taken
-                  </label>
-                  <textarea rows={2} placeholder="Describe immediate actions taken..." value={incidentForm.immediateAction}
-                    onChange={e => setIncidentForm({ ...incidentForm, immediateAction: e.target.value })}
-                    style={{ width: '100%', padding: '10px 12px', fontSize: 12.5, borderRadius: 3, border: '1px solid #d1d5db', background: '#fff', resize: 'vertical', lineHeight: 1.6 }} />
-                </div>
-
-                <div className="row g-2 mb-3">
-                  <div className="col-md-6">
-                    <label style={{ fontSize: 11, fontWeight: 600, color: '#991b1b', marginBottom: 4 }}>Witnesses</label>
-                    <input type="text" placeholder="Names of any witnesses" value={incidentForm.witnesses}
-                      onChange={e => setIncidentForm({ ...incidentForm, witnesses: e.target.value })}
-                      style={{ width: '100%', padding: '8px 10px', fontSize: 12.5, borderRadius: 3, border: '1px solid #d1d5db', background: '#fff' }} />
-                  </div>
-                  <div className="col-md-6">
-                    <label style={{ fontSize: 11, fontWeight: 600, color: '#991b1b', marginBottom: 4 }}>Injury Details</label>
-                    <input type="text" placeholder="Describe any injuries (if applicable)" value={incidentForm.injuryDetails}
-                      onChange={e => setIncidentForm({ ...incidentForm, injuryDetails: e.target.value })}
-                      style={{ width: '100%', padding: '8px 10px', fontSize: 12.5, borderRadius: 3, border: '1px solid #d1d5db', background: '#fff' }} />
-                  </div>
-                </div>
-
-                <div className="mb-3">
-                  <label style={{ fontSize: 11, fontWeight: 600, color: '#991b1b', marginBottom: 4 }}>Follow-Up Plan</label>
-                  <textarea rows={2} placeholder="Describe follow-up actions planned..." value={incidentForm.followUp}
-                    onChange={e => setIncidentForm({ ...incidentForm, followUp: e.target.value })}
-                    style={{ width: '100%', padding: '10px 12px', fontSize: 12.5, borderRadius: 3, border: '1px solid #d1d5db', background: '#fff', resize: 'vertical', lineHeight: 1.6 }} />
-                </div>
-
-                {/* Notification checkboxes */}
-                <div className="d-flex gap-4 mb-3">
-                  <label style={{ fontSize: 12, color: 'var(--kh-text)', display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                    <input type="checkbox" checked={incidentForm.physicianNotified} onChange={e => setIncidentForm({ ...incidentForm, physicianNotified: e.target.checked })} />
-                    <span style={{ fontWeight: 600 }}>Physician Notified</span>
-                  </label>
-                  <label style={{ fontSize: 12, color: 'var(--kh-text)', display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                    <input type="checkbox" checked={incidentForm.familyNotified} onChange={e => setIncidentForm({ ...incidentForm, familyNotified: e.target.checked })} />
-                    <span style={{ fontWeight: 600 }}>Family/Next of Kin Notified</span>
-                  </label>
-                </div>
-
-                <div className="d-flex justify-content-end">
-                  <button onClick={handleAddIncident} disabled={!incidentForm.description.trim()} style={{
-                    padding: '9px 24px', fontSize: 12.5, fontWeight: 700, borderRadius: 2, cursor: 'pointer',
-                    background: incidentForm.description.trim() ? '#dc2626' : '#d1d5db',
-                    color: '#fff', border: 'none', display: 'flex', alignItems: 'center', gap: 6,
-                  }}>
-                    <FiSend size={13} /> Submit Incident Report
+            {/* Modal body */}
+            <div className="patient-incidents-mega-modal__body">
+              {/* Toolbar */}
+              <div className="patient-incidents-toolbar">
+                <div className="patient-incidents-toolbar__group">
+                  <select
+                    value={incidentFilter}
+                    onChange={e => setIncidentFilter(e.target.value)}
+                    className="patient-incidents-toolbar__select"
+                  >
+                    <option value="All">All Types</option>
+                    {INCIDENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={loadIncidents}
+                    title="Refresh incidents"
+                    disabled={incidentsLoading}
+                    className="patient-notes-toolbar__icon-btn"
+                    style={{ borderColor: '#e5e7eb', color: '#6b7280' }}
+                  >
+                    <FiRefreshCw size={13} />
                   </button>
                 </div>
+                <div className="patient-incidents-toolbar__hint">
+                  <FiAlertCircle size={12} />
+                  <span>Showing {filteredIncidents.length} of {incidents.length} incident{incidents.length === 1 ? '' : 's'}</span>
+                </div>
               </div>
-            )}
-          </div>
 
-          {/* Incident List */}
-          {filteredIncidents.length === 0 ? (
-            <div style={{
-              background: '#fff', borderRadius: 2, border: '1px solid #e5e7eb',
-              padding: '40px 20px', textAlign: 'center',
-            }}>
-              <FiAlertTriangle size={32} style={{ color: '#d1d5db', marginBottom: 12 }} />
-              <div style={{ fontSize: 13, color: 'var(--kh-text-muted)', fontWeight: 500 }}>
-                {incidentFilter !== 'All' ? `No incidents found for "${incidentFilter}" type` : 'No incident reports filed'}
-              </div>
-              <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: 4 }}>
-                Click "Report Incident" to file a new incident report for this patient
-              </div>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {filteredIncidents.map((inc) => {
-                const sevStyle = getIncidentSeverityStyle(inc.severity);
-                const statStyle = getIncidentStatusStyle(inc.status);
-                const isExpanded = expandedIncident === inc.id;
-                return (
-                  <div key={inc.id} style={{
-                    background: '#fff', borderRadius: 2, border: '1px solid #e5e7eb',
-                    overflow: 'hidden', borderLeft: `3px solid ${sevStyle.color}`,
-                  }}>
-                    {/* Incident header — clickable */}
-                    <div
-                      onClick={() => setExpandedIncident(isExpanded ? null : inc.id)}
-                      style={{
-                        padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                        cursor: 'pointer', borderBottom: isExpanded ? '1px solid #f3f4f6' : 'none',
-                      }}
-                    >
-                      <div className="d-flex align-items-center gap-2 flex-wrap">
-                        <FiChevronRight size={14} style={{ color: 'var(--kh-text-muted)', transform: isExpanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }} />
-                        <span style={{
-                          fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 10,
-                          background: sevStyle.bg, color: sevStyle.color, border: `1px solid ${sevStyle.border}`,
-                          textTransform: 'uppercase', letterSpacing: '0.3px',
-                        }}>{inc.severity}</span>
-                        <span style={{
-                          fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 10,
-                          background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca',
-                        }}>{inc.type}</span>
-                        <span style={{
-                          fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 10,
-                          background: statStyle.bg, color: statStyle.color, border: `1px solid ${statStyle.border}`,
-                          textTransform: 'capitalize',
-                        }}>{statStyle.label}</span>
-                        <span style={{ fontSize: 11, color: 'var(--kh-text-muted)' }}>•</span>
-                        <span style={{ fontSize: 11.5, color: 'var(--kh-text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                          <FiCalendar size={11} /> {inc.date}
-                        </span>
-                        <span style={{ fontSize: 11.5, color: 'var(--kh-text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                          <FiClock size={11} /> {inc.time}
-                        </span>
-                      </div>
-                      <div className="d-flex align-items-center gap-2">
-                        <span style={{ fontSize: 11.5, color: '#2E7DB8', fontWeight: 600 }}>{inc.reportedBy || 'Unknown'}</span>
-                        <button onClick={(e) => { e.stopPropagation(); handleDeleteIncident(inc.id); }} title="Delete incident" style={{
-                          background: 'none', border: 'none', cursor: 'pointer', padding: '4px 6px', borderRadius: 2,
-                          color: '#9ca3af', fontSize: 12,
-                        }}>
-                          <FiX size={14} />
-                        </button>
-                      </div>
+              {incidentsError && (
+                <div className="patient-notes-toolbar__error">{incidentsError}</div>
+              )}
+
+              {/* Add Incident Form */}
+              {showIncidentForm && (
+                <div className="patient-incidents-form">
+                  {editingIncidentId && (
+                    <div style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 10, background: '#eff6ff', border: '1px solid #bfdbfe', fontSize: 12.5, fontWeight: 600, color: '#1e40af' }}>
+                      Editing this incident report — save to update it on the server.
                     </div>
-
-                    {/* Expanded content */}
-                    {isExpanded && (
-                      <div style={{ padding: '16px 18px' }}>
-                        {/* Description */}
-                        <div style={{ marginBottom: 14 }}>
-                          <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#dc2626', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
-                            <FiAlertTriangle size={11} /> Incident Description
-                          </div>
-                          <div style={{ fontSize: 12.5, color: 'var(--kh-text)', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{inc.description}</div>
-                        </div>
-
-                        {/* Location & Witnesses */}
-                        <div className="row g-2 mb-3">
-                          {inc.location && (
-                            <div className="col-md-6">
-                              <div style={{ padding: '10px 14px', borderRadius: 2, background: '#f9fafb', border: '1px solid #e5e7eb' }}>
-                                <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: 'var(--kh-text-muted)', marginBottom: 3 }}>Location</div>
-                                <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--kh-text)', display: 'flex', alignItems: 'center', gap: 5 }}><FiMapPin size={12} style={{ color: '#2E7DB8' }} /> {inc.location}</div>
-                              </div>
-                            </div>
-                          )}
-                          {inc.witnesses && (
-                            <div className="col-md-6">
-                              <div style={{ padding: '10px 14px', borderRadius: 2, background: '#f9fafb', border: '1px solid #e5e7eb' }}>
-                                <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: 'var(--kh-text-muted)', marginBottom: 3 }}>Witnesses</div>
-                                <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--kh-text)', display: 'flex', alignItems: 'center', gap: 5 }}><FiUser size={12} style={{ color: '#2E7DB8' }} /> {inc.witnesses}</div>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Injury Details */}
-                        {inc.injuryDetails && (
-                          <div style={{ marginBottom: 14, padding: '10px 14px', borderRadius: 2, background: '#fef2f2', border: '1px solid #fecaca' }}>
-                            <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: '#dc2626', marginBottom: 3 }}>Injury Details</div>
-                            <div style={{ fontSize: 12.5, color: '#991b1b', lineHeight: 1.5 }}>{inc.injuryDetails}</div>
-                          </div>
-                        )}
-
-                        {/* Immediate Action */}
-                        {inc.immediateAction && (
-                          <div style={{ marginBottom: 14 }}>
-                            <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#2E7DB8', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
-                              <FiShield size={11} /> Immediate Action Taken
-                            </div>
-                            <div style={{ fontSize: 12.5, color: 'var(--kh-text)', lineHeight: 1.7, padding: '10px 14px', borderRadius: 2, background: '#F0F7FE', border: '1px solid #d1fae5' }}>{inc.immediateAction}</div>
-                          </div>
-                        )}
-
-                        {/* Follow-Up Plan */}
-                        {inc.followUp && (
-                          <div style={{ marginBottom: 14 }}>
-                            <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#2563eb', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
-                              <FiClipboard size={11} /> Follow-Up Plan
-                            </div>
-                            <div style={{ fontSize: 12.5, color: 'var(--kh-text)', lineHeight: 1.7, padding: '10px 14px', borderRadius: 2, background: '#eff6ff', border: '1px solid #bfdbfe' }}>{inc.followUp}</div>
-                          </div>
-                        )}
-
-                        {/* Notification flags & status controls */}
-                        <div style={{ borderTop: '1px solid #f3f4f6', paddingTop: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
-                          <div className="d-flex gap-2">
-                            {inc.physicianNotified && (
-                              <span style={{ fontSize: 10.5, fontWeight: 700, padding: '3px 10px', borderRadius: 10, background: '#F0F7FE', color: '#1565A0', border: '1px solid #BAE0FD', display: 'flex', alignItems: 'center', gap: 4 }}>
-                                <FiCheckCircle size={11} /> Physician Notified
-                              </span>
-                            )}
-                            {inc.familyNotified && (
-                              <span style={{ fontSize: 10.5, fontWeight: 700, padding: '3px 10px', borderRadius: 10, background: '#F0F7FE', color: '#1565A0', border: '1px solid #BAE0FD', display: 'flex', alignItems: 'center', gap: 4 }}>
-                                <FiCheckCircle size={11} /> Family Notified
-                              </span>
-                            )}
-                            {!inc.physicianNotified && (
-                              <span style={{ fontSize: 10.5, fontWeight: 700, padding: '3px 10px', borderRadius: 10, background: '#fefce8', color: '#ca8a04', border: '1px solid #fef08a', display: 'flex', alignItems: 'center', gap: 4 }}>
-                                <FiAlertCircle size={11} /> Physician Not Notified
-                              </span>
-                            )}
-                          </div>
-                          {inc.status !== 'resolved' && (
-                            <div className="d-flex gap-2">
-                              {inc.status === 'open' && (
-                                <button onClick={() => handleUpdateIncidentStatus(inc.id, 'in-progress')} style={{
-                                  padding: '6px 14px', fontSize: 11, fontWeight: 700, borderRadius: 2, cursor: 'pointer',
-                                  background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe',
-                                  display: 'flex', alignItems: 'center', gap: 4,
-                                }}>
-                                  <FiClock size={12} /> Mark In Progress
-                                </button>
-                              )}
-                              <button onClick={() => handleUpdateIncidentStatus(inc.id, 'resolved')} style={{
-                                padding: '6px 14px', fontSize: 11, fontWeight: 700, borderRadius: 2, cursor: 'pointer',
-                                background: '#45B6FE', color: '#fff', border: 'none',
-                                display: 'flex', alignItems: 'center', gap: 4,
-                              }}>
-                                <FiCheckCircle size={12} /> Resolve
-                              </button>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Reported by footer */}
-                        <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <div style={{
-                            width: 22, height: 22, borderRadius: '50%', background: '#991b1b',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          }}>
-                            <FiUser size={11} style={{ color: '#fff' }} />
-                          </div>
-                          <span style={{ fontSize: 11.5, fontWeight: 600, color: '#991b1b' }}>Reported by {inc.reportedBy || 'Unknown'}</span>
-                          <span style={{ fontSize: 11, color: 'var(--kh-text-muted)' }}>on {inc.date} at {inc.time}</span>
-                        </div>
-                      </div>
-                    )}
+                  )}
+                  <div className="row g-2 mb-3">
+                    <div className="col-md-3">
+                      <label className="patient-incidents-form__label">
+                        <FiCalendar size={11} /> Date
+                      </label>
+                      <input
+                        type="date"
+                        value={incidentForm.date}
+                        onChange={e => setIncidentForm({ ...incidentForm, date: e.target.value })}
+                        className="patient-incidents-form__input"
+                      />
+                    </div>
+                    <div className="col-md-2">
+                      <label className="patient-incidents-form__label">
+                        <FiClock size={11} /> Time
+                      </label>
+                      <input
+                        type="time"
+                        value={incidentForm.time}
+                        onChange={e => setIncidentForm({ ...incidentForm, time: e.target.value })}
+                        className="patient-incidents-form__input"
+                      />
+                    </div>
+                    <div className="col-md-3">
+                      <label className="patient-incidents-form__label">
+                        <FiUser size={11} /> Reported By
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Name of person reporting"
+                        value={incidentForm.reportedBy}
+                        onChange={e => setIncidentForm({ ...incidentForm, reportedBy: e.target.value })}
+                        className="patient-incidents-form__input"
+                        autoComplete="name"
+                      />
+                    </div>
+                    <div className="col-md-2">
+                      <label className="patient-incidents-form__label">Incident Type</label>
+                      <select
+                        value={incidentForm.type}
+                        onChange={e => setIncidentForm({ ...incidentForm, type: e.target.value })}
+                        className="patient-incidents-form__input"
+                      >
+                        {INCIDENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    </div>
+                    <div className="col-md-2">
+                      <label className="patient-incidents-form__label">Severity</label>
+                      <select
+                        value={incidentForm.severity}
+                        onChange={e => setIncidentForm({ ...incidentForm, severity: e.target.value })}
+                        className="patient-incidents-form__input"
+                      >
+                        {INCIDENT_SEVERITIES.map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </div>
                   </div>
-                );
-              })}
+
+                  <div className="mb-3">
+                    <label className="patient-incidents-form__label">
+                      <FiMapPin size={11} /> Location of Incident
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Bedroom — bedside, Bathroom, Kitchen..."
+                      value={incidentForm.location}
+                      onChange={e => setIncidentForm({ ...incidentForm, location: e.target.value })}
+                      className="patient-incidents-form__input"
+                    />
+                  </div>
+
+                  <div className="mb-3">
+                    <label className="patient-incidents-form__label patient-incidents-form__label--required">
+                      <FiAlertTriangle size={11} /> Incident Description
+                    </label>
+                    <textarea
+                      rows={3}
+                      placeholder="Describe what happened in detail..."
+                      value={incidentForm.description}
+                      onChange={e => setIncidentForm({ ...incidentForm, description: e.target.value })}
+                      className="patient-incidents-form__textarea"
+                    />
+                  </div>
+
+                  <div className="mb-3">
+                    <label className="patient-incidents-form__label">
+                      <FiShield size={11} /> Immediate Action Taken
+                    </label>
+                    <textarea
+                      rows={2}
+                      placeholder="Describe immediate actions taken..."
+                      value={incidentForm.immediateAction}
+                      onChange={e => setIncidentForm({ ...incidentForm, immediateAction: e.target.value })}
+                      className="patient-incidents-form__textarea"
+                    />
+                  </div>
+
+                  <div className="row g-2 mb-3">
+                    <div className="col-md-6">
+                      <label className="patient-incidents-form__label">Witnesses</label>
+                      <input
+                        type="text"
+                        placeholder="Names of any witnesses"
+                        value={incidentForm.witnesses}
+                        onChange={e => setIncidentForm({ ...incidentForm, witnesses: e.target.value })}
+                        className="patient-incidents-form__input"
+                      />
+                    </div>
+                    <div className="col-md-6">
+                      <label className="patient-incidents-form__label">Injury Details</label>
+                      <input
+                        type="text"
+                        placeholder="Describe any injuries (if applicable)"
+                        value={incidentForm.injuryDetails}
+                        onChange={e => setIncidentForm({ ...incidentForm, injuryDetails: e.target.value })}
+                        className="patient-incidents-form__input"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mb-3">
+                    <label className="patient-incidents-form__label">Follow-Up Plan</label>
+                    <textarea
+                      rows={2}
+                      placeholder="Describe follow-up actions planned..."
+                      value={incidentForm.followUp}
+                      onChange={e => setIncidentForm({ ...incidentForm, followUp: e.target.value })}
+                      className="patient-incidents-form__textarea"
+                    />
+                  </div>
+
+                  <div className="patient-incidents-form__checkrow">
+                    <label className="patient-incidents-form__checkbox">
+                      <input
+                        type="checkbox"
+                        checked={incidentForm.physicianNotified}
+                        onChange={e => setIncidentForm({ ...incidentForm, physicianNotified: e.target.checked })}
+                      />
+                      <span>Physician Notified</span>
+                    </label>
+                    <label className="patient-incidents-form__checkbox">
+                      <input
+                        type="checkbox"
+                        checked={incidentForm.familyNotified}
+                        onChange={e => setIncidentForm({ ...incidentForm, familyNotified: e.target.checked })}
+                      />
+                      <span>Family/Next of Kin Notified</span>
+                    </label>
+                  </div>
+
+                  {incidentSaveError && (
+                    <div className="patient-notes-form__error" style={{ marginBottom: 10 }}>{incidentSaveError}</div>
+                  )}
+                  <div className="patient-incidents-form__footer">
+                    {editingIncidentId && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const id = String(editingIncidentId || '').trim();
+                          if (!id) return;
+                          requestDeleteIncident(id);
+                        }}
+                        disabled={savingIncident}
+                        className="patient-incidents-form__btn patient-incidents-form__btn--danger"
+                        style={{ marginRight: 'auto' }}
+                      >
+                        <FiTrash2 size={13} /> Delete report
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => { setShowIncidentForm(false); resetIncidentForm(); }}
+                      disabled={savingIncident}
+                      className="patient-incidents-form__btn patient-incidents-form__btn--secondary"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={editingIncidentId ? handleUpdateIncident : handleAddIncident}
+                      disabled={!incidentForm.description.trim() || savingIncident}
+                      className="patient-incidents-form__btn patient-incidents-form__btn--primary"
+                    >
+                      <FiSend size={13} /> {savingIncident ? 'Saving…' : editingIncidentId ? 'Save changes' : 'Submit Incident Report'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Incident List */}
+              {filteredIncidents.length === 0 ? (
+                <div className="patient-incidents-empty">
+                  <FiAlertTriangle size={32} className="patient-incidents-empty__icon" />
+                  <div className="patient-incidents-empty__title">
+                    {incidentFilter !== 'All'
+                      ? `No incidents found for "${incidentFilter}" type`
+                      : 'No incident reports filed'}
+                  </div>
+                  <div className="patient-incidents-empty__hint">
+                    Click "Report Incident" to file a new incident report for this patient
+                  </div>
+                </div>
+              ) : (
+                <div className="patient-incidents-list">
+                  {filteredIncidents.map((inc) => {
+                    const sevStyle = getIncidentSeverityStyle(inc.severity);
+                    const statStyle = getIncidentStatusStyle(inc.status);
+                    const isExpanded = expandedIncident === inc.id;
+                    return (
+                      <article
+                        key={inc.id}
+                        className="patient-incidents-card"
+                        style={{ borderLeftColor: sevStyle.color }}
+                      >
+                        <div
+                          onClick={() => setExpandedIncident(isExpanded ? null : inc.id)}
+                          className="patient-incidents-card__header"
+                          role="button"
+                          tabIndex={0}
+                        >
+                          <div className="patient-incidents-card__chips">
+                            <FiChevronRight
+                              size={14}
+                              className="patient-incidents-card__chevron"
+                              style={{ transform: isExpanded ? 'rotate(90deg)' : 'none' }}
+                            />
+                            <span
+                              className="patient-incidents-card__chip patient-incidents-card__chip--severity"
+                              style={{ background: sevStyle.bg, color: sevStyle.color, borderColor: sevStyle.border }}
+                            >
+                              {inc.severity}
+                            </span>
+                            <span className="patient-incidents-card__chip patient-incidents-card__chip--type">
+                              {inc.type}
+                            </span>
+                            <span
+                              className="patient-incidents-card__chip"
+                              style={{ background: statStyle.bg, color: statStyle.color, borderColor: statStyle.border, textTransform: 'capitalize' }}
+                            >
+                              {statStyle.label}
+                            </span>
+                            <span className="patient-incidents-card__meta">
+                              <FiCalendar size={11} /> {inc.date}
+                            </span>
+                            <span className="patient-incidents-card__meta">
+                              <FiClock size={11} /> {inc.time}
+                            </span>
+                          </div>
+                          <div className="patient-incidents-card__actions">
+                            <span className="patient-incidents-card__reporter">{inc.reportedBy || 'Unknown'}</span>
+                            {incidentIdIsPersisted(inc.id) && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditingIncidentId(inc.id);
+                                  setIncidentForm({
+                                    date: inc.date,
+                                    time: inc.time,
+                                    reportedBy: inc.reportedBy || '',
+                                    type: inc.type,
+                                    severity: inc.severity,
+                                    location: inc.location || '',
+                                    description: inc.description || '',
+                                    immediateAction: inc.immediateAction || '',
+                                    witnesses: inc.witnesses || '',
+                                    injuryDetails: inc.injuryDetails || '',
+                                    followUp: inc.followUp || '',
+                                    physicianNotified: Boolean(inc.physicianNotified),
+                                    familyNotified: Boolean(inc.familyNotified),
+                                  });
+                                  setIncidentSaveError('');
+                                  setShowIncidentForm(true);
+                                  setExpandedIncident(inc.id);
+                                }}
+                                title="Edit incident report"
+                                className="patient-incidents-card__icon-btn"
+                              >
+                                <FiEdit2 size={14} />
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); handleDeleteIncident(inc.id); }}
+                              disabled={deletingIncidentId === inc.id}
+                              title={deletingIncidentId === inc.id ? 'Deleting…' : 'Delete incident report'}
+                              className="patient-incidents-card__icon-btn patient-incidents-card__icon-btn--danger"
+                              style={{ opacity: deletingIncidentId === inc.id ? 0.55 : 1 }}
+                            >
+                              <FiTrash2 size={14} />
+                            </button>
+                          </div>
+                        </div>
+
+                        {isExpanded && (
+                          <div className="patient-incidents-card__body">
+                            <section className="patient-incidents-card__section">
+                              <header className="patient-incidents-card__section-title patient-incidents-card__section-title--danger">
+                                <FiAlertTriangle size={11} /> Incident Description
+                              </header>
+                              <div className="patient-incidents-card__text">{inc.description}</div>
+                            </section>
+
+                            {(inc.location || inc.witnesses) && (
+                              <div className="row g-2 mb-3">
+                                {inc.location && (
+                                  <div className="col-md-6">
+                                    <div className="patient-incidents-card__factbox">
+                                      <div className="patient-incidents-card__factbox-label">Location</div>
+                                      <div className="patient-incidents-card__factbox-value">
+                                        <FiMapPin size={12} /> {inc.location}
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+                                {inc.witnesses && (
+                                  <div className="col-md-6">
+                                    <div className="patient-incidents-card__factbox">
+                                      <div className="patient-incidents-card__factbox-label">Witnesses</div>
+                                      <div className="patient-incidents-card__factbox-value">
+                                        <FiUser size={12} /> {inc.witnesses}
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {inc.injuryDetails && (
+                              <div className="patient-incidents-card__injury">
+                                <div className="patient-incidents-card__injury-label">Injury Details</div>
+                                <div className="patient-incidents-card__injury-text">{inc.injuryDetails}</div>
+                              </div>
+                            )}
+
+                            {inc.immediateAction && (
+                              <section className="patient-incidents-card__section">
+                                <header className="patient-incidents-card__section-title patient-incidents-card__section-title--info">
+                                  <FiShield size={11} /> Immediate Action Taken
+                                </header>
+                                <div className="patient-incidents-card__highlight patient-incidents-card__highlight--info">
+                                  {inc.immediateAction}
+                                </div>
+                              </section>
+                            )}
+
+                            {inc.followUp && (
+                              <section className="patient-incidents-card__section">
+                                <header className="patient-incidents-card__section-title patient-incidents-card__section-title--accent">
+                                  <FiClipboard size={11} /> Follow-Up Plan
+                                </header>
+                                <div className="patient-incidents-card__highlight patient-incidents-card__highlight--accent">
+                                  {inc.followUp}
+                                </div>
+                              </section>
+                            )}
+
+                            <div className="patient-incidents-card__notify-row">
+                              <div className="patient-incidents-card__notify-pills">
+                                {inc.physicianNotified && (
+                                  <span className="patient-incidents-card__notify-pill patient-incidents-card__notify-pill--ok">
+                                    <FiCheckCircle size={11} /> Physician Notified
+                                  </span>
+                                )}
+                                {inc.familyNotified && (
+                                  <span className="patient-incidents-card__notify-pill patient-incidents-card__notify-pill--ok">
+                                    <FiCheckCircle size={11} /> Family Notified
+                                  </span>
+                                )}
+                                {!inc.physicianNotified && (
+                                  <span className="patient-incidents-card__notify-pill patient-incidents-card__notify-pill--warn">
+                                    <FiAlertCircle size={11} /> Physician Not Notified
+                                  </span>
+                                )}
+                              </div>
+                              {inc.status !== 'resolved' && (
+                                <div className="patient-incidents-card__status-actions">
+                                  {inc.status === 'open' && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUpdateIncidentStatus(inc.id, 'in-progress')}
+                                      disabled={updatingIncidentStatusId === inc.id}
+                                      className="patient-incidents-card__status-btn patient-incidents-card__status-btn--progress"
+                                    >
+                                      <FiClock size={12} /> {updatingIncidentStatusId === inc.id ? 'Updating…' : 'Mark In Progress'}
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleUpdateIncidentStatus(inc.id, 'resolved')}
+                                    disabled={updatingIncidentStatusId === inc.id}
+                                    className="patient-incidents-card__status-btn patient-incidents-card__status-btn--resolve"
+                                  >
+                                    <FiCheckCircle size={12} /> {updatingIncidentStatusId === inc.id ? 'Updating…' : 'Resolve'}
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="patient-incidents-card__footer">
+                              <span className="patient-incidents-card__footer-avatar"><FiUser size={11} /></span>
+                              <span className="patient-incidents-card__footer-text">
+                                Reported by <strong>{inc.reportedBy || 'Unknown'}</strong> on {inc.date} at {inc.time}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </div>
       )}
 
       {/* ── Care Plan Tab ── */}
       {tab === 'careplan' && (
-        <div style={{ padding: '0 2px' }}>
-
-          {/* Header & Progress */}
-          <div className="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
-            <div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--kh-text)' }}>
-                <FiCheckCircle size={15} style={{ color: '#45B6FE', marginRight: 6, verticalAlign: -2 }} />
-                Care Plan
-              </div>
-              <div style={{ fontSize: 11.5, color: 'var(--kh-text-muted)', marginTop: 2 }}>Custom care checklist for this patient — {carePlanItems.filter(i => i.checked).length} of {carePlanItems.length} completed</div>
+        <div className="patient-care-plan">
+          {!!carePlanLoadError && (
+            <div
+              role="alert"
+              style={{
+                padding: '12px 14px',
+                borderRadius: 10,
+                border: '1px solid #fecaca',
+                background: '#fef2f2',
+                color: '#b91c1c',
+                fontSize: 13,
+                fontWeight: 600,
+              }}
+            >
+              {carePlanLoadError}
             </div>
-            <button onClick={() => { setShowCarePlanForm(true); setEditingCarePlan(null); setCarePlanForm({ task: '', category: 'Personal Care', frequency: 'Daily', priority: 'Medium', notes: '' }); }} style={{
-              padding: '8px 18px', fontSize: 12.5, fontWeight: 700, borderRadius: 2, cursor: 'pointer',
-              background: '#45B6FE', color: '#fff', border: 'none',
-              display: 'flex', alignItems: 'center', gap: 5,
-            }}>
-              <FiPlus size={14} /> Add Care Item
+          )}
+          {carePlanLoading && carePlanItems.length === 0 && !carePlanLoadError && (
+            <p style={{ margin: 0, fontSize: 13, color: 'var(--kh-text-muted)' }}>Loading care plan…</p>
+          )}
+          <header className="patient-care-plan__hero">
+            <div>
+              <span className="patient-care-plan__eyebrow">Patient checklist</span>
+              <h3 className="patient-care-plan__title">Care plan</h3>
+              <p className="patient-care-plan__subtitle">
+                Plan, track, and complete recurring care tasks for {p.name}. Filter by category and mark items as done during visits.
+              </p>
+            </div>
+            <div className="patient-care-plan__stats" aria-label="Care plan summary">
+              <div className="patient-care-plan__stat patient-care-plan__stat--done">
+                <span className="patient-care-plan__stat-value">{carePlanCompletedCount}</span>
+                <span className="patient-care-plan__stat-label">Done</span>
+              </div>
+              <div className="patient-care-plan__stat patient-care-plan__stat--open">
+                <span className="patient-care-plan__stat-value">{carePlanRemainingCount}</span>
+                <span className="patient-care-plan__stat-label">Open</span>
+              </div>
+              <div className="patient-care-plan__stat patient-care-plan__stat--risk">
+                <span className="patient-care-plan__stat-value">{carePlanHighOpenCount}</span>
+                <span className="patient-care-plan__stat-label">High · open</span>
+              </div>
+            </div>
+            <button
+              type="button"
+              className="patient-care-plan__add-btn"
+              onClick={() => {
+                setCarePlanSaveError('');
+                setShowCarePlanForm(true);
+                setEditingCarePlan(null);
+                setCarePlanForm({ task: '', category: 'Personal Care', frequency: 'Daily', priority: 'Medium', notes: '' });
+              }}
+            >
+              <FiPlus size={16} strokeWidth={2.25} aria-hidden />
+              Add care item
             </button>
-          </div>
+          </header>
 
-          {/* Progress Bar */}
-          <div style={{ background: '#f3f4f6', borderRadius: 2, height: 8, marginBottom: 16, overflow: 'hidden' }}>
-            <div style={{
-              width: `${carePlanProgress}%`, height: '100%', borderRadius: 2,
-              background: carePlanProgress === 100 ? '#45B6FE' : 'linear-gradient(90deg, #45B6FE, #2E7DB8)',
-              transition: 'width 0.4s ease',
-            }} />
-          </div>
+          <section className="patient-care-plan__progress-card" aria-label="Overall completion">
+            <div className="patient-care-plan__progress-top">
+              <span className="patient-care-plan__progress-label">Overall completion</span>
+              <span className="patient-care-plan__progress-pct">{carePlanProgress}%</span>
+            </div>
+            <div className="patient-care-plan__progress-track">
+              <div
+                className={`patient-care-plan__progress-fill${carePlanProgress === 100 ? ' is-complete' : ''}`}
+                style={{ width: `${carePlanProgress}%` }}
+              />
+            </div>
+          </section>
 
-          {/* Category Filter */}
-          <div className="d-flex align-items-center gap-2 mb-3" style={{ overflowX: 'auto', paddingBottom: 4 }}>
-            {['All', ...CARE_CATEGORIES].map(cat => (
-              <button key={cat} onClick={() => setCarePlanFilter(cat)} style={{
-                padding: '5px 14px', fontSize: 11.5, fontWeight: 600, borderRadius: 2, cursor: 'pointer', whiteSpace: 'nowrap',
-                background: carePlanFilter === cat ? '#45B6FE' : '#fff',
-                color: carePlanFilter === cat ? '#fff' : 'var(--kh-text-muted)',
-                border: `1px solid ${carePlanFilter === cat ? '#45B6FE' : '#e5e7eb'}`,
-              }}>
+          <div className="patient-care-plan__filters" role="tablist" aria-label="Filter by category">
+            {['All', ...CARE_CATEGORIES].map((cat) => (
+              <button
+                key={cat}
+                type="button"
+                role="tab"
+                aria-selected={carePlanFilter === cat}
+                className={`patient-care-plan__filter-btn${carePlanFilter === cat ? ' is-active' : ''}`}
+                onClick={() => setCarePlanFilter(cat)}
+              >
                 {cat}
               </button>
             ))}
           </div>
 
-          {/* Add / Edit Care Item Form */}
           {showCarePlanForm && (
-            <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 5, padding: 20, marginBottom: 16 }}>
-              <div className="d-flex align-items-center justify-content-between mb-3">
-                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--kh-text)' }}>
-                  {editingCarePlan ? 'Edit Care Item' : 'Add New Care Item'}
+            <section className="patient-care-plan__composer" aria-label={editingCarePlan ? 'Edit care item' : 'Add care item'}>
+              <div className="patient-care-plan__composer-head">
+                <div>
+                  <h4 className="patient-care-plan__composer-title">
+                    {editingCarePlan ? 'Edit care item' : 'New care item'}
+                  </h4>
+                  <p className="patient-care-plan__composer-hint">
+                    {editingCarePlan ? 'Update task details and save changes.' : 'Describe the task, cadence, and priority so the team can execute consistently.'}
+                  </p>
                 </div>
-                <button onClick={() => { setShowCarePlanForm(false); setEditingCarePlan(null); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}>
-                  <FiX size={16} style={{ color: 'var(--kh-text-muted)' }} />
+                <button
+                  type="button"
+                  className="patient-care-plan__icon-btn"
+                  onClick={() => { setShowCarePlanForm(false); setEditingCarePlan(null); setCarePlanSaveError(''); }}
+                  aria-label="Close form"
+                >
+                  <FiX size={18} />
                 </button>
               </div>
-
-              {/* Task description */}
-              <div className="mb-3">
-                <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--kh-text)', display: 'block', marginBottom: 4 }}>Care Task *</label>
-                <input
-                  type="text" placeholder="Describe the care task to be administered..."
-                  value={carePlanForm.task} onChange={e => setCarePlanForm(f => ({ ...f, task: e.target.value }))}
-                  style={{ width: '100%', padding: '9px 12px', fontSize: 13, borderRadius: 3, border: '1px solid #d1d5db', outline: 'none' }}
-                />
-              </div>
-
-              <div className="row g-2 mb-3">
-                {/* Category */}
-                <div className="col-md-4">
-                  <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--kh-text)', display: 'block', marginBottom: 4 }}>Category</label>
-                  <select
-                    value={carePlanForm.category} onChange={e => setCarePlanForm(f => ({ ...f, category: e.target.value }))}
-                    style={{ width: '100%', padding: '9px 12px', fontSize: 13, borderRadius: 3, border: '1px solid #d1d5db', outline: 'none', background: '#fff' }}
-                  >
-                    {CARE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
+              <div className="patient-care-plan__composer-body">
+                <div className="patient-care-plan__field">
+                  <label className="patient-care-plan__field-label" htmlFor="care-plan-task">Care task *</label>
+                  <input
+                    id="care-plan-task"
+                    className="patient-care-plan__input"
+                    type="text"
+                    placeholder="e.g. Morning medications after breakfast"
+                    value={carePlanForm.task}
+                    onChange={(e) => setCarePlanForm((f) => ({ ...f, task: e.target.value }))}
+                  />
                 </div>
-
-                {/* Frequency */}
-                <div className="col-md-4">
-                  <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--kh-text)', display: 'block', marginBottom: 4 }}>Frequency</label>
-                  <select
-                    value={carePlanForm.frequency} onChange={e => setCarePlanForm(f => ({ ...f, frequency: e.target.value }))}
-                    style={{ width: '100%', padding: '9px 12px', fontSize: 13, borderRadius: 3, border: '1px solid #d1d5db', outline: 'none', background: '#fff' }}
-                  >
-                    {CARE_FREQUENCIES.map(f => <option key={f} value={f}>{f}</option>)}
-                  </select>
+                <div className="patient-care-plan__grid3">
+                  <div className="patient-care-plan__field">
+                    <label className="patient-care-plan__field-label" htmlFor="care-plan-category">Category</label>
+                    <select
+                      id="care-plan-category"
+                      className="patient-care-plan__select"
+                      value={carePlanForm.category}
+                      onChange={(e) => setCarePlanForm((f) => ({ ...f, category: e.target.value }))}
+                    >
+                      {CARE_CATEGORIES.map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="patient-care-plan__field">
+                    <label className="patient-care-plan__field-label" htmlFor="care-plan-frequency">Frequency</label>
+                    <select
+                      id="care-plan-frequency"
+                      className="patient-care-plan__select"
+                      value={carePlanForm.frequency}
+                      onChange={(e) => setCarePlanForm((f) => ({ ...f, frequency: e.target.value }))}
+                    >
+                      {CARE_FREQUENCIES.map((f) => (
+                        <option key={f} value={f}>{f}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="patient-care-plan__field">
+                    <label className="patient-care-plan__field-label" htmlFor="care-plan-priority">Priority</label>
+                    <select
+                      id="care-plan-priority"
+                      className="patient-care-plan__select"
+                      value={carePlanForm.priority}
+                      onChange={(e) => setCarePlanForm((f) => ({ ...f, priority: e.target.value }))}
+                    >
+                      {CARE_PRIORITIES.map((pr) => (
+                        <option key={pr} value={pr}>{pr}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
-
-                {/* Priority */}
-                <div className="col-md-4">
-                  <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--kh-text)', display: 'block', marginBottom: 4 }}>Priority</label>
-                  <select
-                    value={carePlanForm.priority} onChange={e => setCarePlanForm(f => ({ ...f, priority: e.target.value }))}
-                    style={{ width: '100%', padding: '9px 12px', fontSize: 13, borderRadius: 3, border: '1px solid #d1d5db', outline: 'none', background: '#fff' }}
+                <div className="patient-care-plan__field">
+                  <label className="patient-care-plan__field-label" htmlFor="care-plan-notes">Description / notes</label>
+                  <textarea
+                    id="care-plan-notes"
+                    className="patient-care-plan__textarea"
+                    rows={3}
+                    placeholder="Instructions, precautions, or escalation criteria…"
+                    value={carePlanForm.notes}
+                    onChange={(e) => setCarePlanForm((f) => ({ ...f, notes: e.target.value }))}
+                  />
+                </div>
+                {!!carePlanSaveError && (
+                  <div
+                    className="patient-care-plan__field"
+                    style={{ color: '#b91c1c', fontSize: 13, fontWeight: 600 }}
+                    role="alert"
                   >
-                    {CARE_PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
-                  </select>
+                    {carePlanSaveError}
+                  </div>
+                )}
+                <div className="patient-care-plan__composer-actions">
+                  <button
+                    type="button"
+                    className="patient-care-plan__btn-secondary"
+                    disabled={savingCarePlan}
+                    onClick={() => { setShowCarePlanForm(false); setEditingCarePlan(null); setCarePlanSaveError(''); }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="patient-care-plan__btn-primary"
+                    onClick={handleAddCarePlanItem}
+                    disabled={savingCarePlan || !carePlanForm.task.trim()}
+                  >
+                    <FiCheckCircle size={15} aria-hidden />
+                    {savingCarePlan ? 'Saving…' : (editingCarePlan ? 'Save changes' : 'Add to plan')}
+                  </button>
                 </div>
               </div>
-
-              {/* Notes */}
-              <div className="mb-3">
-                <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--kh-text)', display: 'block', marginBottom: 4 }}>Additional Notes</label>
-                <textarea
-                  rows={2} placeholder="Any additional instructions or details..."
-                  value={carePlanForm.notes} onChange={e => setCarePlanForm(f => ({ ...f, notes: e.target.value }))}
-                  style={{ width: '100%', padding: '9px 12px', fontSize: 13, borderRadius: 3, border: '1px solid #d1d5db', outline: 'none', resize: 'vertical' }}
-                />
-              </div>
-
-              {/* Form actions */}
-              <div className="d-flex gap-2 justify-content-end">
-                <button onClick={() => { setShowCarePlanForm(false); setEditingCarePlan(null); }} style={{
-                  padding: '8px 18px', fontSize: 12.5, fontWeight: 700, borderRadius: 2, cursor: 'pointer',
-                  background: '#fff', color: 'var(--kh-text-muted)', border: '1px solid #d1d5db',
-                }}>Cancel</button>
-                <button onClick={handleAddCarePlanItem} style={{
-                  padding: '8px 20px', fontSize: 12.5, fontWeight: 700, borderRadius: 2, cursor: 'pointer',
-                  background: '#45B6FE', color: '#fff', border: 'none',
-                  display: 'flex', alignItems: 'center', gap: 5,
-                  opacity: !carePlanForm.task.trim() ? 0.5 : 1,
-                }}>
-                  <FiCheckCircle size={13} /> {editingCarePlan ? 'Save Changes' : 'Add to Plan'}
-                </button>
-              </div>
-            </div>
+            </section>
           )}
 
-          {/* Care Plan Checklist */}
           {filteredCarePlanItems.length === 0 ? (
-            <div className="text-center py-5">
-              <FiCheckCircle size={36} style={{ color: '#e5e7eb', marginBottom: 12 }} />
-              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--kh-text-muted)' }}>No care items {carePlanFilter !== 'All' ? 'in this category' : 'yet'}</div>
-              <div style={{ fontSize: 12, color: 'var(--kh-text-muted)', marginTop: 4 }}>Click "Add Care Item" to build this patient's care plan</div>
+            <div className="patient-care-plan__empty">
+              <div className="patient-care-plan__empty-icon">
+                <FiClipboard size={28} strokeWidth={2} aria-hidden />
+              </div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--kh-text)' }}>
+                No items {carePlanFilter !== 'All' ? 'in this category' : 'yet'}
+              </div>
+              <p style={{ margin: '8px 0 0', fontSize: 13, color: 'var(--kh-text-muted)', maxWidth: 360, marginLeft: 'auto', marginRight: 'auto', lineHeight: 1.55 }}>
+                Start building this patient&apos;s plan with repeatable tasks. Use categories and priority to organize what matters most at each visit.
+              </p>
             </div>
           ) : (
-            <div className="d-flex flex-column gap-2">
-              {filteredCarePlanItems.map(item => {
+            <ul className="patient-care-plan__list">
+              {filteredCarePlanItems.map((item) => {
                 const prStyle = getCarePriorityStyle(item.priority);
                 return (
-                  <div key={item.id} style={{
-                    background: item.checked ? '#fafafa' : '#fff',
-                    border: `1px solid ${item.checked ? '#e5e7eb' : '#e5e7eb'}`,
-                    borderRadius: 2, padding: '14px 16px',
-                    borderLeft: `3px solid ${item.checked ? '#d1d5db' : prStyle.color}`,
-                    transition: 'all 0.2s ease',
-                    opacity: item.checked ? 0.7 : 1,
-                  }}>
-                    <div className="d-flex align-items-start gap-3">
-                      {/* Checkbox */}
-                      <div
+                  <li
+                    key={item.id}
+                    className={`patient-care-plan__task${item.checked ? ' is-done' : ''}`}
+                  >
+                    <div className="patient-care-plan__task-inner">
+                      <button
+                        type="button"
+                        className={`patient-care-plan__check${item.checked ? ' is-checked' : ''}`}
                         onClick={() => handleToggleCarePlanItem(item.id)}
-                        style={{
-                          width: 22, height: 22, borderRadius: 2, flexShrink: 0, cursor: 'pointer', marginTop: 1,
-                          border: item.checked ? 'none' : '2px solid #d1d5db',
-                          background: item.checked ? '#45B6FE' : '#fff',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          transition: 'all 0.2s ease',
-                        }}
+                        aria-pressed={item.checked}
+                        aria-label={item.checked ? `Mark incomplete: ${item.task}` : `Mark complete: ${item.task}`}
                       >
-                        {item.checked && <FiCheckCircle size={14} style={{ color: '#fff' }} />}
-                      </div>
-
-                      {/* Content */}
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div className="d-flex align-items-center gap-2 flex-wrap mb-1">
-                          <span style={{
-                            fontSize: 13.5, fontWeight: 600, color: item.checked ? 'var(--kh-text-muted)' : 'var(--kh-text)',
-                            textDecoration: item.checked ? 'line-through' : 'none',
-                          }}>
-                            {item.task}
+                        {item.checked ? <FiCheckCircle size={15} strokeWidth={2.5} aria-hidden /> : null}
+                      </button>
+                      <div className="patient-care-plan__task-body">
+                        <p className={`patient-care-plan__task-title${item.checked ? ' is-struck' : ''}`}>
+                          {item.task}
+                        </p>
+                        <div className="patient-care-plan__meta">
+                          <span className="patient-care-plan__badge patient-care-plan__badge--cat">
+                            <span aria-hidden>{getCareCategoryIcon(item.category)}</span>
+                            {item.category}
                           </span>
-                        </div>
-
-                        <div className="d-flex align-items-center gap-2 flex-wrap" style={{ marginTop: 6 }}>
-                          {/* Category badge */}
-                          <span style={{
-                            fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 2,
-                            background: '#F0F7FE', color: '#2E7DB8', border: '1px solid #dcfce7',
-                          }}>
-                            {getCareCategoryIcon(item.category)} {item.category}
+                          <span className="patient-care-plan__badge patient-care-plan__badge--freq">
+                            <FiClock size={11} aria-hidden />
+                            {item.frequency}
                           </span>
-
-                          {/* Frequency badge */}
-                          <span style={{
-                            fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 2,
-                            background: '#eff6ff', color: '#2563eb', border: '1px solid #dbeafe',
-                          }}>
-                            <FiClock size={10} style={{ marginRight: 3, verticalAlign: -1 }} />{item.frequency}
-                          </span>
-
-                          {/* Priority badge */}
-                          <span style={{
-                            fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 2,
-                            background: prStyle.bg, color: prStyle.color, border: `1px solid ${prStyle.border}`,
-                          }}>
+                          <span
+                            className="patient-care-plan__badge"
+                            style={{
+                              background: prStyle.bg,
+                              color: prStyle.color,
+                              borderColor: prStyle.border,
+                            }}
+                          >
                             {item.priority}
                           </span>
-
-                          {/* Created date */}
-                          <span style={{ fontSize: 10.5, color: 'var(--kh-text-muted)' }}>
-                            Added {item.createdDate}
-                          </span>
+                          <span className="patient-care-plan__task-date">Added {item.createdDate}</span>
                         </div>
-
-                        {/* Notes */}
-                        {item.notes && (
-                          <div style={{
-                            fontSize: 12, color: 'var(--kh-text-muted)', marginTop: 8,
-                            padding: '8px 12px', background: '#f9fafb', borderRadius: 2,
-                            borderLeft: '2px solid #e5e7eb', lineHeight: 1.5,
-                          }}>
-                            {item.notes}
-                          </div>
-                        )}
+                        {item.notes ? (
+                          <div className="patient-care-plan__notes">{item.notes}</div>
+                        ) : null}
                       </div>
-
-                      {/* Actions */}
-                      <div className="d-flex align-items-center gap-1" style={{ flexShrink: 0 }}>
-                        <button onClick={() => handleEditCarePlanItem(item)} title="Edit" style={{
-                          width: 30, height: 30, borderRadius: 2, border: 'none', cursor: 'pointer',
-                          background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        }}>
-                          <FiEdit2 size={13} style={{ color: 'var(--kh-text-muted)' }} />
+                      <div className="patient-care-plan__task-actions">
+                        <button
+                          type="button"
+                          className="patient-care-plan__task-action"
+                          title="Edit"
+                          onClick={() => handleEditCarePlanItem(item)}
+                        >
+                          <FiEdit2 size={15} />
                         </button>
-                        <button onClick={() => setConfirmDeleteCarePlan(item)} title="Delete" style={{
-                          width: 30, height: 30, borderRadius: 2, border: 'none', cursor: 'pointer',
-                          background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        }}>
-                          <FiX size={14} style={{ color: '#dc2626' }} />
+                        <button
+                          type="button"
+                          className="patient-care-plan__task-action patient-care-plan__task-action--danger"
+                          title="Delete"
+                          onClick={() => setConfirmDeleteCarePlan(item)}
+                        >
+                          <FiTrash2 size={15} />
                         </button>
                       </div>
                     </div>
-                  </div>
+                  </li>
                 );
               })}
-            </div>
+            </ul>
           )}
 
-          {/* Summary footer */}
           {carePlanItems.length > 0 && (
-            <div className="d-flex align-items-center justify-content-between mt-3 px-1" style={{ paddingTop: 12, borderTop: '1px solid #f3f4f6' }}>
-              <div className="d-flex align-items-center gap-3">
-                <span style={{ fontSize: 12, color: 'var(--kh-text-muted)' }}>
-                  <strong style={{ color: '#45B6FE' }}>{carePlanItems.filter(i => i.checked).length}</strong> completed
-                </span>
-                <span style={{ fontSize: 12, color: 'var(--kh-text-muted)' }}>
-                  <strong style={{ color: '#d97706' }}>{carePlanItems.filter(i => !i.checked).length}</strong> remaining
-                </span>
-                <span style={{ fontSize: 12, color: 'var(--kh-text-muted)' }}>
-                  <strong>{carePlanItems.filter(i => i.priority === 'High' && !i.checked).length}</strong> high priority
-                </span>
+            <footer className="patient-care-plan__footer">
+              <div className="patient-care-plan__footer-stats">
+                <span><strong style={{ color: '#15803d' }}>{carePlanCompletedCount}</strong> completed</span>
+                <span><strong style={{ color: '#c2410c' }}>{carePlanRemainingCount}</strong> remaining</span>
+                <span><strong>{carePlanHighOpenCount}</strong> high priority open</span>
               </div>
-              <div style={{
-                fontSize: 12, fontWeight: 700,
-                color: carePlanProgress === 100 ? '#45B6FE' : '#2E7DB8',
-              }}>
-                {carePlanProgress}% Complete
-              </div>
-            </div>
+              <span className={`patient-care-plan__footer-pct${carePlanProgress === 100 ? ' is-complete' : ''}`}>
+                {carePlanProgress}% complete
+              </span>
+            </footer>
           )}
         </div>
       )}
@@ -6285,7 +7526,61 @@ export default function PatientProfile() {
 
           </div>
         </div>
+          </main>
+        </div>
       </div>
+
+      {showGenerateReportModal && (
+        <div
+          className="kh-modal-overlay app-modal-overlay"
+          style={{ zIndex: 10000, padding: 16 }}
+          onClick={() => setShowGenerateReportModal(false)}
+          role="presentation"
+        >
+          <div
+            className="kh-modal-panel app-modal-panel"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="patient-generate-report-title"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: 'min(440px, 94vw)',
+              borderRadius: 16,
+              overflow: 'hidden',
+            }}
+          >
+            <div className="kh-modal-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #e5e7eb' }}>
+              <div className="d-flex align-items-center gap-2" style={{ fontSize: 15, fontWeight: 800, color: 'var(--kh-text)' }}>
+                <FiFileText size={18} style={{ color: '#2E7DB8' }} />
+                <span id="patient-generate-report-title">Monthly care report</span>
+              </div>
+              <button
+                type="button"
+                className="patient-update-modal__close-btn"
+                aria-label="Close"
+                onClick={() => setShowGenerateReportModal(false)}
+              >
+                <FiX size={18} />
+              </button>
+            </div>
+            <div className="kh-modal-body" style={{ padding: '24px 22px' }}>
+              <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--kh-text)', lineHeight: 1.45 }}>
+                Generating Patient Monthly Care Report
+              </p>
+            </div>
+            <div className="kh-modal-footer" style={{ padding: '14px 18px', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button
+                type="button"
+                className="btn btn-kh-primary"
+                style={{ borderRadius: 10, fontWeight: 700, padding: '10px 18px' }}
+                onClick={() => setShowGenerateReportModal(false)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showUpdateModal && (
         <div
@@ -6391,93 +7686,326 @@ export default function PatientProfile() {
 
       {/* ── Delete Care Plan Item Modal ── */}
       {confirmDeleteCarePlan && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999,
-          background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }} onClick={() => setConfirmDeleteCarePlan(null)}>
-          <div onClick={e => e.stopPropagation()} style={{
-            background: '#fff', borderRadius: 2, width: 400, maxWidth: '90vw',
-            boxShadow: '0 20px 60px rgba(0,0,0,0.2)', overflow: 'hidden',
-          }}>
-            <div style={{ padding: '16px 20px', borderBottom: '1px solid #e5e7eb', background: '#fef2f2', display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#fecaca', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#dc2626', flexShrink: 0 }}>
-                <FiAlertTriangle size={18} />
+        <div
+          className="destructive-confirm-overlay"
+          role="presentation"
+          onClick={() => {
+            if (deletingCarePlanId) return;
+            setConfirmDeleteCarePlan(null);
+            setCarePlanDeleteError('');
+          }}
+        >
+          <div
+            className="destructive-confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="destructive-careplan-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="destructive-confirm-dialog__header">
+              <h2 id="destructive-careplan-title" className="destructive-confirm-dialog__title">
+                Delete care plan item
+              </h2>
+              <button
+                type="button"
+                className="destructive-confirm-dialog__close"
+                aria-label="Close"
+                disabled={Boolean(deletingCarePlanId)}
+                onClick={() => {
+                  if (deletingCarePlanId) return;
+                  setConfirmDeleteCarePlan(null);
+                  setCarePlanDeleteError('');
+                }}
+              >
+                <FiX size={20} strokeWidth={1.75} />
+              </button>
+            </div>
+
+            <div className="destructive-confirm-dialog__body">
+              <p className="destructive-confirm-dialog__lead">
+                Are you sure you want to delete this care plan item? It will be removed from the server and this
+                patient&apos;s checklist.
+              </p>
+
+              <div className="destructive-confirm-dialog__warning">
+                <div className="destructive-confirm-dialog__warning-bar" aria-hidden />
+                <div className="destructive-confirm-dialog__warning-text">
+                  <strong>Warning: This action cannot be undone.</strong> The task and its description will be
+                  permanently deleted.
+                </div>
               </div>
-              <div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: '#991b1b' }}>Remove Care Item</div>
-                <div style={{ fontSize: 11.5, color: '#dc2626', marginTop: 1 }}>This action cannot be undone</div>
+
+              {carePlanDeleteError && (
+                <div className="destructive-confirm-dialog__banner-error">{carePlanDeleteError}</div>
+              )}
+
+              <div className="destructive-confirm-dialog__card">
+                <div className="destructive-confirm-dialog__card-icon destructive-confirm-dialog__card-icon--brand" aria-hidden>
+                  <FiClipboard size={18} />
+                </div>
+                <div className="destructive-confirm-dialog__card-body">
+                  <div className="destructive-confirm-dialog__card-title">{confirmDeleteCarePlan.task}</div>
+                  <div className="destructive-confirm-dialog__card-meta">
+                    {confirmDeleteCarePlan.category} · {confirmDeleteCarePlan.frequency} · {confirmDeleteCarePlan.priority}{' '}
+                    priority
+                    {/^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i.test(String(confirmDeleteCarePlan.id || '')) ? (
+                      <span style={{ display: 'block', marginTop: 6, fontSize: 12, color: '#6b7280' }}>
+                        ID {String(confirmDeleteCarePlan.id)}
+                      </span>
+                    ) : null}
+                  </div>
+                  {confirmDeleteCarePlan.notes ? (
+                    <div style={{ marginTop: 10, fontSize: 13, color: '#4b5563', lineHeight: 1.5 }}>
+                      {String(confirmDeleteCarePlan.notes).length > 200
+                        ? `${String(confirmDeleteCarePlan.notes).slice(0, 200)}…`
+                        : confirmDeleteCarePlan.notes}
+                    </div>
+                  ) : null}
+                </div>
               </div>
             </div>
-            <div style={{ padding: '20px' }}>
-              <div style={{ fontSize: 13, color: 'var(--kh-text)', lineHeight: 1.6, marginBottom: 16 }}>
-                Are you sure you want to remove <strong style={{ color: '#dc2626' }}>{confirmDeleteCarePlan.task}</strong> from the care plan?
-              </div>
-              <div className="d-flex gap-2 justify-content-end">
-                <button onClick={() => setConfirmDeleteCarePlan(null)} style={{
-                  padding: '9px 20px', fontSize: 12.5, fontWeight: 700, borderRadius: 2, cursor: 'pointer',
-                  background: '#fff', color: 'var(--kh-text-muted)', border: '1px solid #d1d5db',
-                }}>Cancel</button>
-                <button onClick={handleDeleteCarePlanItem} style={{
-                  padding: '9px 20px', fontSize: 12.5, fontWeight: 700, borderRadius: 2, cursor: 'pointer',
-                  background: '#dc2626', color: '#fff', border: 'none',
-                  display: 'flex', alignItems: 'center', gap: 5,
-                }}>
-                  <FiX size={13} /> Remove Item
-                </button>
-              </div>
+
+            <div className="destructive-confirm-dialog__footer">
+              <button
+                type="button"
+                className="destructive-confirm-dialog__btn-cancel"
+                disabled={Boolean(deletingCarePlanId)}
+                onClick={() => {
+                  setConfirmDeleteCarePlan(null);
+                  setCarePlanDeleteError('');
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="destructive-confirm-dialog__btn-danger"
+                disabled={Boolean(deletingCarePlanId)}
+                onClick={handleDeleteCarePlanItem}
+              >
+                {deletingCarePlanId ? 'Deleting…' : 'Delete care plan item'}
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ── Delete Confirmation Modal ── */}
+      {/* ── Delete Confirmation Modal (incident report) ── */}
+      {confirmDeleteIncident && (
+        <div
+          className="destructive-confirm-overlay"
+          role="presentation"
+          onClick={() => {
+            if (incidentDeleteDialogBusy) return;
+            setConfirmDeleteIncident(null);
+            setIncidentDeleteModalError('');
+          }}
+        >
+          <div
+            className="destructive-confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="destructive-incident-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="destructive-confirm-dialog__header">
+              <h2 id="destructive-incident-title" className="destructive-confirm-dialog__title">
+                Delete incident report
+              </h2>
+              <button
+                type="button"
+                className="destructive-confirm-dialog__close"
+                aria-label="Close"
+                disabled={incidentDeleteDialogBusy}
+                onClick={() => {
+                  if (incidentDeleteDialogBusy) return;
+                  setConfirmDeleteIncident(null);
+                  setIncidentDeleteModalError('');
+                }}
+              >
+                <FiX size={20} strokeWidth={1.75} />
+              </button>
+            </div>
+
+            <div className="destructive-confirm-dialog__body">
+              <p className="destructive-confirm-dialog__lead">
+                Are you sure you want to delete this incident report? This removes it from the patient’s safety record.
+              </p>
+
+              <div className="destructive-confirm-dialog__warning">
+                <div className="destructive-confirm-dialog__warning-bar" aria-hidden />
+                <div className="destructive-confirm-dialog__warning-text">
+                  <strong>Warning: This action cannot be undone.</strong> The incident will be removed from the server and will no longer appear in this list or timeline.
+                </div>
+              </div>
+
+              {incidentDeleteModalError && (
+                <div className="destructive-confirm-dialog__banner-error">{incidentDeleteModalError}</div>
+              )}
+
+              <div className="destructive-confirm-dialog__card">
+                <div className="destructive-confirm-dialog__card-icon destructive-confirm-dialog__card-icon--brand" aria-hidden>
+                  <FiAlertTriangle size={18} />
+                </div>
+                <div className="destructive-confirm-dialog__card-body">
+                  <div className="destructive-confirm-dialog__card-title">
+                    {pendingDeleteIncidentDetail?.type || 'Incident'}{' '}
+                    <span style={{ fontWeight: 600, color: '#6b7280' }}>
+                      · {pendingDeleteIncidentDetail?.severity || '—'}
+                    </span>
+                  </div>
+                  <div className="destructive-confirm-dialog__card-meta">
+                    {pendingDeleteIncidentDetail
+                      ? `${pendingDeleteIncidentDetail.date || '—'} at ${pendingDeleteIncidentDetail.time || '—'} · ${getIncidentStatusStyle(pendingDeleteIncidentDetail.status).label}`
+                      : `ID ${String(confirmDeleteIncident.id).slice(0, 8)}…`}
+                  </div>
+                  {pendingDeleteIncidentDetail?.description ? (
+                    <div style={{ marginTop: 10, fontSize: 13, color: '#4b5563', lineHeight: 1.5 }}>
+                      {String(pendingDeleteIncidentDetail.description).length > 200
+                        ? `${String(pendingDeleteIncidentDetail.description).slice(0, 200)}…`
+                        : pendingDeleteIncidentDetail.description}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+
+            <div className="destructive-confirm-dialog__footer">
+              <button
+                type="button"
+                className="destructive-confirm-dialog__btn-cancel"
+                disabled={incidentDeleteDialogBusy}
+                onClick={() => {
+                  setConfirmDeleteIncident(null);
+                  setIncidentDeleteModalError('');
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="destructive-confirm-dialog__btn-danger"
+                disabled={incidentDeleteDialogBusy}
+                onClick={confirmDeleteIncidentAction}
+              >
+                {incidentDeleteDialogBusy ? 'Deleting…' : 'Delete incident report'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Delete Confirmation Modal (medication) ── */}
       {confirmDelete && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999,
-          background: 'rgba(15, 23, 42, 0.28)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px',
-        }} onClick={() => setConfirmDelete(null)}>
-          <div onClick={e => e.stopPropagation()} style={{
-            background: '#fff', borderRadius: 16, width: 380, maxWidth: '100%',
-            boxShadow: '0 24px 50px rgba(15, 23, 42, 0.16)', padding: '24px',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 18 }}>
-              <div style={{ width: 40, height: 40, borderRadius: 12, background: '#fef2f2', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#dc2626', flexShrink: 0 }}>
-                <FiAlertTriangle size={17} />
+        <div
+          className="destructive-confirm-overlay"
+          role="presentation"
+          onClick={() => !deletingMedication && setConfirmDelete(null)}
+        >
+          <div
+            className="destructive-confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="destructive-med-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="destructive-confirm-dialog__header">
+              <h2 id="destructive-med-title" className="destructive-confirm-dialog__title">
+                Delete medication
+              </h2>
+              <button
+                type="button"
+                className="destructive-confirm-dialog__close"
+                aria-label="Close"
+                disabled={deletingMedication}
+                onClick={() => setConfirmDelete(null)}
+              >
+                <FiX size={20} strokeWidth={1.75} />
+              </button>
+            </div>
+
+            <div className="destructive-confirm-dialog__body">
+              <p className="destructive-confirm-dialog__lead">
+                Are you sure you want to delete the following medication from this patient?
+              </p>
+
+              <div className="destructive-confirm-dialog__warning">
+                <div className="destructive-confirm-dialog__warning-bar" aria-hidden />
+                <div className="destructive-confirm-dialog__warning-text">
+                  <strong>Warning: This action cannot be undone.</strong> Deleting this medication removes it from the
+                  patient profile. Dosing history, reminders tied to this drug, and related context may be{' '}
+                  <strong>permanently lost</strong>.
+                </div>
               </div>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--kh-text)' }}>Delete Medication</div>
-                <div style={{ fontSize: 12.5, color: 'var(--kh-text-muted)', marginTop: 4 }}>This action cannot be undone.</div>
+
+              {medicationDeleteError && (
+                <div className="destructive-confirm-dialog__banner-error">{medicationDeleteError}</div>
+              )}
+
+              <div className="destructive-confirm-dialog__card">
+                <div className="destructive-confirm-dialog__card-icon destructive-confirm-dialog__card-icon--brand" aria-hidden>
+                  <FiActivity size={18} />
+                </div>
+                <div className="destructive-confirm-dialog__card-body">
+                  <div className="destructive-confirm-dialog__card-title">{confirmDelete.name}</div>
+                  <div className="destructive-confirm-dialog__card-meta">
+                    {confirmDelete.type === 'existing' ? 'On file · saved medication record' : 'Draft · not yet saved to server'}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="destructive-confirm-dialog__card-action"
+                  disabled={deletingMedication}
+                  onClick={() => {
+                    setConfirmDelete(null);
+                    navigate('/dashboard');
+                  }}
+                >
+                  <FiGrid size={14} />
+                  Go to dashboard
+                </button>
+              </div>
+
+              <label className="destructive-confirm-dialog__input-label" htmlFor="med-delete-confirm-input">
+                To delete, type the medication name <strong>{confirmDelete.name}</strong> below
+              </label>
+              <div className="destructive-confirm-dialog__input-wrap">
+                <span className="destructive-confirm-dialog__input-icon destructive-confirm-dialog__input-icon--danger" aria-hidden>
+                  <FiTrash2 size={16} />
+                </span>
+                <input
+                  id="med-delete-confirm-input"
+                  className="destructive-confirm-dialog__input"
+                  autoComplete="off"
+                  disabled={deletingMedication}
+                  placeholder={`Enter ${confirmDelete.name}`}
+                  value={medDeleteConfirmInput}
+                  onChange={(e) => {
+                    setMedDeleteConfirmInput(e.target.value);
+                    if (medicationDeleteError) setMedicationDeleteError('');
+                  }}
+                />
               </div>
             </div>
 
-            {medicationDeleteError && (
-              <div style={{ marginBottom: 14, borderRadius: 10, border: '1px solid #fecaca', background: '#fef2f2', color: '#dc2626', padding: '10px 12px', fontSize: 12.5, fontWeight: 600 }}>
-                {medicationDeleteError}
-              </div>
-            )}
-
-            <div style={{ fontSize: 13.5, color: 'var(--kh-text)', lineHeight: 1.6, marginBottom: 20 }}>
-              Are you sure you want to delete <strong style={{ color: 'var(--kh-text)' }}>{confirmDelete.name}</strong> from the medication list?
-            </div>
-
-            <div style={{ padding: '12px 14px', borderRadius: 12, background: '#f8fafc', border: '1px solid #e5e7eb', marginBottom: 20 }}>
-              <div className="d-flex align-items-center gap-2">
-                <FiAlertCircle size={13} style={{ color: 'var(--kh-text-muted)', flexShrink: 0 }} />
-                <span style={{ fontSize: 12, color: 'var(--kh-text-muted)', fontWeight: 500 }}>The medication and its reminders will be removed from this profile.</span>
-              </div>
-            </div>
-
-            <div className="d-flex gap-2 justify-content-end">
-              <button onClick={() => setConfirmDelete(null)} style={{
-                padding: '10px 18px', fontSize: 12.5, fontWeight: 600, borderRadius: 10, cursor: 'pointer',
-                background: '#fff', color: 'var(--kh-text)', border: '1px solid #d1d5db',
-              }} disabled={deletingMedication}>Cancel</button>
-              <button onClick={confirmDeleteMed} style={{
-                padding: '10px 18px', fontSize: 12.5, fontWeight: 600, borderRadius: 10, cursor: 'pointer',
-                background: '#dc2626', color: '#fff', border: 'none',
-                display: 'flex', alignItems: 'center', gap: 6, opacity: deletingMedication ? 0.7 : 1,
-              }}>
-                <FiX size={13} /> {deletingMedication ? 'Deleting...' : 'Delete'}
+            <div className="destructive-confirm-dialog__footer">
+              <button
+                type="button"
+                className="destructive-confirm-dialog__btn-cancel"
+                disabled={deletingMedication}
+                onClick={() => setConfirmDelete(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="destructive-confirm-dialog__btn-danger"
+                disabled={
+                  deletingMedication || medDeleteConfirmInput.trim() !== String(confirmDelete.name || '').trim()
+                }
+                onClick={confirmDeleteMed}
+              >
+                {deletingMedication ? 'Deleting…' : 'Yes, delete medication'}
               </button>
             </div>
           </div>
