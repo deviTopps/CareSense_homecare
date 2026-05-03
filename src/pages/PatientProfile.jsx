@@ -1,5 +1,5 @@
 import { useParams, useNavigate } from 'react-router-dom';
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { Fragment, useState, useRef, useEffect, useCallback } from 'react';
 import { motion } from 'motion/react';
 import {
   FiArrowLeft, FiPhone, FiMail, FiMapPin, FiCalendar,
@@ -152,6 +152,34 @@ function formatStatusLabel(value) {
   return normalized.charAt(0).toUpperCase() + normalized.slice(1);
 }
 
+const VitalTile = ({ label, value, flag = false, showFlagBorder = true }) => {
+  const hasValue = value !== null && value !== undefined && String(value).trim().length > 0;
+  return (
+    <div style={{
+      padding: '12px 14px',
+      border: '1px solid #e5e7eb',
+      borderRadius: 6,
+      background: flag ? '#fef2f2' : '#fafbfc',
+      borderLeft: flag && showFlagBorder ? '3px solid #ef4444' : '3px solid #e5e7eb',
+    }}>
+      <div style={{
+        fontSize: 10,
+        fontWeight: 600,
+        textTransform: 'uppercase',
+        letterSpacing: '0.5px',
+        color: 'var(--kh-text-muted)',
+        marginBottom: 4,
+      }}>{label}</div>
+      <div style={{
+        fontSize: 18,
+        fontWeight: 800,
+        color: flag ? '#ef4444' : 'var(--kh-text)',
+        fontVariantNumeric: 'tabular-nums',
+      }}>{hasValue ? value : '—'}</div>
+    </div>
+  );
+};
+
 const FlagItem = ({ label, detail }) => (
   <div className="d-flex align-items-center gap-2" style={{ padding: '6px 0', borderBottom: '1px solid #f3f4f6' }}>
     <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--kh-text)', flex: 1 }}>{label}</span>
@@ -299,16 +327,72 @@ function setCachedPatientMedications(patientId, medications) {
   writePatientMedicationCache(cache);
 }
 
-function resolveAgencyId(user) {
-  return (
-    user?.agencyId
-    || user?.agencyID
-    || user?.agency?.id
-    || user?.agency?._id
-    || user?.organizationId
-    || user?.organisationId
-    || null
-  );
+function normalizeAgencyIdentifier(value) {
+  if (value === null || value === undefined) return null;
+
+  if (typeof value === 'string' || typeof value === 'number') {
+    const normalized = String(value).trim();
+    return normalized || null;
+  }
+
+  if (typeof value === 'object') {
+    return (
+      normalizeAgencyIdentifier(value?.agencyId)
+      || normalizeAgencyIdentifier(value?.agencyID)
+      || normalizeAgencyIdentifier(value?.id)
+      || normalizeAgencyIdentifier(value?._id)
+      || null
+    );
+  }
+
+  return null;
+}
+
+function parseJwtPayload(token) {
+  const rawToken = String(token || '').trim();
+  if (!rawToken) return null;
+
+  try {
+    const base64Url = rawToken.split('.')[1] || '';
+    if (!base64Url) return null;
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = `${base64}${'='.repeat((4 - (base64.length % 4)) % 4)}`;
+    return JSON.parse(atob(padded));
+  } catch {
+    return null;
+  }
+}
+
+function resolveAgencyId(source) {
+  const entity = source && typeof source === 'object' ? source : source;
+  const candidates = [
+    entity,
+    entity?.agency,
+    entity?.organization,
+    entity?.organisation,
+    entity?.company,
+    entity?.user,
+    entity?.data,
+    entity?.profile,
+  ];
+
+  for (const candidate of candidates) {
+    const resolved = (
+      normalizeAgencyIdentifier(candidate?.agencyId)
+      || normalizeAgencyIdentifier(candidate?.agencyID)
+      || normalizeAgencyIdentifier(candidate?.agency)
+      || normalizeAgencyIdentifier(candidate?.organizationId)
+      || normalizeAgencyIdentifier(candidate?.organisationId)
+      || normalizeAgencyIdentifier(candidate?.organization)
+      || normalizeAgencyIdentifier(candidate?.organisation)
+      || normalizeAgencyIdentifier(candidate?.companyId)
+      || normalizeAgencyIdentifier(candidate?.company)
+    );
+
+    if (resolved) return resolved;
+  }
+
+  return null;
 }
 
 function parsePresignResponse(raw) {
@@ -645,14 +729,7 @@ function normalizePatientProfile(rawPatient, fallbackId) {
 
   return {
     id: rawPatient?.id || rawPatient?.patientId || fallbackId || '',
-    agencyId:
-      rawPatient?.agencyId
-      || rawPatient?.agencyID
-      || rawPatient?.agency?._id
-      || rawPatient?.agency?.id
-      || rawPatient?.organizationId
-      || rawPatient?.organisationId
-      || null,
+    agencyId: resolveAgencyId(rawPatient),
     name: fullName || '',
     preferredName: rawPatient?.preferredName || firstName || '',
     age: rawPatient?.age ?? '',
@@ -1114,6 +1191,254 @@ function extractDrugList(payload) {
   return [];
 }
 
+function extractNurseList(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.nurses)) return payload.nurses;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.data?.nurses)) return payload.data.nurses;
+  if (Array.isArray(payload?.items)) return payload.items;
+  if (payload?.nurse && typeof payload.nurse === 'object') return [payload.nurse];
+  if (payload?.data?.nurse && typeof payload.data.nurse === 'object') return [payload.data.nurse];
+  return [];
+}
+
+function normalizeVitalNurseOption(rawNurse) {
+  const raw = rawNurse && typeof rawNurse === 'object' ? rawNurse : {};
+  const firstName = String(raw?.firstName || raw?.personal?.firstName || raw?.nurse?.firstName || '').trim();
+  const lastName = String(raw?.lastName || raw?.personal?.lastName || raw?.nurse?.lastName || '').trim();
+  const name = String(
+    raw?.name
+    || raw?.fullName
+    || raw?.staffName
+    || raw?.nurseName
+    || raw?.nurse?.name
+    || `${firstName} ${lastName}`.trim()
+  ).trim();
+
+  if (!name) return null;
+
+  return {
+    id: raw?._id || raw?.id || raw?.nurseId || raw?.staffId || raw?.nurse?._id || raw?.nurse?.id || `name:${name.toLowerCase()}`,
+    name,
+  };
+}
+
+function createVitalForm(recordedBy = '') {
+  return {
+    date: new Date().toISOString().slice(0, 10),
+    time: new Date().toTimeString().slice(0, 5),
+    bp: '',
+    sugar: '',
+    resp: '',
+    spo2: '',
+    pulse: '',
+    temp: '',
+    weight: '',
+    urinalysis: '',
+    recordedBy,
+    notes: '',
+  };
+}
+
+function splitBloodPressure(value) {
+  const match = String(value || '').trim().match(/^(\d+)\s*\/\s*(\d+)$/);
+  return {
+    systolic: match?.[1] || '',
+    diastolic: match?.[2] || '',
+  };
+}
+
+function extractVitalList(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.vitals)) return payload.vitals;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.data?.vitals)) return payload.data.vitals;
+  if (Array.isArray(payload?.results)) return payload.results;
+  if (payload?.vital && typeof payload.vital === 'object') return [payload.vital];
+  if (payload?.data?.vital && typeof payload.data.vital === 'object') return [payload.data.vital];
+  return [];
+}
+
+function toVitalDateString(value, fallbackDate) {
+  if (!value) return fallbackDate || new Date().toISOString().slice(0, 10);
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return fallbackDate || String(value).slice(0, 10);
+  return parsed.toISOString().slice(0, 10);
+}
+
+function toVitalTimeString(value, fallbackTime) {
+  if (!value) return fallbackTime || new Date().toTimeString().slice(0, 5);
+  if (/^\d{2}:\d{2}/.test(String(value))) return String(value).slice(0, 5);
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return fallbackTime || String(value).slice(0, 5);
+  return parsed.toTimeString().slice(0, 5);
+}
+
+function normalizeVitalRecord(rawVital, fallback = {}) {
+  const raw = rawVital && typeof rawVital === 'object' ? rawVital : {};
+  const systolic = String(raw?.bloodPressureSystolic || raw?.systolic || fallback?.bloodPressureSystolic || '').trim();
+  const diastolic = String(raw?.bloodPressureDystolic || raw?.diastolic || fallback?.bloodPressureDystolic || '').trim();
+  const fallbackBloodPressure = String(raw?.bloodPressure || fallback?.bp || '').trim();
+  const bp = systolic || diastolic
+    ? [systolic, diastolic].filter(Boolean).join('/')
+    : fallbackBloodPressure;
+  const timestamp = raw?.takenAt || raw?.recordedAt || raw?.createdAt || raw?.updatedAt || fallback?.timestamp || '';
+
+  return {
+    id: raw?.id || raw?._id || raw?.vitalId || fallback?.id || Date.now(),
+    patientId: raw?.patientId || fallback?.patientId || '',
+    date: toVitalDateString(raw?.date || raw?.takenDate || timestamp, fallback?.date),
+    time: toVitalTimeString(raw?.time || raw?.takenTime || timestamp, fallback?.time),
+    bp,
+    sugar: String(raw?.bloodSugar ?? fallback?.sugar ?? '').trim(),
+    resp: String(raw?.respiration ?? fallback?.resp ?? '').trim(),
+    spo2: String(raw?.sp02 ?? raw?.spo2 ?? fallback?.spo2 ?? '').trim(),
+    pulse: String(raw?.pulseRate ?? raw?.pulse ?? fallback?.pulse ?? '').trim(),
+    temp: String(raw?.temperature ?? fallback?.temp ?? '').trim(),
+    weight: String(raw?.weight ?? fallback?.weight ?? '').trim(),
+    urinalysis: String(raw?.urinalysis ?? fallback?.urinalysis ?? '').trim(),
+    recordedBy: String(raw?.takenBy || raw?.recordedBy || fallback?.recordedBy || '').trim(),
+    notes: String(raw?.notes || fallback?.notes || '').trim(),
+  };
+}
+
+function sortVitalRecords(records) {
+  return [...records].sort((left, right) => {
+    const leftDate = new Date(`${left.date || '1970-01-01'}T${left.time || '00:00'}`);
+    const rightDate = new Date(`${right.date || '1970-01-01'}T${right.time || '00:00'}`);
+    return rightDate - leftDate;
+  });
+}
+
+/* ── Nurse Notes helpers ── */
+function cleanNoteContent(value) {
+  return String(value || '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/?p[^>]*>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function noteContentToApi(value) {
+  return String(value || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line, idx, arr) => !(line === '' && arr[idx - 1] === ''))
+    .join('<br>');
+}
+
+function extractNurseNoteList(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.notes)) return payload.notes;
+  if (Array.isArray(payload?.nurseNotes)) return payload.nurseNotes;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.data?.notes)) return payload.data.notes;
+  if (Array.isArray(payload?.data?.nurseNotes)) return payload.data.nurseNotes;
+  if (Array.isArray(payload?.results)) return payload.results;
+  if (payload?.note && typeof payload.note === 'object') return [payload.note];
+  if (payload?.nurseNote && typeof payload.nurseNote === 'object') return [payload.nurseNote];
+  if (payload?.data?.note && typeof payload.data.note === 'object') return [payload.data.note];
+  return [];
+}
+
+function toNoteDateString(value, fallbackDate) {
+  if (!value) return fallbackDate || new Date().toISOString().slice(0, 10);
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(value)) return value.slice(0, 10);
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return fallbackDate || String(value).slice(0, 10);
+  return parsed.toISOString().slice(0, 10);
+}
+
+function toNoteTimeString(value, fallbackTime) {
+  if (!value) return fallbackTime || new Date().toTimeString().slice(0, 5);
+  if (typeof value === 'string' && /^\d{2}:\d{2}/.test(value)) return value.slice(0, 5);
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return fallbackTime || String(value).slice(0, 5);
+  return parsed.toTimeString().slice(0, 5);
+}
+
+function normalizeNurseNote(rawNote, fallback = {}) {
+  const raw = rawNote && typeof rawNote === 'object' ? rawNote : {};
+  const timestamp = raw?.recordedAt || raw?.createdAt || raw?.updatedAt || raw?.takenAt || fallback?.timestamp || '';
+  const nurseName = String(
+    raw?.nurseName
+    || raw?.recordedBy
+    || raw?.author
+    || raw?.createdByName
+    || raw?.staffName
+    || (typeof raw?.nurse === 'string' ? raw.nurse : raw?.nurse?.name)
+    || fallback?.nurse
+    || ''
+  ).trim();
+  const nurseId = String(
+    raw?.nurseId
+    || raw?.recordedById
+    || raw?.authorId
+    || raw?.createdBy
+    || (typeof raw?.nurse === 'object' ? raw?.nurse?.id || raw?.nurse?._id : '')
+    || fallback?.nurseId
+    || ''
+  ).trim();
+  const rawContent = String(
+    raw?.note
+    || raw?.content
+    || raw?.text
+    || raw?.body
+    || raw?.description
+    || raw?.message
+    || fallback?.content
+    || ''
+  );
+  const content = cleanNoteContent(rawContent);
+  const category = String(raw?.category || raw?.type || fallback?.category || 'Assessment').trim() || 'Assessment';
+  const priority = String(raw?.priority || raw?.severity || fallback?.priority || 'Normal').trim() || 'Normal';
+  const pinned = Boolean(raw?.pinned ?? raw?.isPinned ?? fallback?.pinned ?? false);
+
+  return {
+    id: raw?.id || raw?._id || raw?.noteId || raw?.nurseNoteId || fallback?.id || `note-${Date.now()}`,
+    patientId: String(raw?.patientId || (typeof raw?.patient === 'object' ? raw?.patient?.id || raw?.patient?._id : raw?.patient) || fallback?.patientId || '').trim(),
+    nurseId,
+    nurse: nurseName,
+    date: toNoteDateString(raw?.date || timestamp, fallback?.date),
+    time: toNoteTimeString(raw?.time || timestamp, fallback?.time),
+    category,
+    priority,
+    content,
+    pinned,
+    timestamp,
+  };
+}
+
+function sortNurseNotes(notes) {
+  return [...notes].sort((a, b) => {
+    if (Boolean(b.pinned) !== Boolean(a.pinned)) return Boolean(b.pinned) ? 1 : -1;
+    const left = new Date(`${a.date || '1970-01-01'}T${a.time || '00:00'}`);
+    const right = new Date(`${b.date || '1970-01-01'}T${b.time || '00:00'}`);
+    return right - left;
+  });
+}
+
+function resolveCurrentNurseId(currentUser, tokenPayload) {
+  return String(
+    currentUser?.nurseId
+    || currentUser?.id
+    || currentUser?._id
+    || currentUser?.userId
+    || currentUser?.staffId
+    || tokenPayload?.nurseId
+    || tokenPayload?.id
+    || tokenPayload?.sub
+    || ''
+  ).trim();
+}
+
 export default function PatientProfile() {
   const { patientId } = useParams();
   const effectivePatientId = patientId || FALLBACK_PATIENT_ID;
@@ -1136,7 +1461,20 @@ export default function PatientProfile() {
   const [showProfileSaveAlert, setShowProfileSaveAlert] = useState(false);
   const [medicationSaveSuccess, setMedicationSaveSuccess] = useState('');
   const [showMedicationSaveAlert, setShowMedicationSaveAlert] = useState(false);
+  const [vitalSaveSuccess, setVitalSaveSuccess] = useState('');
+  const [showVitalSaveAlert, setShowVitalSaveAlert] = useState(false);
+  const [latestRecordedVital, setLatestRecordedVital] = useState(null);
+  const [latestVitalLoading, setLatestVitalLoading] = useState(false);
   const [profileUpdateForm, setProfileUpdateForm] = useState(() => createPatientUpdateForm(null, effectivePatientId));
+  const currentUser = getUser();
+  const currentUserName = String(
+    currentUser?.name
+    || currentUser?.fullName
+    || currentUser?.username
+    || currentUser?.staffName
+    || currentUser?.nurseName
+    || ''
+  ).trim();
 
   const setProfileUpdateField = (path, value) => {
     const keys = String(path || '').split('.').filter(Boolean);
@@ -1220,28 +1558,7 @@ export default function PatientProfile() {
         return;
       }
 
-      const listResponse = await apiFetch('/medications', { method: 'GET' });
-
-      let listPayload = {};
-      try {
-        listPayload = await listResponse.json();
-      } catch {
-        listPayload = {};
-      }
-
-      if (!listResponse.ok) {
-        setAddedMeds(cachedItems);
-        return;
-      }
-
-      const listItems = extractMedicationList(listPayload)
-        .filter(item => medicationBelongsToPatient(item, patientIdValue))
-        .map(item => normalizeMedicationRecord(item, { patientId: patientIdValue }))
-        .filter(item => item.drug);
-
-      const mergedItems = mergeMedicationRecords([...listItems, ...cachedItems]);
-      setAddedMeds(mergedItems);
-      setCachedPatientMedications(patientIdValue, mergedItems);
+      setAddedMeds(cachedItems);
     } catch {
       setAddedMeds(cachedItems);
     }
@@ -1250,6 +1567,87 @@ export default function PatientProfile() {
   useEffect(() => {
     loadMedicationRecords();
   }, [loadMedicationRecords]);
+
+  const loadLatestVitalRecord = useCallback(async () => {
+    const patientIdValue = String(effectivePatientId || '').trim();
+    if (!patientIdValue) {
+      setLatestRecordedVital(null);
+      setLatestVitalLoading(false);
+      return;
+    }
+
+    setLatestVitalLoading(true);
+    try {
+      const response = await apiFetch(`/vitals/patient/${encodeURIComponent(patientIdValue)}/latest`, { method: 'GET' });
+      const responseText = await response.text().catch(() => '');
+      let payload = {};
+
+      if (responseText) {
+        try {
+          payload = JSON.parse(responseText);
+        } catch {
+          payload = { message: responseText };
+        }
+      }
+
+      if (!response.ok) {
+        setLatestRecordedVital(null);
+        return;
+      }
+
+      const latestItem = payload?.vital || payload?.data?.vital || payload?.data || payload;
+      const normalizedLatest = normalizeVitalRecord(latestItem, { patientId: patientIdValue });
+      const hasVitalData = normalizedLatest.bp || normalizedLatest.sugar || normalizedLatest.spo2 || normalizedLatest.pulse || normalizedLatest.temp || normalizedLatest.resp || normalizedLatest.weight || normalizedLatest.urinalysis;
+      setLatestRecordedVital(hasVitalData ? normalizedLatest : null);
+    } catch {
+      setLatestRecordedVital(null);
+    } finally {
+      setLatestVitalLoading(false);
+    }
+  }, [effectivePatientId]);
+
+  const loadVitalRecords = useCallback(async () => {
+    try {
+      const patientIdValue = String(effectivePatientId || '').trim();
+      if (!patientIdValue) {
+        setVitalRecords([]);
+        return;
+      }
+
+      const response = await apiFetch(`/vitals/patient/${encodeURIComponent(patientIdValue)}`, { method: 'GET' });
+      const responseText = await response.text().catch(() => '');
+      let payload = {};
+
+      if (responseText) {
+        try {
+          payload = JSON.parse(responseText);
+        } catch {
+          payload = { message: responseText };
+        }
+      }
+
+      if (!response.ok) {
+        setVitalRecords([]);
+        return;
+      }
+
+      const records = extractVitalList(payload)
+        .map((item) => normalizeVitalRecord(item, { patientId: patientIdValue }))
+        .filter((item) => item.bp || item.sugar || item.spo2 || item.pulse || item.temp || item.resp || item.weight || item.urinalysis);
+
+      setVitalRecords(sortVitalRecords(records));
+    } catch {
+      setVitalRecords([]);
+    }
+  }, [effectivePatientId]);
+
+  useEffect(() => {
+    loadVitalRecords();
+  }, [loadVitalRecords]);
+
+  useEffect(() => {
+    loadLatestVitalRecord();
+  }, [loadLatestVitalRecord]);
 
   /* Medication database */
   const MEDICATION_DB = [
@@ -1315,33 +1713,36 @@ export default function PatientProfile() {
   const [customDrugName, setCustomDrugName] = useState('');
 
   /* Vitals state */
-  const [vitalRecords, setVitalRecords] = useState([
-    { id: 1001, date: '2026-03-24', time: '06:45', bp: '158/102', sugar: '14.2', resp: '24', spo2: '91', pulse: '112', temp: '38.6', weight: '78kg', urinalysis: 'Protein ++', recordedBy: 'Amina Mensah, RN', notes: 'Patient reported feeling dizzy and short of breath upon waking. Elevated BP and tachycardia noted. Blood sugar significantly above target. Low oxygen saturation — supplemental O₂ initiated at 2L via nasal cannula. Fever detected. Physician Dr. Kwesi Asare notified immediately for review.' },
-  ]);
+  const [vitalRecords, setVitalRecords] = useState([]);
+  const [showVitalsMegaModal, setShowVitalsMegaModal] = useState(false);
+  const [showNotesMegaModal, setShowNotesMegaModal] = useState(false);
   const [showVitalForm, setShowVitalForm] = useState(false);
-  const [vitalForm, setVitalForm] = useState({
-    date: new Date().toISOString().slice(0, 10),
-    time: new Date().toTimeString().slice(0, 5),
-    bp: '', sugar: '', resp: '', spo2: '', pulse: '', temp: '', weight: '', urinalysis: '',
-    recordedBy: '', notes: '',
-  });
+  const [vitalForm, setVitalForm] = useState(() => createVitalForm(currentUserName));
   const [expandedVital, setExpandedVital] = useState(null);
+  const [savingVital, setSavingVital] = useState(false);
+  const [vitalSaveError, setVitalSaveError] = useState('');
+  const [editingVitalId, setEditingVitalId] = useState(null);
+  const [vitalNurseOptions, setVitalNurseOptions] = useState([]);
+  const [vitalNursesLoading, setVitalNursesLoading] = useState(false);
+  const [vitalNursesError, setVitalNursesError] = useState('');
 
   /* Reminder state */
   const [showReminderForm, setShowReminderForm] = useState(null); // med id
   const [reminderForm, setReminderForm] = useState(createMedicationReminderState());
 
   /* Nurse Notes state */
-  const [nurseNotes, setNurseNotes] = useState([
-    { id: 1, date: '2025-01-15', time: '08:30', nurse: 'Amina Mensah, RN', category: 'Assessment', priority: 'Normal', content: 'Patient appears well-rested this morning. Vital signs stable. Reports mild discomfort in lower back, rated 3/10 on pain scale. Administered prescribed analgesic. Will reassess in 2 hours.', pinned: false },
-    { id: 2, date: '2025-01-14', time: '14:15', nurse: 'Grace Osei, RN', category: 'Medication', priority: 'High', content: 'Patient experienced mild nausea after afternoon medications. Withheld evening dose of Metformin per physician order. Blood glucose monitored – within normal range (6.8 mmol/L). Physician notified and awaiting further instructions.', pinned: false },
-    { id: 3, date: '2025-01-14', time: '09:00', nurse: 'Amina Mensah, RN', category: 'Care Update', priority: 'Normal', content: 'Wound dressing changed on left lower leg. Wound healing well, no signs of infection. Surrounding skin intact. Saline irrigation performed. Fresh sterile dressing applied. Next dressing change scheduled for 16 Jan.', pinned: false },
-    { id: 4, date: '2025-01-13', time: '16:45', nurse: 'Kwame Boateng, RN', category: 'Communication', priority: 'Normal', content: 'Spoke with patient\'s daughter (emergency contact) regarding care progress. She expressed satisfaction with care plan. Requested update on next physician visit. Informed her visit is scheduled for 20 Jan.', pinned: false },
-    { id: 5, date: '2025-01-13', time: '07:00', nurse: 'Amina Mensah, RN', category: 'Shift Handover', priority: 'Normal', content: 'Night shift report: Patient slept through the night with one bathroom break at 03:00. No falls. Vitals checked at 06:00 – all within normal limits. Morning medications due at 08:00.', pinned: false },
-  ]);
+  const [nurseNotes, setNurseNotes] = useState([]);
+  const [notesLoading, setNotesLoading] = useState(false);
+  const [notesError, setNotesError] = useState('');
+  const [notesScope, setNotesScope] = useState('patient'); // 'patient' | 'nurse'
   const [showNoteForm, setShowNoteForm] = useState(false);
   const [noteForm, setNoteForm] = useState({ date: new Date().toISOString().slice(0, 10), time: new Date().toTimeString().slice(0, 5), nurse: '', category: 'Assessment', priority: 'Normal', content: '' });
   const [noteFilter, setNoteFilter] = useState('All');
+  const [editingNoteId, setEditingNoteId] = useState(null);
+  const [savingNote, setSavingNote] = useState(false);
+  const [noteSaveError, setNoteSaveError] = useState('');
+  const [deletingNoteId, setDeletingNoteId] = useState(null);
+  const currentNurseId = resolveCurrentNurseId(currentUser, parseJwtPayload(getToken()));
 
   const FREQ_OPTIONS = ['OD', 'BD', 'TDS', 'QDS', 'PRN', 'ON', 'Weekly', 'Stat'];
   const ROUTE_OPTIONS = ['Oral', 'IV', 'IM', 'SC', 'Topical', 'Inhaled', 'Rectal', 'Sublingual'];
@@ -1394,11 +1795,65 @@ export default function PatientProfile() {
     }
   }, []);
 
+  const loadVitalNurseOptions = useCallback(async () => {
+    setVitalNursesLoading(true);
+    setVitalNursesError('');
+
+    try {
+      const response = await apiFetch('/nurses', { method: 'GET' });
+      const responseText = await response.text().catch(() => '');
+      let payload = {};
+
+      if (responseText) {
+        try {
+          payload = JSON.parse(responseText);
+        } catch {
+          payload = { message: responseText };
+        }
+      }
+
+      if (!response.ok) {
+        throw new Error(payload?.message || payload?.error || 'Unable to load nurses right now.');
+      }
+
+      const normalizedNurses = extractNurseList(payload)
+        .map(normalizeVitalNurseOption)
+        .filter((nurse) => nurse?.id && nurse?.name)
+        .reduce((result, nurse) => {
+          if (result.some((entry) => entry.id === nurse.id || entry.name.toLowerCase() === nurse.name.toLowerCase())) {
+            return result;
+          }
+
+          result.push(nurse);
+          return result;
+        }, [])
+        .sort((left, right) => left.name.localeCompare(right.name));
+
+      setVitalNurseOptions(normalizedNurses);
+      if (normalizedNurses.length === 0) {
+        setVitalNursesError('No nurses are available yet.');
+      }
+    } catch (error) {
+      setVitalNurseOptions([]);
+      setVitalNursesError(error?.message || 'Unable to load nurses right now.');
+    } finally {
+      setVitalNursesLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (showMedForm) {
       loadDrugCatalog();
     }
   }, [showMedForm, loadDrugCatalog]);
+
+  useEffect(() => {
+    if (!showVitalForm) return;
+    if (vitalNursesLoading) return;
+    if (vitalNurseOptions.length > 0) return;
+
+    loadVitalNurseOptions();
+  }, [showVitalForm, vitalNursesLoading, vitalNurseOptions.length, loadVitalNurseOptions]);
 
   /* Filtered drug list */
   const filteredDrugs = drugCatalog.filter(d =>
@@ -1700,22 +2155,129 @@ export default function PatientProfile() {
   };
 
   /* Vitals helpers */
-  const handleAddVital = () => {
-    if (!vitalForm.bp && !vitalForm.sugar && !vitalForm.pulse && !vitalForm.temp && !vitalForm.spo2 && !vitalForm.resp && !vitalForm.weight) return;
-    const newRecord = { ...vitalForm, id: Date.now() };
-    setVitalRecords(prev => [newRecord, ...prev]);
+  const startEditVital = (record) => {
+    if (!record) return;
+    setEditingVitalId(record.id);
+    setVitalSaveError('');
     setVitalForm({
-      date: new Date().toISOString().slice(0, 10),
-      time: new Date().toTimeString().slice(0, 5),
-      bp: '', sugar: '', resp: '', spo2: '', pulse: '', temp: '', weight: '', urinalysis: '',
-      recordedBy: '', notes: '',
+      date: record.date || new Date().toISOString().slice(0, 10),
+      time: record.time || new Date().toTimeString().slice(0, 5),
+      bp: record.bp || '',
+      sugar: record.sugar || '',
+      resp: record.resp || '',
+      spo2: record.spo2 || '',
+      pulse: record.pulse || '',
+      temp: record.temp || '',
+      weight: record.weight || '',
+      urinalysis: record.urinalysis || '',
+      recordedBy: record.recordedBy || currentUserName || p?.nurse || '',
+      notes: record.notes || '',
     });
+    setShowVitalForm(true);
+  };
+
+  const closeVitalForm = () => {
+    if (savingVital) return;
     setShowVitalForm(false);
+    setVitalSaveError('');
+    setEditingVitalId(null);
+  };
+
+  const handleAddVital = async () => {
+    if (savingVital) return;
+    if (!vitalForm.bp && !vitalForm.sugar && !vitalForm.pulse && !vitalForm.temp && !vitalForm.spo2 && !vitalForm.resp && !vitalForm.weight && !vitalForm.urinalysis) return;
+
+    const tokenPayload = parseJwtPayload(getToken());
+    const agencyId = resolveAgencyId(remotePatient) || resolveAgencyId(p) || resolveAgencyId(currentUser) || resolveAgencyId(tokenPayload);
+
+    const { systolic, diastolic } = splitBloodPressure(vitalForm.bp);
+    const recordedBy = String(vitalForm.recordedBy || currentUserName || p?.nurse || '').trim();
+
+    const payload = {
+      patientId: effectivePatientId,
+      ...(agencyId ? { agency: agencyId } : {}),
+      bloodPressureSystolic: systolic,
+      bloodPressureDystolic: diastolic,
+      bloodSugar: String(vitalForm.sugar || '').trim(),
+      respiration: String(vitalForm.resp || '').trim(),
+      sp02: String(vitalForm.spo2 || '').trim(),
+      pulseRate: String(vitalForm.pulse || '').trim(),
+      temperature: String(vitalForm.temp || '').trim(),
+      urinalysis: String(vitalForm.urinalysis || '').trim(),
+      weight: String(vitalForm.weight || '').trim(),
+      takenBy: recordedBy,
+    };
+
+    const isEditing = Boolean(editingVitalId);
+    setSavingVital(true);
+    setVitalSaveError('');
+
+    try {
+      const response = await apiFetch(
+        isEditing ? `/vitals/${encodeURIComponent(editingVitalId)}` : '/vitals',
+        {
+          method: isEditing ? 'PATCH' : 'POST',
+          body: JSON.stringify(payload),
+        }
+      );
+
+      const responseText = await response.text().catch(() => '');
+      let data = {};
+      if (responseText) {
+        try {
+          data = JSON.parse(responseText);
+        } catch {
+          data = { message: responseText };
+        }
+      }
+
+      if (!response.ok) {
+        throw new Error(data?.message || data?.error || (isEditing ? 'Unable to update vital record.' : 'Unable to save vital record.'));
+      }
+
+      const savedRecord = normalizeVitalRecord(data?.vital || data?.data || data, {
+        id: isEditing ? editingVitalId : Date.now(),
+        patientId: effectivePatientId,
+        date: vitalForm.date,
+        time: vitalForm.time,
+        bp: vitalForm.bp,
+        sugar: vitalForm.sugar,
+        resp: vitalForm.resp,
+        spo2: vitalForm.spo2,
+        pulse: vitalForm.pulse,
+        temp: vitalForm.temp,
+        weight: vitalForm.weight,
+        urinalysis: vitalForm.urinalysis,
+        recordedBy,
+        notes: vitalForm.notes,
+      });
+
+      await Promise.all([loadVitalRecords(), loadLatestVitalRecord()]);
+      setVitalRecords((prev) => {
+        if (isEditing) {
+          const next = prev.map((item) => (item.id === editingVitalId ? { ...item, ...savedRecord, id: editingVitalId } : item));
+          return sortVitalRecords(next);
+        }
+        return prev.length > 0 ? prev : sortVitalRecords([savedRecord]);
+      });
+      setEditingVitalId(null);
+      setVitalForm(createVitalForm(currentUserName));
+      setShowVitalForm(false);
+      setVitalSaveSuccess(isEditing ? 'Vital record updated successfully.' : 'Vital record added successfully.');
+    } catch (error) {
+      setVitalSaveError(error?.message || (isEditing ? 'Unable to update vital record.' : 'Unable to save vital record.'));
+    } finally {
+      setSavingVital(false);
+    }
   };
 
   const deleteVitalRecord = (id) => {
     setVitalRecords(prev => prev.filter(r => r.id !== id));
     if (expandedVital === id) setExpandedVital(null);
+    if (editingVitalId === id) {
+      setEditingVitalId(null);
+      setShowVitalForm(false);
+    }
   };
 
   /* Get latest vital value (from added records or admission) */
@@ -1738,18 +2300,212 @@ export default function PatientProfile() {
 
   /* Nurse Notes handlers */
   const NOTE_CATEGORIES = ['Assessment', 'Medication', 'Care Update', 'Communication', 'Shift Handover', 'Incident', 'Observation', 'Other'];
-  const handleAddNote = () => {
-    if (!noteForm.content.trim()) return;
-    const newNote = { ...noteForm, id: Date.now(), pinned: false };
-    setNurseNotes(prev => [newNote, ...prev]);
-    setNoteForm({ date: new Date().toISOString().slice(0, 10), time: new Date().toTimeString().slice(0, 5), nurse: '', category: 'Assessment', priority: 'Normal', content: '' });
-    setShowNoteForm(false);
+
+  const resetNoteForm = () => {
+    setNoteForm({
+      date: new Date().toISOString().slice(0, 10),
+      time: new Date().toTimeString().slice(0, 5),
+      nurse: currentUserName || '',
+      category: 'Assessment',
+      priority: 'Normal',
+      content: '',
+    });
+    setEditingNoteId(null);
+    setNoteSaveError('');
   };
-  const handleDeleteNote = (id) => {
-    setNurseNotes(prev => prev.filter(n => n.id !== id));
+
+  const startEditNote = (note) => {
+    if (!note) return;
+    setEditingNoteId(note.id);
+    setNoteSaveError('');
+    setNoteForm({
+      date: note.date || new Date().toISOString().slice(0, 10),
+      time: note.time || new Date().toTimeString().slice(0, 5),
+      nurse: note.nurse || currentUserName || '',
+      category: note.category || 'Assessment',
+      priority: note.priority || 'Normal',
+      content: note.content || '',
+    });
+    setShowNoteForm(true);
   };
-  const handlePinNote = (id) => {
-    setNurseNotes(prev => prev.map(n => n.id === id ? { ...n, pinned: !n.pinned } : n));
+
+  const loadNurseNotes = useCallback(async () => {
+    const patientIdValue = String(effectivePatientId || '').trim();
+    const nurseIdValue = String(currentNurseId || '').trim();
+
+    let path = '';
+    if (notesScope === 'nurse') {
+      if (!nurseIdValue) {
+        setNurseNotes([]);
+        setNotesError('Sign-in info is missing — cannot load your notes.');
+        return;
+      }
+      path = `/nurse-notes/nurse/${encodeURIComponent(nurseIdValue)}`;
+    } else {
+      if (!patientIdValue) {
+        setNurseNotes([]);
+        return;
+      }
+      path = `/nurse-notes/patient/${encodeURIComponent(patientIdValue)}`;
+    }
+
+    setNotesLoading(true);
+    setNotesError('');
+
+    try {
+      const response = await apiFetch(path, { method: 'GET' });
+      const responseText = await response.text().catch(() => '');
+      let payload = {};
+      if (responseText) {
+        try { payload = JSON.parse(responseText); } catch { payload = { message: responseText }; }
+      }
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          setNurseNotes([]);
+          return;
+        }
+        throw new Error(payload?.message || payload?.error || 'Unable to load nurse notes.');
+      }
+
+      const items = extractNurseNoteList(payload)
+        .map((item) => normalizeNurseNote(item, { patientId: patientIdValue }))
+        .filter((item) => item.content);
+      setNurseNotes(sortNurseNotes(items));
+    } catch (error) {
+      setNurseNotes([]);
+      setNotesError(error?.message || 'Unable to load nurse notes.');
+    } finally {
+      setNotesLoading(false);
+    }
+  }, [effectivePatientId, currentNurseId, notesScope]);
+
+  useEffect(() => {
+    loadNurseNotes();
+  }, [loadNurseNotes]);
+
+  const handleAddNote = async () => {
+    if (savingNote) return;
+    const plainContent = String(noteForm.content || '').trim();
+    if (!plainContent) {
+      setNoteSaveError('Note content is required.');
+      return;
+    }
+
+    const isEditing = Boolean(editingNoteId);
+    if (!isEditing && !currentNurseId) {
+      setNoteSaveError('Cannot create a note without a signed-in nurse identity.');
+      return;
+    }
+
+    const noteForApi = noteContentToApi(plainContent);
+    const payload = isEditing
+      ? { note: noteForApi }
+      : {
+          nurseId: currentNurseId,
+          patientId: effectivePatientId,
+          note: noteForApi,
+        };
+
+    setSavingNote(true);
+    setNoteSaveError('');
+
+    try {
+      const response = await apiFetch(
+        isEditing ? `/nurse-notes/${encodeURIComponent(editingNoteId)}` : '/nurse-notes',
+        {
+          method: isEditing ? 'PATCH' : 'POST',
+          body: JSON.stringify(payload),
+        }
+      );
+
+      const responseText = await response.text().catch(() => '');
+      let data = {};
+      if (responseText) {
+        try { data = JSON.parse(responseText); } catch { data = { message: responseText }; }
+      }
+
+      if (!response.ok) {
+        throw new Error(data?.message || data?.error || (isEditing ? 'Unable to update note.' : 'Unable to save note.'));
+      }
+
+      const nurseName = String(noteForm.nurse || currentUserName || p?.nurse || '').trim();
+      const savedNote = normalizeNurseNote(
+        data?.note || data?.nurseNote || data?.data || data,
+        {
+          id: isEditing ? editingNoteId : undefined,
+          patientId: effectivePatientId,
+          nurseId: currentNurseId,
+          nurse: nurseName,
+          content: plainContent,
+          date: noteForm.date,
+          time: noteForm.time,
+          category: noteForm.category,
+          priority: noteForm.priority,
+        }
+      );
+
+      setNurseNotes((prev) => {
+        if (isEditing) {
+          return sortNurseNotes(prev.map((item) => (String(item.id) === String(editingNoteId) ? { ...item, ...savedNote, id: editingNoteId } : item)));
+        }
+        return sortNurseNotes([savedNote, ...prev]);
+      });
+
+      resetNoteForm();
+      setShowNoteForm(false);
+      loadNurseNotes();
+    } catch (error) {
+      setNoteSaveError(error?.message || (isEditing ? 'Unable to update note.' : 'Unable to save note.'));
+    } finally {
+      setSavingNote(false);
+    }
+  };
+
+  const handleDeleteNote = async (id) => {
+    if (!id) return;
+    setDeletingNoteId(id);
+    try {
+      const response = await apiFetch(`/nurse-notes/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      if (!response.ok && response.status !== 404) {
+        const responseText = await response.text().catch(() => '');
+        let data = {};
+        if (responseText) {
+          try { data = JSON.parse(responseText); } catch { data = { message: responseText }; }
+        }
+        setNotesError(data?.message || data?.error || 'Unable to delete note.');
+        return;
+      }
+      setNurseNotes((prev) => prev.filter((n) => String(n.id) !== String(id)));
+      if (editingNoteId === id) {
+        setEditingNoteId(null);
+        setShowNoteForm(false);
+      }
+    } catch (error) {
+      setNotesError(error?.message || 'Unable to delete note.');
+    } finally {
+      setDeletingNoteId(null);
+    }
+  };
+
+  const handlePinNote = async (id) => {
+    const target = nurseNotes.find((n) => String(n.id) === String(id));
+    if (!target) return;
+    const nextPinned = !target.pinned;
+
+    setNurseNotes((prev) => prev.map((n) => (String(n.id) === String(id) ? { ...n, pinned: nextPinned } : n)));
+
+    try {
+      const response = await apiFetch(`/nurse-notes/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ pinned: nextPinned, isPinned: nextPinned }),
+      });
+      if (!response.ok && response.status !== 404) {
+        setNurseNotes((prev) => prev.map((n) => (String(n.id) === String(id) ? { ...n, pinned: !nextPinned } : n)));
+      }
+    } catch {
+      setNurseNotes((prev) => prev.map((n) => (String(n.id) === String(id) ? { ...n, pinned: !nextPinned } : n)));
+    }
   };
   const filteredNotes = nurseNotes
     .filter(n => noteFilter === 'All' || n.category === noteFilter)
@@ -2445,6 +3201,31 @@ export default function PatientProfile() {
   }, [medicationSaveSuccess]);
 
   useEffect(() => {
+    if (!vitalSaveSuccess) {
+      setShowVitalSaveAlert(false);
+      return undefined;
+    }
+
+    setShowVitalSaveAlert(true);
+    const timer = window.setTimeout(() => {
+      setShowVitalSaveAlert(false);
+      setVitalSaveSuccess('');
+    }, 3600);
+
+    return () => window.clearTimeout(timer);
+  }, [vitalSaveSuccess]);
+
+  useEffect(() => {
+    if (showVitalForm && !editingVitalId) {
+      setVitalSaveError('');
+      setVitalForm((prev) => ({
+        ...createVitalForm(currentUserName),
+        recordedBy: prev.recordedBy || currentUserName || p?.nurse || '',
+      }));
+    }
+  }, [showVitalForm, editingVitalId, currentUserName, p?.nurse]);
+
+  useEffect(() => {
     if (!confirmDelete) {
       setMedicationDeleteError('');
       setDeletingMedication(false);
@@ -2518,10 +3299,20 @@ export default function PatientProfile() {
   const medicationReminderCount = activeMedicationRecords.filter(item => Array.isArray(item?.reminders?.times) && item.reminders.times.length > 0).length;
   const medicationOralCount = activeMedicationRecords.filter(item => String(item?.route || '').trim().toLowerCase() === 'oral').length;
   const medicationNewCount = persistedMedicationEntries.length;
-  const latestVitalRecord = vitalRecords[0] || null;
+  const latestVitalRecord = latestRecordedVital || vitalRecords[0] || null;
   const latestVitalSummary = latestVitalRecord
     ? `${latestVitalRecord.date} at ${latestVitalRecord.time}`
     : `Admitted ${p.enrolled}`;
+  const latestDisplayedVitals = {
+    bp: latestVitalRecord?.bp || p.vitals.bp,
+    sugar: latestVitalRecord?.sugar || p.vitals.sugar,
+    spo2: latestVitalRecord?.spo2 || p.vitals.spo2,
+    pulse: latestVitalRecord?.pulse || p.vitals.pulse,
+    temp: latestVitalRecord?.temp || p.vitals.temp,
+    resp: latestVitalRecord?.resp || p.vitals.resp,
+    weight: latestVitalRecord?.weight || p.vitals.weight,
+    urinalysis: latestVitalRecord?.urinalysis || p.vitals.urinalysis,
+  };
   const hasNextOfKinData = hasMeaningfulSectionData(p.sectionNextOfKin);
   const hasAdmissionChecklistData = hasMeaningfulSectionData(p.sectionAdmissionChecklist);
   const hasMedicalHistoryData = hasMeaningfulSectionData(p.sectionMedicalHistory) || Boolean(String(p.medicalHistory || '').trim());
@@ -2595,6 +3386,24 @@ export default function PatientProfile() {
     return keys.reduce((acc, key) => (acc && typeof acc === 'object' ? acc[key] : undefined), profileUpdateForm);
   };
 
+  const handleProfileTabChange = (nextTab) => {
+    if (nextTab === 'vitals') {
+      setShowNotesMegaModal(false);
+      setShowVitalsMegaModal(true);
+      return;
+    }
+
+    if (nextTab === 'notes') {
+      setShowVitalsMegaModal(false);
+      setShowNotesMegaModal(true);
+      return;
+    }
+
+    setShowVitalsMegaModal(false);
+    setShowNotesMegaModal(false);
+    setTab(nextTab);
+  };
+
   const renderBoolControl = (label, path) => (
     <div className="col-md-4">
       <label className="form-label" style={{ fontSize: 12, fontWeight: 600, color: 'var(--kh-text-muted)' }}>{label}</label>
@@ -2655,6 +3464,28 @@ export default function PatientProfile() {
           </button>
         </div>
       )}
+      {showVitalSaveAlert && (
+        <div className="patient-profile-save-alert" role="status" aria-live="polite" style={{ top: `${24 + (showProfileSaveAlert ? 68 : 0) + (showMedicationSaveAlert ? 68 : 0)}px` }}>
+          <div className="patient-profile-save-alert__icon">
+            <FiCheckCircle size={18} />
+          </div>
+          <div className="patient-profile-save-alert__content">
+            <strong>Vital recorded</strong>
+            <span>{vitalSaveSuccess}</span>
+          </div>
+          <button
+            type="button"
+            className="patient-profile-save-alert__close"
+            onClick={() => {
+              setShowVitalSaveAlert(false);
+              setVitalSaveSuccess('');
+            }}
+            aria-label="Dismiss vital save alert"
+          >
+            <FiX size={16} />
+          </button>
+        </div>
+      )}
       <div className="nurse-profile-shell">
         <div className="nurse-profile-topbar">
           <div className="nurse-profile-topbar__left">
@@ -2672,139 +3503,199 @@ export default function PatientProfile() {
           </div>
         </div>
 
-        <div className="nurse-profile-header-card">
-          <div className="nurse-profile-header-card__meta">
-            <div className="nurse-profile-kicker">Patient profile</div>
-            <h2>{p.name}</h2>
-            <p>Patient overview with clinical status, care team, vitals, medications, and nursing records in the same layout style as the nurse profile page.</p>
-          </div>
-          <div className="nurse-profile-header-card__actions">
-            <button type="button" className="nurse-profile-primary-btn" onClick={handlePrimaryAction}>
-              <span className="nurse-profile-primary-btn__icon"><FiFileText size={14} /></span>
-              Generate Report
-            </button>
-          </div>
-        </div>
-
-        <div className="nurse-profile-summary-shell">
-          <div className="nurse-profile-summary-grid">
-            <div className="nurse-profile-card nurse-profile-card--hero">
-              <input type="file" accept="image/*" ref={fileRef} onChange={handlePhoto} style={{ display: 'none' }} />
+        {/* ═══ Premium Hero ═══ */}
+        <input type="file" accept="image/*" ref={fileRef} onChange={handlePhoto} style={{ display: 'none' }} />
+        <section className="pp-hero" aria-label="Patient overview">
+          <div className="pp-hero__inner">
+            <div className="pp-hero__avatar-wrap">
               <div
                 onClick={() => fileRef.current?.click()}
                 title="Upload patient photo"
-                className="nurse-profile-avatar"
-                style={{ background: '#fff' }}
+                className="pp-hero__avatar"
+                role="button"
+                tabIndex={0}
               >
                 <img
                   src={avatarDisplaySrc}
                   alt={showAvatarImage ? p.name : 'Default patient profile avatar'}
                   loading="lazy"
-                  onError={() => {
-                    if (showAvatarImage) setAvatarImageError(true);
-                  }}
-                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                  onError={() => { if (showAvatarImage) setAvatarImageError(true); }}
                 />
-                <div className="nurse-profile-avatar__overlay">
-                  {showAvatarImage
-                    ? <>
-                        <FiUser size={16} color="#fff" />
-                        <span>Update</span>
-                      </>
-                    : <>
-                        <FiUser size={16} color="#fff" />
-                        <span>Avatar</span>
-                      </>
-                  }
+                <div className="pp-hero__avatar-overlay">
+                  <FiUser size={18} />
+                  <span>{showAvatarImage ? 'Update photo' : 'Add photo'}</span>
                 </div>
               </div>
+              <span
+                className={`pp-hero__status-dot${p.status === 'active' ? '' : ' is-pending'}`}
+                title={`Status: ${patientStatusLabel}`}
+              />
+            </div>
 
-              <div className="nurse-profile-card__title">{p.name}</div>
-              <div className="nurse-profile-card__subtitle">{p.email || p.phone || 'No direct contact provided'}</div>
-              <div className="nurse-profile-status-row">
-                <span className={`nurse-profile-status-badge${patientStatusClass}`}>{patientStatusLabel}</span>
-                <span className="nurse-profile-status-badge is-warning">{p.regNo || 'No Reg. No.'}</span>
+            <div className="pp-hero__identity">
+              <span className="pp-hero__eyebrow">
+                <FiHeart size={11} /> Patient profile
+              </span>
+              <h1 className="pp-hero__name">
+                {p.name}
+                <span className={`pp-hero__pill${p.status === 'active' ? ' is-active' : ' is-pending'}`}>
+                  <FiCheckCircle size={11} /> {patientStatusLabel}
+                </span>
+                {p.regNo && (
+                  <span className="pp-hero__pill"><FiClipboard size={11} /> {p.regNo}</span>
+                )}
+              </h1>
+              <div className="pp-hero__chips">
+                {p.dob && (
+                  <span className="pp-hero__chip">
+                    <FiCalendar size={13} />
+                    <span>DOB: <strong>{p.dob}</strong>{p.age ? ` · ${p.age} yrs` : ''}{p.gender ? ` · ${p.gender}` : ''}</span>
+                  </span>
+                )}
+                {p.phone && (
+                  <span className="pp-hero__chip">
+                    <FiPhone size={13} />
+                    <strong>{p.phone}</strong>
+                  </span>
+                )}
+                {p.address && (
+                  <span className="pp-hero__chip">
+                    <FiMapPin size={13} />
+                    <span>{p.address}</span>
+                  </span>
+                )}
+                {p.nurse && (
+                  <span className="pp-hero__chip">
+                    <FiShield size={13} />
+                    <span>Nurse: <strong>{p.nurse}</strong></span>
+                  </span>
+                )}
               </div>
-              <div className="nurse-profile-mini-stats">
-                <div>
-                  <strong>{vitalRecords.length}</strong>
-                  <span>Vitals</span>
+              {(photoUploading || photoUploadSuccess || photoUploadError) && (
+                <div className={`pp-hero__upload-status${photoUploadError ? ' is-error' : ''}${photoUploadSuccess ? ' is-success' : ''}`}>
+                  {photoUploading
+                    ? 'Uploading patient photo…'
+                    : photoUploadSuccess || photoUploadError}
                 </div>
-                <div>
-                  <strong>{activeMedicationRecords.length}</strong>
-                  <span>Meds</span>
-                </div>
-              </div>
-              {photoUploading && <div style={{ fontSize: 11, color: '#6b7280', marginTop: 10, fontWeight: 600 }}>Uploading patient photo...</div>}
-              {!photoUploading && photoUploadSuccess && <div style={{ fontSize: 11, color: '#059669', marginTop: 10, fontWeight: 600 }}>{photoUploadSuccess}</div>}
-              {!photoUploading && photoUploadError && <div style={{ fontSize: 11, color: '#dc2626', marginTop: 10, fontWeight: 600 }}>{photoUploadError}</div>}
-              {!!profileUpdateError && !showUpdateModal && <div style={{ fontSize: 11, color: '#dc2626', marginTop: 10, fontWeight: 600 }}>{profileUpdateError}</div>}
-              {!photoUploading && canRefreshStoredPhoto && (
-                <button
-                  type="button"
-                  className="nurse-profile-inline-btn"
-                  onClick={handleRefreshStoredPhoto}
-                  disabled={photoRefreshLoading}
-                  style={{ marginTop: 12, opacity: photoRefreshLoading ? 0.7 : 1, cursor: photoRefreshLoading ? 'not-allowed' : 'pointer' }}
-                >
-                  {photoRefreshLoading ? 'Refreshing photo...' : 'Refresh stored photo'}
-                </button>
               )}
             </div>
 
-            <div className="nurse-profile-card nurse-profile-card--details">
-              <div className="nurse-profile-card-heading">Profile Details</div>
-              <div className="nurse-profile-info-grid">
-                {patientProfileDetails.map((item) => (
-                  <div key={item.label} className="nurse-profile-info-item">
-                    <span>{item.label}</span>
-                    <strong>{item.value}</strong>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="nurse-profile-card nurse-profile-card--notes">
-              <div className="nurse-profile-card-heading nurse-profile-card-heading--with-action">
-                <span>Care Highlights</span>
-                <button type="button" className="nurse-profile-link-btn" onClick={() => setTab('notes')}>Open notes</button>
-              </div>
-              <div className="nurse-profile-note-list">
-                {patientHighlights.map((item, index) => (
-                  <div key={`${item}-${index}`} className="nurse-profile-note-item">• {item}</div>
-                ))}
-              </div>
-              <button type="button" className="nurse-profile-inline-btn" onClick={() => setTab('clinical')}>View clinical assessment</button>
-            </div>
-
-            <div className="nurse-profile-card nurse-profile-card--files">
-              <div className="nurse-profile-card-heading nurse-profile-card-heading--with-action">
-                <span>Quick Access</span>
-                <button type="button" className="nurse-profile-link-btn" onClick={() => setTab('chart')}>Open summary</button>
-              </div>
-              <div className="nurse-profile-doc-list">
-                {[
-                  { key: 'vitals', label: 'Vitals Records', hint: latestVitalSummary, icon: <FiThermometer size={14} /> },
-                  { key: 'medications', label: 'Medication List', hint: `${activeMedicationRecords.length} active items`, icon: <FiFileText size={14} /> },
-                  { key: 'notes', label: 'Nurse Notes', hint: `${nurseNotes.length} entries recorded`, icon: <FiEdit2 size={14} /> },
-                ].map((item) => (
-                  <button key={item.key} type="button" className="nurse-profile-doc-item" onClick={() => setTab(item.key)}>
-                    <span className="nurse-profile-doc-item__icon">{item.icon}</span>
-                    <span className="nurse-profile-doc-item__content">
-                      <strong>{item.label}</strong>
-                      <small>{item.hint}</small>
-                    </span>
+            <div className="pp-hero__actions">
+              <button type="button" className="pp-hero__cta" onClick={handlePrimaryAction}>
+                <FiPhone size={14} /> Contact patient
+              </button>
+              <div className="pp-hero__action-row">
+                <button type="button" className="pp-hero__icon-btn" title="Generate report" onClick={() => window.print()}>
+                  <FiFileText size={15} />
+                </button>
+                <button type="button" className="pp-hero__icon-btn" title="Edit profile" onClick={() => setShowUpdateModal(true)}>
+                  <FiEdit2 size={15} />
+                </button>
+                <button type="button" className="pp-hero__icon-btn" title="Refresh" onClick={loadPatientProfile}>
+                  <FiRefreshCw size={15} />
+                </button>
+                {!photoUploading && canRefreshStoredPhoto && (
+                  <button
+                    type="button"
+                    className="pp-hero__icon-btn"
+                    title={photoRefreshLoading ? 'Refreshing stored photo…' : 'Refresh stored photo'}
+                    onClick={handleRefreshStoredPhoto}
+                    disabled={photoRefreshLoading}
+                    style={photoRefreshLoading ? { opacity: 0.6, cursor: 'not-allowed' } : undefined}
+                  >
+                    <FiUser size={15} />
                   </button>
-                ))}
+                )}
               </div>
             </div>
           </div>
-        </div>
+        </section>
+
+        {/* ═══ KPI Strip ═══ */}
+        <section className="pp-kpi-grid" aria-label="Patient highlights">
+          <button type="button" className={`pp-kpi${p.status === 'active' ? ' pp-kpi--success' : ' pp-kpi--warn'}`} onClick={() => setShowUpdateModal(true)}>
+            <span className="pp-kpi__icon"><FiCheckCircle size={18} /></span>
+            <span className="pp-kpi__label">Care status</span>
+            <span className="pp-kpi__value">{patientStatusLabel}</span>
+            <span className="pp-kpi__hint">{p.enrolled ? `Enrolled ${p.enrolled}` : 'No enrollment date'}</span>
+          </button>
+          <button type="button" className="pp-kpi pp-kpi--info" onClick={() => handleProfileTabChange('vitals')}>
+            <span className="pp-kpi__icon"><FiActivity size={18} /></span>
+            <span className="pp-kpi__label">Latest vitals</span>
+            <span className="pp-kpi__value">{latestDisplayedVitals.bp || '—'}<span style={{ fontSize: 13, fontWeight: 600, color: 'var(--pp-ink-3)', marginLeft: 6 }}>{latestDisplayedVitals.spo2 ? `· SpO₂ ${latestDisplayedVitals.spo2}` : ''}</span></span>
+            <span className="pp-kpi__hint">{latestVitalSummary}</span>
+          </button>
+          <button type="button" className="pp-kpi" onClick={() => setTab('medications')}>
+            <span className="pp-kpi__icon"><FiFileText size={18} /></span>
+            <span className="pp-kpi__label">Active medications</span>
+            <span className="pp-kpi__value">{activeMedicationRecords.length}</span>
+            <span className="pp-kpi__hint">{medicationOralCount > 0 ? `${medicationOralCount} oral` : 'No oral meds'}{medicationReminderCount > 0 ? ` · ${medicationReminderCount} reminders` : ''}</span>
+          </button>
+          <button type="button" className={`pp-kpi${flags.length > 0 && flags[0].status !== 'ok' ? ' pp-kpi--danger' : ''}`} onClick={() => setTab('clinical')}>
+            <span className="pp-kpi__icon"><FiAlertTriangle size={18} /></span>
+            <span className="pp-kpi__label">Clinical flags</span>
+            <span className="pp-kpi__value">{flags.length > 0 && flags[0].status !== 'ok' ? flags.length : 0}</span>
+            <span className="pp-kpi__hint">{flags[0]?.label || 'No active flags'}</span>
+          </button>
+        </section>
+
+        {/* ═══ About / Highlights / Quick access ═══ */}
+        <section className="pp-about-grid">
+          <div className="pp-card-v2">
+            <div className="pp-card-v2__header">
+              <span className="pp-card-v2__title">Profile details</span>
+              <button type="button" className="pp-card-v2__action" onClick={() => setShowUpdateModal(true)}>Edit</button>
+            </div>
+            <div className="pp-detail-grid">
+              {patientProfileDetails.map((item) => (
+                <div key={item.label} className="pp-detail-item">
+                  <span>{item.label}</span>
+                  <strong>{item.value}</strong>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="pp-card-v2">
+            <div className="pp-card-v2__header">
+              <span className="pp-card-v2__title">Care highlights</span>
+              <button type="button" className="pp-card-v2__action" onClick={() => setTab('clinical')}>Clinical view</button>
+            </div>
+            <div className="pp-highlight-list">
+              {patientHighlights.map((item, index) => (
+                <div key={`${item}-${index}`} className="pp-highlight-item">{item}</div>
+              ))}
+            </div>
+          </div>
+
+          <div className="pp-card-v2 patient-profile-quick-access-card">
+            <div className="pp-card-v2__header">
+              <span className="pp-card-v2__title">Quick access</span>
+              <button type="button" className="pp-card-v2__action" onClick={() => setTab('chart')}>Open summary</button>
+            </div>
+            <div className="pp-quick-list">
+              {[
+                { key: 'vitals', label: 'Vitals Records', hint: latestVitalSummary, icon: <FiThermometer size={14} /> },
+                { key: 'medications', label: 'Medication List', hint: `${activeMedicationRecords.length} active items`, icon: <FiFileText size={14} /> },
+                { key: 'notes', label: 'Nurse Notes', hint: `${nurseNotes.length} entries recorded`, icon: <FiEdit2 size={14} /> },
+              ].map((item) => (
+                <button key={item.key} type="button" className="pp-quick-item" onClick={() => handleProfileTabChange(item.key)}>
+                  <span className="pp-quick-item__icon">{item.icon}</span>
+                  <span className="pp-quick-item__content">
+                    <strong>{item.label}</strong>
+                    <small>{item.hint}</small>
+                  </span>
+                  <FiChevronRight size={14} style={{ marginLeft: 'auto', color: 'var(--pp-ink-4)' }} />
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
 
         <div className="kh-card nurse-profile-board">
           <div className="nurse-profile-tabs">
             {TABS.map((item) => (
-              <button key={item.key} type="button" onClick={() => setTab(item.key)} className={`nurse-profile-tab${tab === item.key ? ' active' : ''}`}>
+              <button key={item.key} type="button" onClick={() => handleProfileTabChange(item.key)} className={`nurse-profile-tab${tab === item.key || (item.key === 'vitals' && showVitalsMegaModal) || (item.key === 'notes' && showNotesMegaModal) ? ' active' : ''}`}>
                 {item.icon} {item.label}
                 {item.key !== 'chart' && <span className="nurse-profile-tab__dot is-ready" />}
               </button>
@@ -2925,18 +3816,28 @@ export default function PatientProfile() {
           <div className="col-lg-4">
             <Panel title="Latest Vitals"
               variant="summary"
-              action={<span style={{ fontSize: 10.5, color: 'var(--kh-text-muted)' }}>On admission</span>}
+              action={(
+                <span style={{ fontSize: 10.5, color: 'var(--kh-text-muted)' }}>
+                  {latestRecordedVital
+                    ? `Recorded ${latestRecordedVital.date}${latestRecordedVital.time ? ` at ${latestRecordedVital.time}` : ''}`
+                    : hasInitialVitalsData ? 'On admission' : 'No reading'}
+                </span>
+              )}
             >
-              {hasInitialVitalsData ? (
-                <div className="row g-2">
-                  <div className="col-6"><VitalTile label="Blood Pressure" value={p.vitals.bp} flag={parseInt(p.vitals.bp, 10) >= 140} /></div>
-                  <div className="col-6"><VitalTile label="Blood Sugar" value={p.vitals.sugar} flag={parseFloat(p.vitals.sugar) > 7} showFlagBorder={false} /></div>
-                  <div className="col-6"><VitalTile label="SPO2" value={p.vitals.spo2} /></div>
-                  <div className="col-6"><VitalTile label="Pulse" value={p.vitals.pulse ? `${p.vitals.pulse} bpm` : ''} /></div>
-                  <div className="col-6"><VitalTile label="Temperature" value={p.vitals.temp} /></div>
-                  <div className="col-6"><VitalTile label="Weight" value={p.vitals.weight} /></div>
+              {latestVitalLoading && !latestRecordedVital ? (
+                <div style={{ padding: '12px 4px', fontSize: 12.5, color: 'var(--kh-text-muted)' }}>
+                  Loading latest vitals…
                 </div>
-              ) : <NoDataState text="No initial vitals data is available for this patient." />}
+              ) : (latestRecordedVital || hasInitialVitalsData) ? (
+                <div className="row g-2">
+                  <div className="col-6"><VitalTile label="Blood Pressure" value={latestDisplayedVitals.bp} flag={parseInt(latestDisplayedVitals.bp, 10) >= 140} /></div>
+                  <div className="col-6"><VitalTile label="Blood Sugar" value={latestDisplayedVitals.sugar} flag={parseFloat(latestDisplayedVitals.sugar) > 7} showFlagBorder={false} /></div>
+                  <div className="col-6"><VitalTile label="SPO2" value={latestDisplayedVitals.spo2} /></div>
+                  <div className="col-6"><VitalTile label="Pulse" value={latestDisplayedVitals.pulse ? `${latestDisplayedVitals.pulse} bpm` : ''} /></div>
+                  <div className="col-6"><VitalTile label="Temperature" value={latestDisplayedVitals.temp} /></div>
+                  <div className="col-6"><VitalTile label="Weight" value={latestDisplayedVitals.weight} /></div>
+                </div>
+              ) : <NoDataState text="No vitals data is available for this patient yet." />}
             </Panel>
 
             <Panel title="Current Medications" variant="summary">
@@ -3063,140 +3964,248 @@ export default function PatientProfile() {
       )}
 
       {/* ═══ VITALS ═══ */}
-      {tab === 'vitals' && (
-        <div className="row g-3">
-          {/* ── Vitals Header ── */}
-          <div className="col-lg-12">
-            <div className="d-flex align-items-center justify-content-between">
-              <div className="d-flex align-items-center gap-2">
-                <span style={{ color: '#45B6FE', display: 'flex' }}><FiActivity size={15} /></span>
-                <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--kh-text)' }}>Vitals</span>
-                <span style={{ fontSize: 11.5, color: 'var(--kh-text-muted)', marginLeft: 4 }}>
-                  {vitalRecords.length > 0 ? `Last updated: ${vitalRecords[0].date} at ${vitalRecords[0].time}` : `Admission: ${p.enrolled}`}
-                </span>
+      {showVitalsMegaModal && (
+        <div
+          className="patient-vitals-mega-modal"
+          onClick={() => { if (!showVitalForm) setShowVitalsMegaModal(false); }}
+        >
+          <div
+            className="patient-vitals-mega-modal__panel"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Patient vitals records"
+          >
+            <div className="patient-vitals-mega-modal__header">
+              <div className="patient-vitals-mega-modal__header-copy">
+                <span className="patient-vitals-mega-modal__eyebrow">Patient vitals</span>
+                <div className="patient-vitals-mega-modal__title-row">
+                  <span className="patient-vitals-mega-modal__title-icon"><FiActivity size={20} /></span>
+                  <div>
+                    <h3>Vitals Records</h3>
+                    <p>{vitalRecords.length > 0 ? `Last updated on ${vitalRecords[0].date} at ${vitalRecords[0].time}.` : `Admission baseline captured on ${p.enrolled}.`} Review trends and add new readings from one place.</p>
+                  </div>
+                </div>
               </div>
-              <button onClick={() => setShowVitalForm(true)} style={{
-                padding: '8px 18px', fontSize: 12.5, fontWeight: 700, borderRadius: 2, cursor: 'pointer',
-                background: '#45B6FE', color: '#fff', border: 'none',
-                display: 'flex', alignItems: 'center', gap: 5,
-              }}>
-                <FiPlus size={14} /> Add Vital Record
-              </button>
+              <div className="patient-vitals-mega-modal__actions">
+                <button type="button" className="patient-vitals-mega-modal__add-btn" onClick={() => { setEditingVitalId(null); setShowVitalForm(true); }}>
+                  <FiPlus size={14} /> Add Vital Record
+                </button>
+                <button type="button" className="patient-vitals-mega-modal__close" onClick={() => setShowVitalsMegaModal(false)}>
+                  <FiX size={14} />
+                </button>
+              </div>
             </div>
-          </div>
 
-          {/* ── Add New Vital Record Modal ── */}
+            <div className="patient-vitals-mega-modal__body">
+
+          {/* ── Add / Edit Vital Record Modal ── */}
           {showVitalForm && (
             <div
-              style={{
-                position: 'fixed',
-                inset: 0,
-                background: 'rgba(15, 23, 42, 0.45)',
-                zIndex: 1700,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: 16,
-              }}
-              onClick={() => setShowVitalForm(false)}
+              className="patient-vital-modal"
+              onClick={closeVitalForm}
             >
               <div
-                style={{
-                  width: 'min(1100px, 96vw)',
-                  maxHeight: '90vh',
-                  overflowY: 'auto',
-                  background: '#fff',
-                  border: '1px solid #e5e7eb',
-                  borderRadius: 8,
-                  boxShadow: '0 24px 60px rgba(15, 23, 42, 0.24)',
-                }}
+                className="patient-vital-modal__panel"
                 onClick={(e) => e.stopPropagation()}
                 role="dialog"
                 aria-modal="true"
-                aria-label="Add vital record"
+                aria-label={editingVitalId ? 'Edit vital record' : 'Add vital record'}
               >
-                <div style={{
-                  padding: '12px 18px', borderBottom: '1px solid #f3f4f6', display: 'flex',
-                  alignItems: 'center', justifyContent: 'space-between',
-                  background: '#F0F7FE', borderLeft: '3px solid #45B6FE',
-                }}>
-                  <div className="d-flex align-items-center gap-2">
-                    <span style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#2E7DB8' }}>Record New Vitals</span>
+                <div className="patient-vital-modal__header">
+                  <div className="patient-vital-modal__header-copy">
+                    <span className="patient-vital-modal__eyebrow">{editingVitalId ? 'Update reading' : 'Vitals capture'}</span>
+                    <div className="patient-vital-modal__title-row">
+                      <span className="patient-vital-modal__title-icon">
+                        <FiActivity size={20} />
+                      </span>
+                      <div>
+                        <h3>{editingVitalId ? 'Update Vital Record' : 'Record New Vitals'}</h3>
+                        <p>
+                          {editingVitalId
+                            ? `Adjust the measurements or notes for this reading recorded for ${p.name}. Changes sync to the patient timeline immediately.`
+                            : `Capture the latest measurements and observations for ${p.name}. Saved records sync to the patient timeline immediately.`}
+                        </p>
+                      </div>
+                    </div>
                   </div>
-                  <button onClick={() => setShowVitalForm(false)}
-                    style={{ background: 'none', border: '1px solid #A8D8FC', borderRadius: 2, padding: '4px 6px', cursor: 'pointer', color: '#45B6FE', display: 'flex' }}>
+                  <button
+                    onClick={closeVitalForm}
+                    disabled={savingVital}
+                    type="button"
+                    className="patient-vital-modal__close"
+                  >
                     <FiX size={14} />
                   </button>
                 </div>
-                <div style={{ padding: '16px 18px' }}>
-                  {/* Date/Time/Nurse row */}
-                  <div style={{ display: 'grid', gap: 10, marginBottom: 14 }}>
-                    <div>
-                      <label style={{ display: 'block', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text-muted)', marginBottom: 4 }}>Date *</label>
-                      <input type="date" value={vitalForm.date} onChange={e => setVitalForm(f => ({ ...f, date: e.target.value }))}
-                        style={{ width: '100%', padding: '8px 12px', fontSize: 13, fontWeight: 500, border: '1px solid #d1d5db', borderRadius: 2, background: '#fff', color: 'var(--kh-text)' }} />
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text-muted)', marginBottom: 4 }}>Time *</label>
-                      <input type="time" value={vitalForm.time} onChange={e => setVitalForm(f => ({ ...f, time: e.target.value }))}
-                        style={{ width: '100%', padding: '8px 12px', fontSize: 13, fontWeight: 500, border: '1px solid #d1d5db', borderRadius: 2, background: '#fff', color: 'var(--kh-text)' }} />
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text-muted)', marginBottom: 4 }}>Recorded By</label>
-                      <input value={vitalForm.recordedBy} onChange={e => setVitalForm(f => ({ ...f, recordedBy: e.target.value }))} placeholder="Nurse name"
-                        style={{ width: '100%', padding: '8px 12px', fontSize: 13, fontWeight: 500, border: '1px solid #d1d5db', borderRadius: 2, background: '#fff', color: 'var(--kh-text)' }} />
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text-muted)', marginBottom: 4 }}>Notes</label>
-                      <input value={vitalForm.notes} onChange={e => setVitalForm(f => ({ ...f, notes: e.target.value }))} placeholder="Additional notes..."
-                        style={{ width: '100%', padding: '8px 12px', fontSize: 13, fontWeight: 500, border: '1px solid #d1d5db', borderRadius: 2, background: '#fff', color: 'var(--kh-text)' }} />
-                    </div>
-                  </div>
-
-                  {/* Vital fields */}
-                  <div style={{ display: 'grid', gap: 10, marginBottom: 14 }}>
-                    {[
-                      { key: 'bp', label: 'Blood Pressure', placeholder: 'e.g. 130/85' },
-                      { key: 'sugar', label: 'Blood Sugar', placeholder: 'e.g. 6.5 mmol/L' },
-                      { key: 'spo2', label: 'SPO₂', placeholder: 'e.g. 97%' },
-                      { key: 'pulse', label: 'Pulse', placeholder: 'e.g. 78' },
-                      { key: 'temp', label: 'Temperature', placeholder: 'e.g. 36.6°C' },
-                      { key: 'resp', label: 'Respiration', placeholder: 'e.g. 18' },
-                      { key: 'weight', label: 'Weight', placeholder: 'e.g. 82 kg' },
-                      { key: 'urinalysis', label: 'Urinalysis', placeholder: 'e.g. Normal' },
-                    ].map((field, i) => (
-                      <div key={i}>
-                        <label style={{ display: 'block', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text-muted)', marginBottom: 4 }}>
-                          {field.label}
-                        </label>
-                        <input value={vitalForm[field.key]} onChange={e => setVitalForm(f => ({ ...f, [field.key]: e.target.value }))} placeholder={field.placeholder}
-                          style={{ width: '100%', padding: '8px 12px', fontSize: 13, fontWeight: 600, border: '1px solid #d1d5db', borderRadius: 2, background: '#fff', color: 'var(--kh-text)' }} />
+                <div className="patient-vital-modal__body">
+                  <div className="patient-vital-modal__layout">
+                    <div className="patient-vital-modal__main">
+                      <div className="patient-vital-modal__section">
+                        <div className="patient-vital-modal__section-header">
+                          <div>
+                            <div className="patient-vital-modal__section-title">Recording details</div>
+                            <div className="patient-vital-modal__section-copy">Add when the reading was taken and who recorded it.</div>
+                          </div>
+                          <span className="patient-vital-modal__pill">Required context</span>
+                        </div>
+                        <div className="patient-vital-modal__grid patient-vital-modal__grid--meta">
+                          <div className="patient-vital-modal__field">
+                            <label className="patient-vital-modal__label">Date *</label>
+                            <input
+                              className="patient-vital-modal__input"
+                              type="date"
+                              value={vitalForm.date}
+                              onChange={e => setVitalForm(f => ({ ...f, date: e.target.value }))}
+                            />
+                          </div>
+                          <div className="patient-vital-modal__field">
+                            <label className="patient-vital-modal__label">Time *</label>
+                            <input
+                              className="patient-vital-modal__input"
+                              type="time"
+                              value={vitalForm.time}
+                              onChange={e => setVitalForm(f => ({ ...f, time: e.target.value }))}
+                            />
+                          </div>
+                          <div className="patient-vital-modal__field patient-vital-modal__field--wide">
+                            <label className="patient-vital-modal__label">Recorded By</label>
+                            <select
+                              className="patient-vital-modal__input"
+                              value={vitalForm.recordedBy}
+                              onChange={e => setVitalForm(f => ({ ...f, recordedBy: e.target.value }))}
+                              disabled={vitalNursesLoading}
+                            >
+                              <option value="">
+                                {vitalNursesLoading ? 'Loading nurses...' : 'Select a nurse'}
+                              </option>
+                              {vitalNurseOptions.map((nurseOption) => (
+                                <option key={nurseOption.id} value={nurseOption.name}>{nurseOption.name}</option>
+                              ))}
+                              {!vitalNurseOptions.some((nurseOption) => nurseOption.name === currentUserName) && currentUserName ? (
+                                <option value={currentUserName}>{currentUserName}</option>
+                              ) : null}
+                              {!vitalNurseOptions.some((nurseOption) => nurseOption.name === p?.nurse) && p?.nurse ? (
+                                <option value={p.nurse}>{p.nurse}</option>
+                              ) : null}
+                            </select>
+                            {vitalNursesError && (
+                              <div className="patient-vital-modal__section-copy">{vitalNursesError}</div>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                    ))}
+
+                      <div className="patient-vital-modal__section">
+                        <div className="patient-vital-modal__section-header">
+                          <div>
+                            <div className="patient-vital-modal__section-title">Vital measurements</div>
+                            <div className="patient-vital-modal__section-copy">Enter the latest readings captured for this patient.</div>
+                          </div>
+                        </div>
+                        <div className="patient-vital-modal__grid">
+                          {[
+                            { key: 'bp', label: 'Blood Pressure', placeholder: 'e.g. 130/85' },
+                            { key: 'sugar', label: 'Blood Sugar', placeholder: 'e.g. 6.5 mmol/L' },
+                            { key: 'spo2', label: 'SPO₂', placeholder: 'e.g. 97%' },
+                            { key: 'pulse', label: 'Pulse', placeholder: 'e.g. 78 bpm' },
+                            { key: 'temp', label: 'Temperature', placeholder: 'e.g. 36.6°C' },
+                            { key: 'resp', label: 'Respiration', placeholder: 'e.g. 18' },
+                            { key: 'weight', label: 'Weight', placeholder: 'e.g. 82 kg' },
+                            { key: 'urinalysis', label: 'Urinalysis', placeholder: 'e.g. Normal' },
+                          ].map((field) => (
+                            <div key={field.key} className="patient-vital-modal__field">
+                              <label className="patient-vital-modal__label">{field.label}</label>
+                              <input
+                                className="patient-vital-modal__input"
+                                value={vitalForm[field.key]}
+                                onChange={e => setVitalForm(f => ({ ...f, [field.key]: e.target.value }))}
+                                placeholder={field.placeholder}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="patient-vital-modal__section">
+                        <div className="patient-vital-modal__section-header patient-vital-modal__section-header--compact">
+                          <div>
+                            <div className="patient-vital-modal__section-title">Clinical notes</div>
+                            <div className="patient-vital-modal__section-copy">Optional observations to support the measurements recorded.</div>
+                          </div>
+                        </div>
+                        <div className="patient-vital-modal__field">
+                          <label className="patient-vital-modal__label">Notes</label>
+                          <textarea
+                            className="patient-vital-modal__textarea"
+                            value={vitalForm.notes}
+                            onChange={e => setVitalForm(f => ({ ...f, notes: e.target.value }))}
+                            placeholder="Add any relevant patient observation or escalation note..."
+                            rows={4}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <aside className="patient-vital-modal__aside">
+                      <div className="patient-vital-modal__summary-card">
+                        <div className="patient-vital-modal__summary-title">Summary</div>
+                        <div className="patient-vital-modal__summary-copy">Review the key details before saving this record.</div>
+                        <div className="patient-vital-modal__summary-list">
+                          <div>
+                            <span>Patient</span>
+                            <strong>{p.name}</strong>
+                          </div>
+                          <div>
+                            <span>Recorded On</span>
+                            <strong>{vitalForm.date || 'Select date'} {vitalForm.time ? `at ${vitalForm.time}` : ''}</strong>
+                          </div>
+                          <div>
+                            <span>Captured By</span>
+                            <strong>{vitalForm.recordedBy || 'Not provided yet'}</strong>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="patient-vital-modal__summary-card patient-vital-modal__summary-card--soft">
+                        <div className="patient-vital-modal__summary-title">Tips</div>
+                        <div className="patient-vital-modal__tip-list">
+                          <div>Use the `systolic/diastolic` format for blood pressure.</div>
+                          <div>Include units where helpful for blood sugar, temperature, and weight.</div>
+                          <div>Add notes when readings are unusual or need follow-up.</div>
+                        </div>
+                      </div>
+                    </aside>
                   </div>
 
-                  {/* Submit row */}
-                  <div className="d-flex justify-content-end gap-2">
-                    <button onClick={() => setShowVitalForm(false)} style={{
-                      padding: '8px 20px', fontSize: 12.5, fontWeight: 700, borderRadius: 2, cursor: 'pointer',
-                      background: '#fff', color: 'var(--kh-text-muted)', border: '1px solid #d1d5db',
-                    }}>Cancel</button>
-                    <button onClick={handleAddVital} style={{
-                      padding: '8px 20px', fontSize: 12.5, fontWeight: 700, borderRadius: 2, cursor: 'pointer',
-                      background: '#45B6FE', color: '#fff', border: 'none',
-                      opacity: (!vitalForm.bp && !vitalForm.sugar && !vitalForm.pulse && !vitalForm.temp && !vitalForm.spo2 && !vitalForm.resp && !vitalForm.weight) ? 0.5 : 1,
-                    }}>
-                      Save Vital Record
+                  <div className="patient-vital-modal__footer">
+                    <button
+                      onClick={closeVitalForm}
+                      disabled={savingVital}
+                      type="button"
+                      className="patient-vital-modal__btn patient-vital-modal__btn--secondary"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleAddVital}
+                      disabled={savingVital}
+                      type="button"
+                      className="patient-vital-modal__btn patient-vital-modal__btn--primary"
+                    >
+                      {savingVital
+                        ? (editingVitalId ? 'Updating...' : 'Saving...')
+                        : (editingVitalId ? 'Update Vital Record' : 'Save Vital Record')}
                     </button>
                   </div>
+                  {!!vitalSaveError && <div className="patient-vital-modal__error">{vitalSaveError}</div>}
                 </div>
               </div>
             </div>
           )}
 
           {/* ── Vitals History Table ── */}
-          <div className="col-lg-12">
-            <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 5, overflow: 'hidden' }}>
+            <div className="patient-vitals-mega-modal__table-card">
               <div style={{
                 padding: '12px 18px', borderBottom: '1px solid #f3f4f6', display: 'flex',
                 alignItems: 'center', justifyContent: 'space-between',
@@ -3212,7 +4221,7 @@ export default function PatientProfile() {
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr style={{ background: '#F0F7FE' }}>
-                      {['Date & Time', 'BP', 'Sugar', 'SPO₂', 'Pulse', 'Temp', 'Resp', 'Weight', 'Recorded By', ''].map((h, i) => (
+                      {['Date & Time', 'BP', 'Sugar', 'SPO₂', 'Pulse', 'Temp', 'Resp', 'Weight', 'Recorded By', 'Actions'].map((h, i) => (
                         <th key={i} style={{
                           padding: '10px 12px', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase',
                           letterSpacing: '0.5px', color: '#45B6FE', borderBottom: '2px solid #45B6FE',
@@ -3224,8 +4233,8 @@ export default function PatientProfile() {
                   <tbody>
                     {/* Added vital records */}
                     {vitalRecords.map((r, idx) => (
-                      <>
-                        <tr key={r.id}
+                      <Fragment key={r.id}>
+                        <tr
                           style={{ background: idx % 2 === 0 ? 'transparent' : '#fafbfc', borderBottom: '1px solid #f3f4f6', cursor: 'pointer', transition: 'background 0.15s' }}
                           onClick={() => setExpandedVital(expandedVital === r.id ? null : r.id)}
                           onMouseEnter={e => e.currentTarget.style.background = '#F0F7FE'}
@@ -3233,7 +4242,20 @@ export default function PatientProfile() {
                         >
                           <td style={{ padding: '10px 12px' }}>
                             <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--kh-text)' }}>{r.date}</div>
-                            <div style={{ fontSize: 11, color: 'var(--kh-text-muted)' }}>{r.time}</div>
+                            <div style={{ fontSize: 11, color: 'var(--kh-text-muted)', marginBottom: 4 }}>{r.time}</div>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); startEditVital(r); }}
+                              title="Edit this vital record"
+                              style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 4,
+                                background: '#2E7DB8', border: '1px solid #2E7DB8',
+                                color: '#fff', cursor: 'pointer',
+                                padding: '4px 9px', borderRadius: 4,
+                                fontSize: 11, fontWeight: 700, lineHeight: 1, letterSpacing: '0.3px',
+                              }}
+                            >
+                              <FiEdit2 size={11} /> Edit
+                            </button>
                           </td>
                           <td style={{ padding: '10px 12px' }}>
                             {r.bp ? <span style={{ fontSize: 12.5, fontWeight: 700, color: isVitalFlagged('bp', r.bp) ? '#ef4444' : 'var(--kh-text)' }}>{r.bp}</span> : <span style={{ color: '#d1d5db' }}>—</span>}
@@ -3256,21 +4278,46 @@ export default function PatientProfile() {
                           <td style={{ padding: '10px 12px' }}>
                             {r.weight ? <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--kh-text)' }}>{r.weight}</span> : <span style={{ color: '#d1d5db' }}>—</span>}
                           </td>
-                          <td style={{ padding: '10px 12px', fontSize: 12, color: 'var(--kh-text-muted)', fontWeight: 500 }}>{r.recordedBy || '—'}</td>
                           <td style={{ padding: '10px 12px' }}>
-                            <div className="d-flex align-items-center gap-1">
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                              <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--kh-text)' }}>{r.recordedBy || '—'}</span>
+                              <span style={{ fontSize: 10.5, color: 'var(--kh-text-muted)' }}>{p?.nurse || 'No nurse assigned'}</span>
+                            </div>
+                          </td>
+                          <td style={{ padding: '10px 12px' }}>
+                            <div className="d-flex align-items-center gap-2">
                               <span style={{ display: 'flex', color: '#45B6FE', cursor: 'pointer' }} title="Expand">
                                 {expandedVital === r.id ? <FiChevronDown size={14} /> : <FiChevronRight size={14} />}
                               </span>
-                              <button onClick={(e) => { e.stopPropagation(); deleteVitalRecord(r.id); }} style={{
-                                background: 'none', border: 'none', cursor: 'pointer', color: '#dc2626', display: 'flex', padding: 2,
-                              }} title="Delete record"><FiX size={14} /></button>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); startEditVital(r); }}
+                                title="Edit this vital record"
+                                style={{
+                                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                                  background: '#EAF4FE', border: '1px solid #BBDDFB',
+                                  color: '#1F5A8B', cursor: 'pointer',
+                                  padding: '4px 10px', borderRadius: 4,
+                                  fontSize: 11.5, fontWeight: 700, lineHeight: 1,
+                                }}
+                              >
+                                <FiEdit2 size={12} /> Edit
+                              </button>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); deleteVitalRecord(r.id); }}
+                                title="Delete this vital record"
+                                style={{
+                                  background: 'none', border: 'none', cursor: 'pointer',
+                                  color: '#dc2626', display: 'flex', padding: 2,
+                                }}
+                              >
+                                <FiX size={14} />
+                              </button>
                             </div>
                           </td>
                         </tr>
                         {/* Expanded detail row */}
                         {expandedVital === r.id && (
-                          <tr key={`exp-${r.id}`}>
+                          <tr>
                             <td colSpan={10} style={{ padding: 0, background: '#f9fafb' }}>
                               <div style={{ padding: '12px 18px', borderBottom: '2px solid #e5e7eb' }}>
                                 <div className="d-flex flex-wrap gap-2 mb-2">
@@ -3300,11 +4347,26 @@ export default function PatientProfile() {
                                     <span style={{ fontWeight: 700 }}>Notes:</span> {r.notes}
                                   </div>
                                 )}
+                                <div className="d-flex justify-content-end mt-2">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); startEditVital(r); }}
+                                    style={{
+                                      display: 'inline-flex', alignItems: 'center', gap: 6,
+                                      background: '#2E7DB8', border: '1px solid #2E7DB8',
+                                      color: '#fff', cursor: 'pointer',
+                                      padding: '7px 14px', borderRadius: 4,
+                                      fontSize: 12, fontWeight: 700, letterSpacing: '0.3px',
+                                    }}
+                                  >
+                                    <FiEdit2 size={13} /> Edit Record
+                                  </button>
+                                </div>
                               </div>
                             </td>
                           </tr>
                         )}
-                      </>
+                      </Fragment>
                     ))}
 
                     {/* Admission vitals row (always last) */}
@@ -3347,6 +4409,7 @@ export default function PatientProfile() {
               </div>
             </div>
           </div>
+        </div>
         </div>
       )}
 
@@ -4035,218 +5098,314 @@ export default function PatientProfile() {
         </div>
       )}
 
-      {/* ═══ NURSE NOTES ═══ */}
-      {tab === 'notes' && (
-        <div>
-          {/* Header with Add Note button */}
-          <div style={{
-            background: '#fff', borderRadius: 2, border: '1px solid #e5e7eb',
-            marginBottom: 16, overflow: 'hidden',
-          }}>
-            <div style={{
-              padding: '14px 18px', borderBottom: '1px solid #e5e7eb',
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              borderLeft: '3px solid #45B6FE',
-            }}>
-              <div className="d-flex align-items-center gap-2">
-                <FiEdit2 size={15} style={{ color: '#45B6FE' }} />
-                <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--kh-text)' }}>Nurse Notes</span>
-                <span style={{
-                  fontSize: 11, fontWeight: 700, background: '#45B6FE', color: '#fff',
-                  padding: '2px 8px', borderRadius: 10, marginLeft: 4,
-                }}>{nurseNotes.length}</span>
+      {/* ═══ NURSE NOTES — MEGA MODAL ═══ */}
+      {showNotesMegaModal && (
+        <div
+          className="patient-notes-mega-modal"
+          onClick={() => { if (!savingNote) setShowNotesMegaModal(false); }}
+        >
+          <div
+            className="patient-notes-mega-modal__panel"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Nurse notes"
+          >
+            {/* Modal header */}
+            <div className="patient-notes-mega-modal__header">
+              <div className="patient-notes-mega-modal__header-copy">
+                <span className="patient-notes-mega-modal__eyebrow">Nurse care log</span>
+                <div className="patient-notes-mega-modal__title-row">
+                  <span className="patient-notes-mega-modal__title-icon"><FiEdit2 size={20} /></span>
+                  <div>
+                    <h3>
+                      Nurse Notes
+                      <span className="patient-notes-mega-modal__count">{nurseNotes.length}</span>
+                      {notesLoading && <span className="patient-notes-mega-modal__loading">Loading…</span>}
+                    </h3>
+                    <p>
+                      {notesScope === 'nurse'
+                        ? `All nurse notes you have authored across patients.`
+                        : `Document observations, interventions, and care updates for ${p.name}. Notes sync to the patient timeline immediately.`}
+                    </p>
+                  </div>
+                </div>
               </div>
-              <div className="d-flex align-items-center gap-2">
-                {/* Category filter */}
-                <select
-                  value={noteFilter}
-                  onChange={e => setNoteFilter(e.target.value)}
-                  style={{
-                    fontSize: 12, padding: '6px 10px', borderRadius: 2,
-                    border: '1px solid #d1d5db', color: 'var(--kh-text)', cursor: 'pointer',
-                    background: '#fff',
-                  }}
-                >
-                  <option value="All">All Categories</option>
-                  {NOTE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
+              <div className="patient-notes-mega-modal__actions">
                 <button
-                  onClick={() => setShowNoteForm(!showNoteForm)}
-                  style={{
-                    padding: '7px 16px', fontSize: 12, fontWeight: 700, borderRadius: 2, cursor: 'pointer',
-                    background: showNoteForm ? '#fff' : '#45B6FE',
-                    color: showNoteForm ? '#45B6FE' : '#fff',
-                    border: showNoteForm ? '1px solid #45B6FE' : 'none',
-                    display: 'flex', alignItems: 'center', gap: 5,
+                  type="button"
+                  className="patient-notes-mega-modal__add-btn"
+                  onClick={() => {
+                    if (showNoteForm) {
+                      setShowNoteForm(false);
+                      resetNoteForm();
+                    } else {
+                      resetNoteForm();
+                      setNoteForm((prev) => ({ ...prev, nurse: currentUserName || prev.nurse }));
+                      setShowNoteForm(true);
+                    }
                   }}
                 >
-                  {showNoteForm ? <><FiX size={13} /> Cancel</> : <><FiPlus size={13} /> Add Note</>}
+                  {showNoteForm ? <><FiX size={14} /> Cancel</> : <><FiPlus size={14} /> Add Note</>}
+                </button>
+                <button
+                  type="button"
+                  className="patient-notes-mega-modal__close"
+                  onClick={() => { if (!savingNote) setShowNotesMegaModal(false); }}
+                  aria-label="Close nurse notes"
+                >
+                  <FiX size={14} />
                 </button>
               </div>
             </div>
 
-            {/* Add Note Form */}
-            {showNoteForm && (
-              <div style={{ padding: '18px', background: '#F0F7FE', borderBottom: '1px solid #e5e7eb' }}>
-                <div className="row g-2 mb-3">
-                  <div className="col-md-3">
-                    <label style={{ fontSize: 11, fontWeight: 600, color: '#2E7DB8', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <FiCalendar size={11} /> Date
-                    </label>
-                    <input type="date" value={noteForm.date} onChange={e => setNoteForm({ ...noteForm, date: e.target.value })}
-                      style={{ width: '100%', padding: '8px 10px', fontSize: 12.5, borderRadius: 3, border: '1px solid #d1d5db', background: '#fff' }} />
-                  </div>
-                  <div className="col-md-2">
-                    <label style={{ fontSize: 11, fontWeight: 600, color: '#2E7DB8', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <FiClock size={11} /> Time
-                    </label>
-                    <input type="time" value={noteForm.time} onChange={e => setNoteForm({ ...noteForm, time: e.target.value })}
-                      style={{ width: '100%', padding: '8px 10px', fontSize: 12.5, borderRadius: 3, border: '1px solid #d1d5db', background: '#fff' }} />
-                  </div>
-                  <div className="col-md-3">
-                    <label style={{ fontSize: 11, fontWeight: 600, color: '#2E7DB8', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <FiUser size={11} /> Nurse
-                    </label>
-                    <input type="text" placeholder="Nurse name" value={noteForm.nurse} onChange={e => setNoteForm({ ...noteForm, nurse: e.target.value })}
-                      style={{ width: '100%', padding: '8px 10px', fontSize: 12.5, borderRadius: 3, border: '1px solid #d1d5db', background: '#fff' }} />
-                  </div>
-                  <div className="col-md-2">
-                    <label style={{ fontSize: 11, fontWeight: 600, color: '#2E7DB8', marginBottom: 4 }}>Category</label>
-                    <select value={noteForm.category} onChange={e => setNoteForm({ ...noteForm, category: e.target.value })}
-                      style={{ width: '100%', padding: '8px 10px', fontSize: 12.5, borderRadius: 3, border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer' }}>
-                      {NOTE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                  </div>
-                  <div className="col-md-2">
-                    <label style={{ fontSize: 11, fontWeight: 600, color: '#2E7DB8', marginBottom: 4 }}>Priority</label>
-                    <select value={noteForm.priority} onChange={e => setNoteForm({ ...noteForm, priority: e.target.value })}
-                      style={{ width: '100%', padding: '8px 10px', fontSize: 12.5, borderRadius: 3, border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer' }}>
-                      <option value="Normal">Normal</option>
-                      <option value="High">High</option>
-                      <option value="Urgent">Urgent</option>
-                    </select>
+            {/* Modal body */}
+            <div className="patient-notes-mega-modal__body">
+              {/* Toolbar */}
+              <div className="patient-notes-toolbar">
+                <div className="patient-notes-toolbar__group">
+                  <div className="patient-notes-toolbar__scope">
+                    <button
+                      type="button"
+                      onClick={() => setNotesScope('patient')}
+                      className={`patient-notes-toolbar__scope-btn${notesScope === 'patient' ? ' is-active' : ''}`}
+                    >
+                      <FiUser size={12} /> This patient
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNotesScope('nurse')}
+                      disabled={!currentNurseId}
+                      title={currentNurseId ? 'View all notes I authored' : 'Nurse identity unavailable'}
+                      className={`patient-notes-toolbar__scope-btn${notesScope === 'nurse' ? ' is-active' : ''}${!currentNurseId ? ' is-disabled' : ''}`}
+                    >
+                      <FiClipboard size={12} /> All my notes
+                    </button>
                   </div>
                 </div>
-                <div className="mb-3">
-                  <label style={{ fontSize: 11, fontWeight: 600, color: '#2E7DB8', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <FiEdit2 size={11} /> Note Content
-                  </label>
-                  <textarea
-                    rows={4}
-                    placeholder="Enter detailed nurse note..."
-                    value={noteForm.content}
-                    onChange={e => setNoteForm({ ...noteForm, content: e.target.value })}
-                    style={{
-                      width: '100%', padding: '10px 12px', fontSize: 12.5, borderRadius: 3,
-                      border: '1px solid #d1d5db', background: '#fff', resize: 'vertical',
-                      lineHeight: 1.6,
-                    }}
-                  />
-                </div>
-                <div className="d-flex justify-content-end">
-                  <button onClick={handleAddNote} disabled={!noteForm.content.trim()} style={{
-                    padding: '9px 24px', fontSize: 12.5, fontWeight: 700, borderRadius: 2, cursor: 'pointer',
-                    background: noteForm.content.trim() ? '#45B6FE' : '#d1d5db',
-                    color: '#fff', border: 'none', display: 'flex', alignItems: 'center', gap: 6,
-                  }}>
-                    <FiSend size={13} /> Save Note
+                <div className="patient-notes-toolbar__group">
+                  <select
+                    value={noteFilter}
+                    onChange={e => setNoteFilter(e.target.value)}
+                    className="patient-notes-toolbar__select"
+                  >
+                    <option value="All">All Categories</option>
+                    {NOTE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={loadNurseNotes}
+                    title="Refresh notes"
+                    className="patient-notes-toolbar__icon-btn"
+                  >
+                    <FiRefreshCw size={13} />
                   </button>
                 </div>
               </div>
-            )}
-          </div>
 
-          {/* Notes Timeline */}
-          {filteredNotes.length === 0 ? (
-            <div style={{
-              background: '#fff', borderRadius: 2, border: '1px solid #e5e7eb',
-              padding: '40px 20px', textAlign: 'center',
-            }}>
-              <FiEdit2 size={32} style={{ color: '#d1d5db', marginBottom: 12 }} />
-              <div style={{ fontSize: 13, color: 'var(--kh-text-muted)', fontWeight: 500 }}>
-                {noteFilter !== 'All' ? `No notes found in "${noteFilter}" category` : 'No nurse notes yet'}
-              </div>
-              <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: 4 }}>
-                Click "Add Note" to create the first nurse note for this patient
-              </div>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {filteredNotes.map((note, idx) => (
-                <div key={note.id} style={{
-                  background: '#fff', borderRadius: 2, border: '1px solid #e5e7eb',
-                  overflow: 'hidden', transition: 'box-shadow 0.15s',
-                  borderLeft: `3px solid ${getCategoryColor(note.category)}`,
-                }}>
-                  {/* Note header */}
-                  <div style={{
-                    padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    borderBottom: '1px solid #f3f4f6',
-                  }}>
-                    <div className="d-flex align-items-center gap-2 flex-wrap">
-                      <span style={{
-                        fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 10,
-                        background: getCategoryColor(note.category) + '18',
-                        color: getCategoryColor(note.category),
-                      }}>{note.category}</span>
-                      {note.priority === 'High' && (
-                        <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: '#fef3c7', color: '#d97706' }}>
-                          High Priority
-                        </span>
-                      )}
-                      {note.priority === 'Urgent' && (
-                        <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: '#fee2e2', color: '#dc2626' }}>
-                          Urgent
-                        </span>
-                      )}
-                      {note.pinned && (
-                        <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: '#e0f2fe', color: '#0284c7' }}>
-                          Pinned
-                        </span>
-                      )}
-                      <span style={{ fontSize: 11, color: 'var(--kh-text-muted)' }}>•</span>
-                      <span style={{ fontSize: 11.5, color: 'var(--kh-text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <FiCalendar size={11} /> {note.date}
-                      </span>
-                      <span style={{ fontSize: 11.5, color: 'var(--kh-text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <FiClock size={11} /> {note.time}
-                      </span>
+              {notesError && (
+                <div className="patient-notes-toolbar__error">{notesError}</div>
+              )}
+
+              {/* Add / Edit Note Form */}
+              {showNoteForm && (
+                <div className="patient-notes-form">
+                  {editingNoteId && (
+                    <div className="patient-notes-form__edit-pill">
+                      <FiEdit2 size={11} /> Editing existing note
                     </div>
-                    <div className="d-flex align-items-center gap-1">
-                      <button onClick={() => handlePinNote(note.id)} title={note.pinned ? 'Unpin' : 'Pin'} style={{
-                        background: 'none', border: 'none', cursor: 'pointer', padding: '4px 6px', borderRadius: 2,
-                        color: note.pinned ? '#0284c7' : '#9ca3af', fontSize: 12,
-                      }}>
-                        <FiAlertCircle size={14} />
-                      </button>
-                      <button onClick={() => handleDeleteNote(note.id)} title="Delete note" style={{
-                        background: 'none', border: 'none', cursor: 'pointer', padding: '4px 6px', borderRadius: 2,
-                        color: '#9ca3af', fontSize: 12,
-                      }}>
-                        <FiX size={14} />
-                      </button>
+                  )}
+                  <div className="row g-2 mb-3">
+                    <div className="col-md-3">
+                      <label className="patient-notes-form__label">
+                        <FiCalendar size={11} /> Date
+                      </label>
+                      <input
+                        type="date"
+                        value={noteForm.date}
+                        onChange={e => setNoteForm({ ...noteForm, date: e.target.value })}
+                        className="patient-notes-form__input"
+                      />
+                    </div>
+                    <div className="col-md-2">
+                      <label className="patient-notes-form__label">
+                        <FiClock size={11} /> Time
+                      </label>
+                      <input
+                        type="time"
+                        value={noteForm.time}
+                        onChange={e => setNoteForm({ ...noteForm, time: e.target.value })}
+                        className="patient-notes-form__input"
+                      />
+                    </div>
+                    <div className="col-md-3">
+                      <label className="patient-notes-form__label">
+                        <FiUser size={11} /> Nurse
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Nurse name"
+                        value={noteForm.nurse}
+                        onChange={e => setNoteForm({ ...noteForm, nurse: e.target.value })}
+                        className="patient-notes-form__input"
+                      />
+                    </div>
+                    <div className="col-md-2">
+                      <label className="patient-notes-form__label">Category</label>
+                      <select
+                        value={noteForm.category}
+                        onChange={e => setNoteForm({ ...noteForm, category: e.target.value })}
+                        className="patient-notes-form__input"
+                      >
+                        {NOTE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    </div>
+                    <div className="col-md-2">
+                      <label className="patient-notes-form__label">Priority</label>
+                      <select
+                        value={noteForm.priority}
+                        onChange={e => setNoteForm({ ...noteForm, priority: e.target.value })}
+                        className="patient-notes-form__input"
+                      >
+                        <option value="Normal">Normal</option>
+                        <option value="High">High</option>
+                        <option value="Urgent">Urgent</option>
+                      </select>
                     </div>
                   </div>
-
-                  {/* Note body */}
-                  <div style={{ padding: '14px 16px' }}>
-                    <div style={{ fontSize: 12.5, color: 'var(--kh-text)', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
-                      {note.content}
-                    </div>
-                    <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <div style={{
-                        width: 22, height: 22, borderRadius: '50%', background: '#2E7DB8',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      }}>
-                        <FiUser size={11} style={{ color: '#fff' }} />
-                      </div>
-                      <span style={{ fontSize: 11.5, fontWeight: 600, color: '#2E7DB8' }}>{note.nurse || 'Unknown Nurse'}</span>
-                    </div>
+                  <div className="mb-2">
+                    <label className="patient-notes-form__label">
+                      <FiEdit2 size={11} /> Note Content
+                    </label>
+                    <textarea
+                      rows={5}
+                      placeholder="Enter detailed nurse note. Use new lines to separate paragraphs."
+                      value={noteForm.content}
+                      onChange={e => setNoteForm({ ...noteForm, content: e.target.value })}
+                      className="patient-notes-form__textarea"
+                    />
+                  </div>
+                  {noteSaveError && (
+                    <div className="patient-notes-form__error">{noteSaveError}</div>
+                  )}
+                  <div className="patient-notes-form__footer">
+                    <button
+                      type="button"
+                      onClick={() => { setShowNoteForm(false); resetNoteForm(); }}
+                      disabled={savingNote}
+                      className="patient-notes-form__btn patient-notes-form__btn--secondary"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleAddNote}
+                      disabled={!noteForm.content.trim() || savingNote}
+                      className="patient-notes-form__btn patient-notes-form__btn--primary"
+                    >
+                      <FiSend size={13} />
+                      {savingNote
+                        ? (editingNoteId ? 'Updating…' : 'Saving…')
+                        : (editingNoteId ? 'Update Note' : 'Save Note')}
+                    </button>
                   </div>
                 </div>
-              ))}
+              )}
+
+              {/* Notes Timeline */}
+              {filteredNotes.length === 0 ? (
+                <div className="patient-notes-empty">
+                  <FiEdit2 size={32} className="patient-notes-empty__icon" />
+                  <div className="patient-notes-empty__title">
+                    {notesLoading
+                      ? 'Loading nurse notes…'
+                      : noteFilter !== 'All'
+                        ? `No notes found in "${noteFilter}" category`
+                        : notesScope === 'nurse'
+                          ? 'You have not created any nurse notes yet'
+                          : 'No nurse notes yet for this patient'}
+                  </div>
+                  {!notesLoading && (
+                    <div className="patient-notes-empty__hint">
+                      {notesScope === 'nurse'
+                        ? 'Switch to "This patient" and click "Add Note" to create one.'
+                        : 'Click "Add Note" to create the first nurse note for this patient.'}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="patient-notes-list">
+                  {filteredNotes.map((note) => (
+                    <article
+                      key={note.id}
+                      className="patient-notes-card"
+                      style={{ borderLeftColor: getCategoryColor(note.category) }}
+                    >
+                      <header className="patient-notes-card__header">
+                        <div className="patient-notes-card__chips">
+                          <span
+                            className="patient-notes-card__chip"
+                            style={{ background: getCategoryColor(note.category) + '18', color: getCategoryColor(note.category) }}
+                          >
+                            {note.category}
+                          </span>
+                          {note.priority === 'High' && (
+                            <span className="patient-notes-card__chip patient-notes-card__chip--warn">High Priority</span>
+                          )}
+                          {note.priority === 'Urgent' && (
+                            <span className="patient-notes-card__chip patient-notes-card__chip--danger">Urgent</span>
+                          )}
+                          {note.pinned && (
+                            <span className="patient-notes-card__chip patient-notes-card__chip--pin">Pinned</span>
+                          )}
+                          <span className="patient-notes-card__meta">
+                            <FiCalendar size={11} /> {note.date}
+                          </span>
+                          <span className="patient-notes-card__meta">
+                            <FiClock size={11} /> {note.time}
+                          </span>
+                        </div>
+                        <div className="patient-notes-card__actions">
+                          <button
+                            type="button"
+                            onClick={() => handlePinNote(note.id)}
+                            title={note.pinned ? 'Unpin note' : 'Pin note'}
+                            className={`patient-notes-card__icon-btn${note.pinned ? ' is-pinned' : ''}`}
+                          >
+                            <FiAlertCircle size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => startEditNote(note)}
+                            title="Edit note"
+                            className="patient-notes-card__edit-btn"
+                          >
+                            <FiEdit2 size={11} /> Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteNote(note.id)}
+                            disabled={deletingNoteId === note.id}
+                            title="Delete note"
+                            className="patient-notes-card__icon-btn patient-notes-card__icon-btn--danger"
+                          >
+                            <FiX size={14} />
+                          </button>
+                        </div>
+                      </header>
+                      <div className="patient-notes-card__body">
+                        <div className="patient-notes-card__content">{note.content}</div>
+                        <div className="patient-notes-card__author">
+                          <span className="patient-notes-card__author-avatar"><FiUser size={11} /></span>
+                          <span>{note.nurse || 'Unknown Nurse'}</span>
+                        </div>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </div>
       )}
 
