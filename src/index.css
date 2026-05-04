@@ -11031,3 +11031,506 @@ body.sidebar-resizing {
   line-height: 1.45;
   color: var(--kh-text-muted, #94a3b8);
 }
+
+/* ── Emergency Cases (Clinical) ── */
+.emergency-cases-page {
+  --ec-border: #e2e8f0;
+  --ec-radius: 12px;
+}
+
+.emergency-cases-page .emergency-stats-row {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+@media (max-width: 1199px) {
+  .emergency-cases-page .emergency-stats-row {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 767px) {
+  .emergency-cases-page .emergency-stats-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.emergency-stat-card {
+  background: #fff;
+  border: 1px solid var(--ec-border);
+  border-radius: var(--ec-radius);
+  padding: 14px 16px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  transition: box-shadow 0.15s, border-color 0.15s;
+}
+
+.emergency-stat-card:hover {
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06);
+  border-color: #cbd5e1;
+}
+
+.emergency-stat-card__icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.emergency-stat-card__value {
+  font-size: 1.5rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--kh-text, #0f172a);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.emergency-stat-card__label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--kh-text-muted, #64748b);
+  margin-top: 4px;
+}
+
+.emergency-cases-toolbar {
+  background: #fff;
+  border: 1px solid var(--ec-border);
+  border-radius: var(--ec-radius);
+  overflow: hidden;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.emergency-cases-toolbar__banner {
+  background: linear-gradient(135deg, #b91c1c, #dc2626);
+  padding: 12px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.emergency-cases-toolbar__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #fff;
+  font-weight: 800;
+  font-size: 14px;
+  letter-spacing: -0.02em;
+}
+
+.emergency-cases-toolbar__count {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.emergency-cases-toolbar__body {
+  padding: 14px 18px 16px;
+}
+
+.emergency-type-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.emergency-type-chip {
+  padding: 6px 12px;
+  font-size: 11.5px;
+  font-weight: 700;
+  border-radius: 999px;
+  cursor: pointer;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  color: var(--kh-text-muted, #64748b);
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.emergency-type-chip:hover {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+
+.emergency-type-chip.is-active {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #991b1b;
+}
+
+.emergency-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 14px;
+}
+
+.emergency-search-wrap {
+  flex: 1;
+  min-width: 200px;
+}
+
+.emergency-field-label {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--kh-text-muted, #64748b);
+  margin-bottom: 6px;
+}
+
+.emergency-search-input-wrap {
+  position: relative;
+}
+
+.emergency-search-input {
+  width: 100%;
+  padding: 8px 12px 8px 34px;
+  font-size: 13px;
+  font-weight: 500;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+  color: var(--kh-text, #0f172a);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.emergency-search-input:focus {
+  border-color: #94a3b8;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.2);
+}
+
+.emergency-search-input-wrap .emergency-search-icon {
+  position: absolute;
+  left: 11px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #94a3b8;
+  pointer-events: none;
+}
+
+.emergency-status-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.emergency-status-chip {
+  padding: 7px 12px;
+  font-size: 11.5px;
+  font-weight: 700;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  color: var(--kh-text-muted, #64748b);
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.emergency-status-chip.is-active {
+  background: #0f172a;
+  border-color: #0f172a;
+  color: #fff;
+}
+
+.emergency-clear-filters {
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 8px;
+  cursor: pointer;
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.emergency-layout {
+  display: flex;
+  gap: 16px;
+  min-height: 500px;
+  align-items: flex-start;
+}
+
+@media (max-width: 991px) {
+  .emergency-layout {
+    flex-direction: column;
+  }
+}
+
+.emergency-cases-main {
+  flex: 1;
+  min-width: 0;
+  background: #fff;
+  border: 1px solid var(--ec-border);
+  border-radius: var(--ec-radius);
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.emergency-cases-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(288px, 1fr));
+  gap: 12px;
+  padding: 16px;
+}
+
+.emergency-case-card {
+  text-align: left;
+  border: 1px solid var(--ec-border);
+  border-radius: var(--ec-radius);
+  padding: 14px 16px;
+  background: #fff;
+  cursor: pointer;
+  transition: box-shadow 0.15s, background 0.15s, border-color 0.15s;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+.emergency-case-card:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.08);
+}
+
+.emergency-case-card.is-selected {
+  background: #f8fafc;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.1);
+}
+
+.emergency-case-card__row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.emergency-case-card__id {
+  font-size: 12px;
+  font-weight: 800;
+  color: #b91c1c;
+  letter-spacing: 0.02em;
+}
+
+.emergency-case-card__patient {
+  margin: 0 0 6px;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--kh-text, #0f172a);
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+}
+
+.emergency-case-card__sub {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--kh-text-muted, #64748b);
+  margin-bottom: 10px;
+}
+
+.emergency-case-card__reason {
+  margin: 0 0 12px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: #475569;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.emergency-case-card__footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.emergency-case-card__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 4px 9px;
+  border-radius: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.emergency-case-card__pill--type {
+  background: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+}
+
+.emergency-case-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--kh-text-muted, #64748b);
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.emergency-case-card__meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.emergency-cases-empty {
+  padding: 56px 24px;
+  text-align: center;
+  color: var(--kh-text-muted, #64748b);
+}
+
+.emergency-cases-empty__title {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--kh-text, #334155);
+  margin: 12px 0 4px;
+}
+
+.emergency-cases-empty__hint {
+  font-size: 13px;
+  margin: 0;
+}
+
+@keyframes emergency-cases-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.emergency-cases-loading-icon {
+  animation: emergency-cases-spin 0.9s linear infinite;
+}
+
+.emergency-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px 16px;
+  border-top: 1px solid #f1f5f9;
+  background: #fafafa;
+}
+
+.emergency-pagination__info {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--kh-text-muted, #64748b);
+}
+
+.emergency-pagination__info strong {
+  font-weight: 800;
+  color: #b91c1c;
+}
+
+.emergency-pagination__btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.emergency-page-btn {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+  color: var(--kh-text-muted, #64748b);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.emergency-page-btn:hover:not(:disabled) {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.emergency-page-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.emergency-page-btn.is-current {
+  background: #b91c1c;
+  border-color: #b91c1c;
+  color: #fff;
+  font-weight: 800;
+  font-size: 12px;
+}
+
+.emergency-detail-panel {
+  width: 400px;
+  flex-shrink: 0;
+  background: #fff;
+  border: 1px solid var(--ec-border);
+  border-radius: var(--ec-radius);
+  overflow: auto;
+  max-height: calc(100vh - 260px);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+@media (max-width: 991px) {
+  .emergency-detail-panel {
+    width: 100%;
+    max-height: none;
+  }
+}
+
+.emergency-detail-panel__head {
+  padding: 16px 18px;
+  background: linear-gradient(to bottom, #fff5f5, #fff);
+  border-bottom: 1px solid #fee2e2;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.emergency-detail-panel__body {
+  padding: 16px 18px 24px;
+}
+
+.emergency-detail-close {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 6px 8px;
+  cursor: pointer;
+  color: var(--kh-text-muted, #64748b);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.12s;
+}
+
+.emergency-detail-close:hover {
+  background: #f8fafc;
+}

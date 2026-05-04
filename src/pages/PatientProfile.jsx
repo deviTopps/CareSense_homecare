@@ -1776,6 +1776,8 @@ function collectNurseIdCandidates(raw) {
 
   push(raw.nurseId);
   push(raw.uuid);
+  push(raw.nurseUuid);
+  push(raw.nurse_id);
   push(raw.publicId);
   push(raw.id);
   push(raw.userId);
@@ -1785,15 +1787,35 @@ function collectNurseIdCandidates(raw) {
     push(raw.user.nurseId);
     push(raw.user.id);
     push(raw.user._id);
+    push(raw.user.uuid);
   }
   if (raw.nurse && typeof raw.nurse === 'object') {
     push(raw.nurse.nurseId);
     push(raw.nurse.id);
     push(raw.nurse._id);
+    push(raw.nurse.uuid);
   }
 
   push(raw._id);
   return out;
+}
+
+/** Nurse id for POST /care-plan-checklist/mark — API expects UUID (or Mongo id); avoid email/sub. */
+function resolveNurseIdForCarePlanMark(currentUser, tokenPayload) {
+  const candidates = [];
+  const push = (v) => {
+    if (v == null) return;
+    const s = String(v).trim();
+    if (s && !candidates.includes(s)) candidates.push(s);
+  };
+  for (const c of collectNurseIdCandidates(currentUser || {})) push(c);
+  for (const c of collectNurseIdCandidates(tokenPayload || {})) push(c);
+
+  const uuid = candidates.find(isUuidV4ish);
+  if (uuid) return uuid;
+  const mongo = candidates.find(isLikelyMongoObjectId);
+  if (mongo) return mongo;
+  return '';
 }
 
 /**
@@ -3408,6 +3430,7 @@ export default function PatientProfile() {
   const [savingCarePlan, setSavingCarePlan] = useState(false);
   const [carePlanSaveError, setCarePlanSaveError] = useState('');
   const [carePlanSaveSuccess, setCarePlanSaveSuccess] = useState('');
+  const [carePlanToggleError, setCarePlanToggleError] = useState('');
   const [deletingCarePlanId, setDeletingCarePlanId] = useState(null);
   const [carePlanListExpanded, setCarePlanListExpanded] = useState(false);
 
@@ -3643,18 +3666,70 @@ export default function PatientProfile() {
     if (!item) return;
     const pid = String(effectivePatientId || '').trim();
     if (!pid) return;
-    const nurseId = String(currentNurseId || '').trim();
+    setCarePlanToggleError('');
+    const tokenPayload = parseJwtPayload(getToken());
+    const markNurseId = resolveNurseIdForCarePlanMark(currentUser, tokenPayload);
+    const carePlanIdStr = String(id).trim();
     const next = !item.checked;
     setCarePlanItems((prev) => sortCarePlanItems(prev.map((i) => (String(i.id) === String(id) ? { ...i, checked: next } : i))));
+    const todayIso = new Date().toISOString().slice(0, 10);
+
+    const useCarePlanChecklistMark =
+      Boolean(markNurseId)
+      && !carePlanIdStr.startsWith('cp-')
+      && (isUuidV4ish(pid) || isLikelyMongoObjectId(pid))
+      && (isUuidV4ish(carePlanIdStr) || isLikelyMongoObjectId(carePlanIdStr));
+
+    const runLegacyPatch = async () => {
+      const body = buildCarePlanApiBody(pid, {
+        task: item.task,
+        category: item.category,
+        frequency: item.frequency,
+        priority: item.priority,
+        notes: item.notes,
+      }, { completed: next });
+      let toggleRes = await apiFetch(`/care-plan/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      });
+      if (!toggleRes.ok && toggleRes.status === 404) {
+        toggleRes = await apiFetch(`/care-plans/${encodeURIComponent(id)}`, {
+          method: 'PATCH',
+          body: JSON.stringify(body),
+        });
+      }
+      const legacyText = await toggleRes.text().catch(() => '');
+      let legacyData = {};
+      if (legacyText) {
+        try {
+          legacyData = JSON.parse(legacyText);
+        } catch {
+          legacyData = { message: legacyText };
+        }
+      }
+      if (!toggleRes.ok) {
+        const msg = legacyData?.message || legacyData?.error || legacyText || 'Update failed';
+        throw new Error(typeof msg === 'string' ? msg : 'Update failed.');
+      }
+      const resolvedLegacy = completionFromCarePlanMarkResponse(legacyData);
+      if (resolvedLegacy !== undefined) {
+        setCarePlanItems((prev) =>
+          sortCarePlanItems(
+            prev.map((i) => (String(i.id) === String(id) ? { ...i, checked: resolvedLegacy } : i)),
+          ));
+      }
+    };
+
     try {
-      if (nurseId) {
+      if (useCarePlanChecklistMark) {
+        const markPayload = {
+          patientId: pid,
+          carePlanId: carePlanIdStr,
+          nurseId: markNurseId,
+        };
         const response = await apiFetch('/care-plan-checklist/mark', {
           method: 'POST',
-          body: JSON.stringify({
-            patientId: pid,
-            carePlanId: String(id),
-            nurseId,
-          }),
+          body: JSON.stringify(markPayload),
         });
         const responseText = await response.text().catch(() => '');
         let data = {};
@@ -3665,58 +3740,28 @@ export default function PatientProfile() {
             data = { message: responseText };
           }
         }
+
         if (!response.ok) {
-          const msg = data?.message || data?.error || `Update failed (${response.status}).`;
-          throw new Error(typeof msg === 'string' ? msg : 'Update failed.');
-        }
-        const resolved = completionFromCarePlanMarkResponse(data);
-        if (resolved !== undefined) {
-          setCarePlanItems((prev) =>
-            sortCarePlanItems(
-              prev.map((i) => (String(i.id) === String(id) ? { ...i, checked: resolved } : i)),
-            ));
-        }
-        void fetchDailyChecklist(new Date().toISOString().slice(0, 10));
-      } else {
-        const body = buildCarePlanApiBody(pid, {
-          task: item.task,
-          category: item.category,
-          frequency: item.frequency,
-          priority: item.priority,
-          notes: item.notes,
-        }, { completed: next });
-        let toggleRes = await apiFetch(`/care-plan/${encodeURIComponent(id)}`, {
-          method: 'PATCH',
-          body: JSON.stringify(body),
-        });
-        if (!toggleRes.ok && toggleRes.status === 404) {
-          toggleRes = await apiFetch(`/care-plans/${encodeURIComponent(id)}`, {
-            method: 'PATCH',
-            body: JSON.stringify(body),
-          });
-        }
-        const legacyText = await toggleRes.text().catch(() => '');
-        let legacyData = {};
-        if (legacyText) {
-          try {
-            legacyData = JSON.parse(legacyText);
-          } catch {
-            legacyData = { message: legacyText };
+          await runLegacyPatch();
+        } else {
+          const resolved = completionFromCarePlanMarkResponse(data);
+          if (resolved !== undefined) {
+            setCarePlanItems((prev) =>
+              sortCarePlanItems(
+                prev.map((i) => (String(i.id) === String(id) ? { ...i, checked: resolved } : i)),
+              ));
           }
         }
-        if (!toggleRes.ok) {
-          throw new Error(legacyData?.message || legacyData?.error || legacyText || 'Update failed');
-        }
-        const resolvedLegacy = completionFromCarePlanMarkResponse(legacyData);
-        if (resolvedLegacy !== undefined) {
-          setCarePlanItems((prev) =>
-            sortCarePlanItems(
-              prev.map((i) => (String(i.id) === String(id) ? { ...i, checked: resolvedLegacy } : i)),
-            ));
-        }
-        void fetchDailyChecklist(new Date().toISOString().slice(0, 10));
+      } else {
+        await runLegacyPatch();
       }
-    } catch {
+
+      void fetchDailyChecklist(todayIso);
+      /* Do not await loadCarePlans() here — GET /care-plan/patient may lag behind POST mark/PATCH
+         and would replace the list with stale `completed` flags, making the checkbox snap back. */
+    } catch (err) {
+      const msg = err?.message || 'Could not update this item.';
+      setCarePlanToggleError(msg);
       setCarePlanItems((prev) => sortCarePlanItems(prev.map((i) => (String(i.id) === String(id) ? { ...i, checked: !next } : i))));
     }
   };
@@ -7138,6 +7183,22 @@ export default function PatientProfile() {
               }}
             >
               {carePlanLoadError}
+            </div>
+          )}
+          {!!carePlanToggleError && (
+            <div
+              role="alert"
+              style={{
+                padding: '12px 14px',
+                borderRadius: 10,
+                border: '1px solid #fecaca',
+                background: '#fff7ed',
+                color: '#9a3412',
+                fontSize: 13,
+                fontWeight: 600,
+              }}
+            >
+              {carePlanToggleError}
             </div>
           )}
           {carePlanLoading && carePlanItems.length === 0 && !carePlanLoadError && (
