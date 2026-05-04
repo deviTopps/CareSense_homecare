@@ -9621,8 +9621,174 @@ body.sidebar-resizing {
 .patient-care-plan {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 12px;
   padding: 2px 0 8px;
+}
+
+.patient-care-plan__card {
+  border-radius: 12px;
+  border: 1px solid #dce6ef;
+  background: #fff;
+  box-shadow: 0 4px 18px rgba(15, 23, 42, 0.05);
+  overflow: hidden;
+}
+
+.patient-care-plan__card-bar {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  min-height: 48px;
+  padding: 6px 8px 6px 4px;
+  background: linear-gradient(180deg, #f8fafc 0%, #fff 100%);
+  border-bottom: 1px solid #e8eef2;
+}
+
+.patient-care-plan__card-head-static {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px 14px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+}
+
+.patient-care-plan__card-bar-title {
+  font-size: 0.95rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.patient-care-plan__card-bar-meta {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 2px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--kh-text-muted, #64748b);
+}
+
+.patient-care-plan__card-bar-dot {
+  color: #cbd5e1;
+  padding: 0 2px;
+}
+
+.patient-care-plan__add-btn--toolbar {
+  flex-shrink: 0;
+  align-self: center;
+  padding: 7px 14px;
+  font-size: 12px;
+  min-height: 36px;
+}
+
+.patient-care-plan__list-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border: 1px solid #e8eef2;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fbfcfe;
+}
+
+.patient-care-plan__list-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  background: linear-gradient(180deg, #f8fafc 0%, #fff 100%);
+  cursor: pointer;
+  text-align: left;
+  color: var(--kh-text, #111827);
+  transition: background 0.15s ease;
+}
+
+.patient-care-plan__list-toggle:hover {
+  background: #f1f5f9;
+}
+
+.patient-care-plan__list-chevron {
+  flex-shrink: 0;
+  color: #64748b;
+  transition: transform 0.2s ease;
+}
+
+.patient-care-plan__list-chevron.is-open {
+  transform: rotate(180deg);
+}
+
+.patient-care-plan__list-toggle-label {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.patient-care-plan__list-toggle-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+.patient-care-plan__list-toggle-hint {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: #94a3b8;
+}
+
+.patient-care-plan__list-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0 2px 10px;
+  border-top: 1px solid #eef2f7;
+  background: #fff;
+}
+
+.patient-care-plan__list-panel[hidden] {
+  display: none !important;
+}
+
+.patient-care-plan__card-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 14px 14px;
+}
+
+.patient-care-plan__panel-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--kh-text-muted, #64748b);
+}
+
+.patient-care-plan__card .patient-care-plan__progress-card {
+  padding: 10px 12px;
+}
+
+.patient-care-plan__card .patient-care-plan__progress-track {
+  height: 7px;
+}
+
+.patient-care-plan__card .patient-care-plan__task-inner {
+  padding: 10px 12px;
 }
 
 .patient-care-plan__hero {
@@ -9837,12 +10003,31 @@ body.sidebar-resizing {
   box-shadow: 0 1px 3px rgba(69, 182, 254, 0.25);
 }
 
+.patient-care-plan-form-overlay {
+  align-items: flex-start;
+  justify-content: center;
+  padding: 32px 20px 48px;
+  overflow-y: auto;
+}
+
+.patient-care-plan__modal-shell {
+  width: 100%;
+  max-width: 560px;
+  margin: 0 auto;
+  flex-shrink: 0;
+}
+
 .patient-care-plan__composer {
   border-radius: 12px;
   border: 1px solid #dce6ef;
   background: #fbfcfe;
   overflow: hidden;
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+}
+
+.patient-care-plan__composer--modal {
+  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.18);
+  background: #fff;
 }
 
 .patient-care-plan__composer-head {
@@ -10191,4 +10376,658 @@ body.sidebar-resizing {
 
 .patient-care-plan__footer-pct.is-complete {
   color: #15803d;
+}
+
+/* ── Patient profile: Care Checklist Status tab ── */
+.patient-checklist-status {
+  padding: 0 1px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.patient-checklist-status__hero {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.patient-checklist-status__hero-icon {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #e8f4ff, #f0f9ff);
+  color: #2E7DB8;
+  border: 1px solid #bae6fd;
+}
+
+.patient-checklist-status__hero-text {
+  min-width: 0;
+}
+
+.patient-checklist-status__title {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--kh-text, #111827);
+  line-height: 1.2;
+}
+
+.patient-checklist-status__subtitle {
+  margin: 2px 0 0;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--kh-text-muted, #64748b);
+}
+
+.patient-checklist-status__card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 11px 12px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+/* Date selection — minimal panel */
+.patient-checklist-status__date-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 2px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.patient-checklist-status__date-primary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+}
+
+.patient-checklist-status__date-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--kh-text-muted, #64748b);
+  margin: 0;
+}
+
+.patient-checklist-status__date-input {
+  padding: 6px 10px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  color: var(--kh-text, #0f172a);
+  outline: none;
+  min-width: 0;
+  max-width: 100%;
+  transition: border-color 0.15s;
+}
+
+.patient-checklist-status__date-input:focus {
+  border-color: #94a3b8;
+}
+
+.patient-checklist-status__day-strip {
+  display: flex;
+  gap: 4px;
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 2px;
+  scrollbar-width: thin;
+}
+
+.patient-checklist-status__day-btn {
+  flex: 1 1 0;
+  min-width: 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 6px 2px 7px;
+  margin: 0;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  font: inherit;
+  color: var(--kh-text, #334155);
+  transition: border-color 0.12s, background 0.12s;
+}
+
+.patient-checklist-status__day-btn:hover {
+  border-color: #cbd5e1;
+  background: #fafafa;
+}
+
+.patient-checklist-status__day-btn.is-active {
+  border-color: #64748b;
+  background: #f8fafc;
+  font-weight: 600;
+}
+
+.patient-checklist-status__day-btn.is-muted {
+  opacity: 0.5;
+}
+
+.patient-checklist-status__day-main {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1.2;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.patient-checklist-status__day-btn.is-active .patient-checklist-status__day-main {
+  color: var(--kh-text, #0f172a);
+}
+
+.patient-checklist-status__day-sub {
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--kh-text-muted, #64748b);
+  line-height: 1;
+}
+
+.patient-checklist-status__day-sub.is-empty {
+  font-weight: 500;
+  color: #cbd5e1;
+}
+
+.patient-checklist-status__day-sub.is-full {
+  color: #475569;
+}
+.patient-checklist-status__day-sub.is-mid {
+  color: #9a3412;
+}
+.patient-checklist-status__day-sub.is-low {
+  color: #b91c1c;
+}
+
+.patient-checklist-status__summary {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.patient-checklist-status__summary-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  justify-content: space-between;
+}
+
+.patient-checklist-status__ring {
+  position: relative;
+  width: 58px;
+  height: 58px;
+  flex-shrink: 0;
+}
+
+.patient-checklist-status__ring-svg {
+  display: block;
+}
+
+.patient-checklist-status__ring-track {
+  fill: none;
+  stroke: #f1f5f9;
+  stroke-width: 4;
+}
+
+.patient-checklist-status__ring-fill {
+  fill: none;
+  stroke-width: 4;
+  stroke-linecap: round;
+  transition: stroke-dasharray 0.45s ease;
+}
+
+.patient-checklist-status__ring--complete .patient-checklist-status__ring-fill {
+  stroke: #45B6FE;
+}
+.patient-checklist-status__ring--warn .patient-checklist-status__ring-fill {
+  stroke: #ea580c;
+}
+.patient-checklist-status__ring--low .patient-checklist-status__ring-fill {
+  stroke: #dc2626;
+}
+
+.patient-checklist-status__ring-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.patient-checklist-status__ring--complete .patient-checklist-status__ring-label {
+  color: #2E7DB8;
+}
+.patient-checklist-status__ring--warn .patient-checklist-status__ring-label {
+  color: #c2410c;
+}
+.patient-checklist-status__ring--low .patient-checklist-status__ring-label {
+  color: #dc2626;
+}
+
+.patient-checklist-status__summary-copy {
+  flex: 1;
+  min-width: 140px;
+}
+
+.patient-checklist-status__summary-date {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--kh-text, #0f172a);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.patient-checklist-status__summary-date-sub {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--kh-text-muted, #64748b);
+}
+
+.patient-checklist-status__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
+  border: 1px solid transparent;
+}
+
+.patient-checklist-status__stats {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  justify-content: center;
+  border-top: 1px solid #f1f5f9;
+  padding-top: 10px;
+}
+
+@media (min-width: 640px) {
+  .patient-checklist-status__stats {
+    justify-content: flex-end;
+  }
+}
+
+.patient-checklist-status__stat {
+  text-align: center;
+  min-width: 44px;
+}
+
+.patient-checklist-status__stat-value {
+  display: block;
+  font-size: 1.125rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--kh-text, #111827);
+  line-height: 1.1;
+}
+
+.patient-checklist-status__stat-value--ok {
+  color: #2E7DB8;
+}
+.patient-checklist-status__stat-value--miss {
+  color: #dc2626;
+}
+
+.patient-checklist-status__stat-label {
+  font-size: 9.5px;
+  font-weight: 700;
+  color: var(--kh-text-muted, #64748b);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-top: 2px;
+}
+
+.patient-checklist-status__bar-track {
+  height: 5px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  overflow: hidden;
+}
+
+.patient-checklist-status__bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.45s ease;
+}
+
+.patient-checklist-status__bar-track--complete .patient-checklist-status__bar-fill {
+  background: linear-gradient(90deg, #45B6FE, #2E7DB8);
+}
+.patient-checklist-status__bar-track--warn .patient-checklist-status__bar-fill {
+  background: linear-gradient(90deg, #ea580c, #f59e0b);
+}
+.patient-checklist-status__bar-track--low .patient-checklist-status__bar-fill {
+  background: linear-gradient(90deg, #dc2626, #f87171);
+}
+
+.patient-checklist-status__tasks-card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.patient-checklist-status__tasks-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  background: linear-gradient(to bottom, #f8fafc, #fff);
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.patient-checklist-status__tasks-title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--kh-text, #0f172a);
+}
+
+.patient-checklist-status__tasks-meta {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--kh-text-muted, #64748b);
+  white-space: nowrap;
+}
+
+.patient-checklist-status__task-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.patient-checklist-status__task-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #f1f5f9;
+  background: #fff;
+  transition: background 0.15s;
+}
+
+.patient-checklist-status__task-row:last-child {
+  border-bottom: none;
+}
+
+.patient-checklist-status__task-row.is-done {
+  background: #f8fdfc;
+}
+
+.patient-checklist-status__task-icon {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 0;
+}
+
+.patient-checklist-status__task-icon.is-done {
+  background: linear-gradient(135deg, #45B6FE, #2E7DB8);
+  color: #fff;
+}
+
+.patient-checklist-status__task-icon.is-miss {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.patient-checklist-status__task-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.patient-checklist-status__task-name {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--kh-text, #0f172a);
+}
+
+.patient-checklist-status__task-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.patient-checklist-status__tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+}
+
+.patient-checklist-status__tag--cat {
+  background: #f0f7fe;
+  color: #1e40af;
+  border-color: #bfdbfe;
+}
+
+.patient-checklist-status__tag--freq {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-color: #dbeafe;
+}
+
+.patient-checklist-status__tag--pri {
+  border-style: solid;
+  border-width: 1px;
+}
+
+.patient-checklist-status__task-aside {
+  flex-shrink: 0;
+  text-align: right;
+  max-width: 42%;
+}
+
+@media (max-width: 620px) {
+  .patient-checklist-status__task-row {
+    flex-wrap: wrap;
+  }
+  .patient-checklist-status__task-aside {
+    width: 100%;
+    max-width: none;
+    text-align: left;
+    padding-left: 36px;
+    margin-top: 2px;
+  }
+}
+
+.patient-checklist-status__aside-status {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 800;
+}
+
+.patient-checklist-status__aside-status--ok {
+  color: #2E7DB8;
+}
+.patient-checklist-status__aside-status--miss {
+  color: #dc2626;
+}
+
+.patient-checklist-status__aside-line {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--kh-text-muted, #64748b);
+  margin-top: 2px;
+}
+
+@media (max-width: 620px) {
+  .patient-checklist-status__aside-line {
+    justify-content: flex-start;
+  }
+}
+
+.patient-checklist-status__trend-card {
+  padding: 10px 12px 11px;
+}
+
+.patient-checklist-status__trend-title {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--kh-text, #0f172a);
+}
+
+.patient-checklist-status__trend-chart {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 4px;
+  min-height: 72px;
+  padding-top: 2px;
+}
+
+.patient-checklist-status__trend-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 3px 1px 4px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  transition: background 0.15s;
+}
+
+.patient-checklist-status__trend-col:hover {
+  background: #f8fafc;
+}
+
+.patient-checklist-status__trend-col:focus-visible {
+  outline: 2px solid #45B6FE;
+  outline-offset: 2px;
+}
+
+.patient-checklist-status__trend-col.is-selected {
+  background: #eff6ff;
+}
+
+.patient-checklist-status__trend-pct {
+  font-size: 9px;
+  font-weight: 800;
+  margin-bottom: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.patient-checklist-status__trend-pct--full {
+  color: #2E7DB8;
+}
+.patient-checklist-status__trend-pct--mid {
+  color: #c2410c;
+}
+.patient-checklist-status__trend-pct--low {
+  color: #dc2626;
+}
+.patient-checklist-status__trend-pct--empty {
+  color: #cbd5e1;
+}
+
+.patient-checklist-status__trend-bar {
+  display: block;
+  width: 100%;
+  border-radius: 4px 4px 1px 1px;
+  min-height: 4px;
+  transition: height 0.35s ease, background 0.2s, box-shadow 0.2s;
+}
+
+.patient-checklist-status__trend-bar--full {
+  background: #bae6fd;
+}
+.patient-checklist-status__trend-bar--mid {
+  background: #fde68a;
+}
+.patient-checklist-status__trend-bar--low {
+  background: #fecaca;
+}
+.patient-checklist-status__trend-bar--empty {
+  background: #f1f5f9;
+}
+
+.patient-checklist-status__trend-bar.is-selected {
+  background: #45B6FE !important;
+  box-shadow: 0 0 0 1px #fff, 0 0 0 3px #45B6FE;
+}
+
+.patient-checklist-status__trend-label {
+  font-size: 9px;
+  font-weight: 600;
+  margin-top: 5px;
+  color: var(--kh-text-muted, #64748b);
+}
+
+.patient-checklist-status__trend-col.is-selected .patient-checklist-status__trend-label {
+  color: #2E7DB8;
+  font-weight: 800;
+}
+
+.patient-checklist-status__empty {
+  text-align: center;
+  padding: 28px 16px;
+  background: #fff;
+  border: 1px dashed #e2e8f0;
+  border-radius: 10px;
+}
+
+.patient-checklist-status__empty-icon {
+  color: #e2e8f0;
+  margin-bottom: 8px;
+}
+
+.patient-checklist-status__empty-title {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--kh-text-muted, #64748b);
+}
+
+.patient-checklist-status__empty-hint {
+  margin: 4px 0 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--kh-text-muted, #94a3b8);
 }

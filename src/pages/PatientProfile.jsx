@@ -1405,6 +1405,57 @@ function buildCarePlanApiBody(patientId, form, options = {}) {
   return body;
 }
 
+/** Read completed flag from POST /care-plan-checklist/mark (or similar) JSON when present. */
+function completionFromCarePlanMarkResponse(data) {
+  if (!data || typeof data !== 'object') return undefined;
+  const v =
+    data.completed
+    ?? data.isCompleted
+    ?? data.is_completed
+    ?? data.checked
+    ?? data.isChecked
+    ?? data.data?.completed
+    ?? data.data?.isCompleted
+    ?? data.data?.is_completed
+    ?? data.carePlan?.completed
+    ?? data.carePlan?.isCompleted;
+  if (v === undefined || v === null) return undefined;
+  return Boolean(v);
+}
+
+function extractDailyChecklistList(payload) {
+  if (payload == null) return [];
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.items)) return payload.items;
+  if (Array.isArray(payload?.checklist)) return payload.checklist;
+  if (Array.isArray(payload?.carePlans)) return payload.carePlans;
+  if (Array.isArray(payload?.rows)) return payload.rows;
+  if (Array.isArray(payload?.dailyItems)) return payload.dailyItems;
+  if (typeof payload === 'object' && String(payload.task || '').trim()) return [payload];
+  return [];
+}
+
+function normalizeDailyChecklistRow(raw, index = 0) {
+  const r = raw && typeof raw === 'object' ? raw : {};
+  const id = r.id ?? r._id ?? r.carePlanId ?? `daily-${index}`;
+  const completed = Boolean(
+    r.completed ?? r.isCompleted ?? r.checked ?? r.isChecked ?? r.marked ?? false,
+  );
+  const completedBy = r.completedBy ?? r.nurseName ?? r.markedBy ?? r.nurse?.name ?? null;
+  const completedAt = r.completedAt ?? r.completedTime ?? r.markedAt ?? r.time ?? null;
+  return {
+    id: String(id),
+    task: String(r.task ?? r.title ?? r.name ?? '').trim(),
+    category: String(r.category ?? 'Other').trim() || 'Other',
+    frequency: String(r.frequency ?? 'Daily').trim() || 'Daily',
+    priority: String(r.priority ?? 'Medium').trim() || 'Medium',
+    completed,
+    completedBy: completedBy != null && String(completedBy).trim() ? String(completedBy) : null,
+    completedAt: completedAt != null && String(completedAt).trim() ? String(completedAt) : null,
+  };
+}
+
 /* ── Nurse Notes helpers ── */
 function cleanNoteContent(value) {
   return String(value || '')
@@ -3356,7 +3407,9 @@ export default function PatientProfile() {
   const [carePlanLoadError, setCarePlanLoadError] = useState('');
   const [savingCarePlan, setSavingCarePlan] = useState(false);
   const [carePlanSaveError, setCarePlanSaveError] = useState('');
+  const [carePlanSaveSuccess, setCarePlanSaveSuccess] = useState('');
   const [deletingCarePlanId, setDeletingCarePlanId] = useState(null);
+  const [carePlanListExpanded, setCarePlanListExpanded] = useState(false);
 
   const loadCarePlans = useCallback(async () => {
     const patientIdValue = String(effectivePatientId || '').trim();
@@ -3402,6 +3455,77 @@ export default function PatientProfile() {
   useEffect(() => {
     loadCarePlans();
   }, [loadCarePlans]);
+
+  const [checklistStatusDate, setChecklistStatusDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [dailyChecklistByDate, setDailyChecklistByDate] = useState({});
+
+  const fetchDailyChecklist = useCallback(async (dateStr) => {
+    const pid = String(effectivePatientId || '').trim();
+    const d = String(dateStr || '').trim();
+    if (!pid || !/^\d{4}-\d{2}-\d{2}$/.test(d)) return;
+
+    setDailyChecklistByDate((prev) => ({
+      ...prev,
+      [d]: { ...prev[d], loading: true, error: '' },
+    }));
+
+    try {
+      const path = `/care-plan-checklist/patient/${encodeURIComponent(pid)}/daily?date=${encodeURIComponent(d)}`;
+      const res = await apiFetch(path, { method: 'GET' });
+      const text = await res.text().catch(() => '');
+      let data = {};
+      if (text) {
+        try {
+          data = JSON.parse(text);
+        } catch {
+          data = { message: text };
+        }
+      }
+      if (!res.ok) {
+        if (res.status === 404) {
+          setDailyChecklistByDate((prev) => ({
+            ...prev,
+            [d]: { items: [], loading: false, error: '' },
+          }));
+          return;
+        }
+        const msg = data?.message || data?.error || `Unable to load daily checklist (${res.status}).`;
+        setDailyChecklistByDate((prev) => ({
+          ...prev,
+          [d]: {
+            items: null,
+            loading: false,
+            error: typeof msg === 'string' ? msg : 'Unable to load daily checklist.',
+          },
+        }));
+        return;
+      }
+      const rawList = extractDailyChecklistList(data);
+      const items = rawList.map((row, i) => normalizeDailyChecklistRow(row, i)).filter((row) => row.task);
+      setDailyChecklistByDate((prev) => ({
+        ...prev,
+        [d]: { items, loading: false, error: '' },
+      }));
+    } catch (e) {
+      setDailyChecklistByDate((prev) => ({
+        ...prev,
+        [d]: { items: null, loading: false, error: e?.message || 'Unable to load daily checklist.' },
+      }));
+    }
+  }, [effectivePatientId]);
+
+  useEffect(() => {
+    if (tab !== 'checkliststatus') return;
+    const pid = String(effectivePatientId || '').trim();
+    if (!pid) return;
+    const last7 = Array.from({ length: 7 }, (_, i) => {
+      const x = new Date();
+      x.setDate(x.getDate() - i);
+      return x.toISOString().slice(0, 10);
+    });
+    const dates = [...new Set([...last7, checklistStatusDate])];
+    dates.forEach((dt) => { void fetchDailyChecklist(dt); });
+  }, [tab, effectivePatientId, checklistStatusDate, fetchDailyChecklist]);
 
   const postCarePlanCreate = async (fullBody, patientId) => {
     const pid = encodeURIComponent(patientId);
@@ -3502,10 +3626,12 @@ export default function PatientProfile() {
       } else {
         await postCarePlanCreate(body, pid);
         await loadCarePlans();
+        setCarePlanSaveSuccess(`${carePlanForm.task.trim()} is now on the checklist.`);
       }
       setCarePlanForm({ task: '', category: 'Personal Care', frequency: 'Daily', priority: 'Medium', notes: '' });
       setEditingCarePlan(null);
       setShowCarePlanForm(false);
+      setCarePlanListExpanded(true);
     } catch (error) {
       setCarePlanSaveError(error?.message || 'Could not save care plan item.');
     } finally {
@@ -3517,30 +3643,78 @@ export default function PatientProfile() {
     if (!item) return;
     const pid = String(effectivePatientId || '').trim();
     if (!pid) return;
+    const nurseId = String(currentNurseId || '').trim();
     const next = !item.checked;
     setCarePlanItems((prev) => sortCarePlanItems(prev.map((i) => (String(i.id) === String(id) ? { ...i, checked: next } : i))));
     try {
-      const body = buildCarePlanApiBody(pid, {
-        task: item.task,
-        category: item.category,
-        frequency: item.frequency,
-        priority: item.priority,
-        notes: item.notes,
-      }, { completed: next });
-      const response = await apiFetch(`/care-plan/${encodeURIComponent(id)}`, {
-        method: 'PATCH',
-        body: JSON.stringify(body),
-      });
-      let toggleRes = response;
-      if (!toggleRes.ok && toggleRes.status === 404) {
-        toggleRes = await apiFetch(`/care-plans/${encodeURIComponent(id)}`, {
+      if (nurseId) {
+        const response = await apiFetch('/care-plan-checklist/mark', {
+          method: 'POST',
+          body: JSON.stringify({
+            patientId: pid,
+            carePlanId: String(id),
+            nurseId,
+          }),
+        });
+        const responseText = await response.text().catch(() => '');
+        let data = {};
+        if (responseText) {
+          try {
+            data = JSON.parse(responseText);
+          } catch {
+            data = { message: responseText };
+          }
+        }
+        if (!response.ok) {
+          const msg = data?.message || data?.error || `Update failed (${response.status}).`;
+          throw new Error(typeof msg === 'string' ? msg : 'Update failed.');
+        }
+        const resolved = completionFromCarePlanMarkResponse(data);
+        if (resolved !== undefined) {
+          setCarePlanItems((prev) =>
+            sortCarePlanItems(
+              prev.map((i) => (String(i.id) === String(id) ? { ...i, checked: resolved } : i)),
+            ));
+        }
+        void fetchDailyChecklist(new Date().toISOString().slice(0, 10));
+      } else {
+        const body = buildCarePlanApiBody(pid, {
+          task: item.task,
+          category: item.category,
+          frequency: item.frequency,
+          priority: item.priority,
+          notes: item.notes,
+        }, { completed: next });
+        let toggleRes = await apiFetch(`/care-plan/${encodeURIComponent(id)}`, {
           method: 'PATCH',
           body: JSON.stringify(body),
         });
-      }
-      if (!toggleRes.ok) {
-        const responseText = await toggleRes.text().catch(() => '');
-        throw new Error(responseText || 'Update failed');
+        if (!toggleRes.ok && toggleRes.status === 404) {
+          toggleRes = await apiFetch(`/care-plans/${encodeURIComponent(id)}`, {
+            method: 'PATCH',
+            body: JSON.stringify(body),
+          });
+        }
+        const legacyText = await toggleRes.text().catch(() => '');
+        let legacyData = {};
+        if (legacyText) {
+          try {
+            legacyData = JSON.parse(legacyText);
+          } catch {
+            legacyData = { message: legacyText };
+          }
+        }
+        if (!toggleRes.ok) {
+          throw new Error(legacyData?.message || legacyData?.error || legacyText || 'Update failed');
+        }
+        const resolvedLegacy = completionFromCarePlanMarkResponse(legacyData);
+        if (resolvedLegacy !== undefined) {
+          setCarePlanItems((prev) =>
+            sortCarePlanItems(
+              prev.map((i) => (String(i.id) === String(id) ? { ...i, checked: resolvedLegacy } : i)),
+            ));
+        }
+        void fetchDailyChecklist(new Date().toISOString().slice(0, 10));
       }
     } catch {
       setCarePlanItems((prev) => sortCarePlanItems(prev.map((i) => (String(i.id) === String(id) ? { ...i, checked: !next } : i))));
@@ -3582,6 +3756,7 @@ export default function PatientProfile() {
     setCarePlanSaveError('');
     setCarePlanForm({ task: item.task, category: item.category, frequency: item.frequency, priority: item.priority, notes: item.notes });
     setEditingCarePlan(item.id);
+    setCarePlanListExpanded(true);
     setShowCarePlanForm(true);
   };
   const filteredCarePlanItems = carePlanItems
@@ -3601,89 +3776,23 @@ export default function PatientProfile() {
     const styles = { High: { bg: '#fef2f2', color: '#dc2626', border: '#fecaca' }, Medium: { bg: '#fffbeb', color: '#d97706', border: '#fde68a' }, Low: { bg: '#F0F7FE', color: '#1565A0', border: '#BAE0FD' } };
     return styles[p] || styles.Medium;
   };
-  const getCareCategoryIcon = (cat) => {
-    const icons = { 'Personal Care': '🛁', 'Medication Management': '💊', 'Nutrition & Diet': '🥗', 'Mobility & Exercise': '🚶', 'Wound Care': '🩹', 'Monitoring & Vitals': '📊', 'Emotional Support': '💬', Hygiene: '🧼', Safety: '🛡️', Therapy: '🏥', Other: '📋' };
-    return icons[cat] || '📋';
-  };
-
-  /* ── Care Checklist Status state ── */
-  const [checklistStatusDate, setChecklistStatusDate] = useState(new Date().toISOString().slice(0, 10));
-  const [checklistHistory] = useState({
-    '2026-03-24': [
-      { id: 1, task: 'Assist patient with morning bath and oral hygiene', category: 'Personal Care', frequency: 'Daily', priority: 'High', completed: true, completedBy: 'Amina Mensah, RN', completedAt: '07:15' },
-      { id: 2, task: 'Administer morning medications as prescribed', category: 'Medication Management', frequency: 'Daily', priority: 'High', completed: true, completedBy: 'Amina Mensah, RN', completedAt: '08:05' },
-      { id: 3, task: 'Blood pressure and blood glucose monitoring', category: 'Monitoring & Vitals', frequency: 'Twice Daily', priority: 'High', completed: false, completedBy: null, completedAt: null },
-      { id: 4, task: 'Prepare balanced diabetic-friendly meals', category: 'Nutrition & Diet', frequency: 'Three Times Daily', priority: 'Medium', completed: true, completedBy: 'Grace Osei, RN', completedAt: '12:30' },
-      { id: 5, task: 'Assisted walking exercise around the compound', category: 'Mobility & Exercise', frequency: 'Daily', priority: 'Medium', completed: false, completedBy: null, completedAt: null },
-      { id: 6, task: 'Change wound dressing on left lower leg', category: 'Wound Care', frequency: 'Twice Weekly', priority: 'High', completed: false, completedBy: null, completedAt: null },
-      { id: 7, task: 'Engage patient in conversation and companionship', category: 'Emotional Support', frequency: 'Daily', priority: 'Low', completed: true, completedBy: 'Grace Osei, RN', completedAt: '10:00' },
-      { id: 8, task: 'Ensure home environment is hazard-free', category: 'Safety', frequency: 'Weekly', priority: 'Medium', completed: false, completedBy: null, completedAt: null },
-    ],
-    '2026-03-23': [
-      { id: 1, task: 'Assist patient with morning bath and oral hygiene', category: 'Personal Care', frequency: 'Daily', priority: 'High', completed: true, completedBy: 'Amina Mensah, RN', completedAt: '07:30' },
-      { id: 2, task: 'Administer morning medications as prescribed', category: 'Medication Management', frequency: 'Daily', priority: 'High', completed: true, completedBy: 'Amina Mensah, RN', completedAt: '08:00' },
-      { id: 3, task: 'Blood pressure and blood glucose monitoring', category: 'Monitoring & Vitals', frequency: 'Twice Daily', priority: 'High', completed: true, completedBy: 'Kwame Boateng, RN', completedAt: '09:00' },
-      { id: 4, task: 'Prepare balanced diabetic-friendly meals', category: 'Nutrition & Diet', frequency: 'Three Times Daily', priority: 'Medium', completed: true, completedBy: 'Grace Osei, RN', completedAt: '12:00' },
-      { id: 5, task: 'Assisted walking exercise around the compound', category: 'Mobility & Exercise', frequency: 'Daily', priority: 'Medium', completed: true, completedBy: 'Amina Mensah, RN', completedAt: '16:00' },
-      { id: 6, task: 'Change wound dressing on left lower leg', category: 'Wound Care', frequency: 'Twice Weekly', priority: 'High', completed: true, completedBy: 'Grace Osei, RN', completedAt: '10:30' },
-      { id: 7, task: 'Engage patient in conversation and companionship', category: 'Emotional Support', frequency: 'Daily', priority: 'Low', completed: true, completedBy: 'Grace Osei, RN', completedAt: '14:00' },
-      { id: 8, task: 'Ensure home environment is hazard-free', category: 'Safety', frequency: 'Weekly', priority: 'Medium', completed: true, completedBy: 'Kwame Boateng, RN', completedAt: '11:00' },
-    ],
-    '2026-03-22': [
-      { id: 1, task: 'Assist patient with morning bath and oral hygiene', category: 'Personal Care', frequency: 'Daily', priority: 'High', completed: true, completedBy: 'Grace Osei, RN', completedAt: '07:45' },
-      { id: 2, task: 'Administer morning medications as prescribed', category: 'Medication Management', frequency: 'Daily', priority: 'High', completed: true, completedBy: 'Grace Osei, RN', completedAt: '08:10' },
-      { id: 3, task: 'Blood pressure and blood glucose monitoring', category: 'Monitoring & Vitals', frequency: 'Twice Daily', priority: 'High', completed: true, completedBy: 'Amina Mensah, RN', completedAt: '08:30' },
-      { id: 4, task: 'Prepare balanced diabetic-friendly meals', category: 'Nutrition & Diet', frequency: 'Three Times Daily', priority: 'Medium', completed: true, completedBy: 'Grace Osei, RN', completedAt: '12:15' },
-      { id: 5, task: 'Assisted walking exercise around the compound', category: 'Mobility & Exercise', frequency: 'Daily', priority: 'Medium', completed: false, completedBy: null, completedAt: null },
-      { id: 6, task: 'Change wound dressing on left lower leg', category: 'Wound Care', frequency: 'Twice Weekly', priority: 'High', completed: false, completedBy: null, completedAt: null },
-      { id: 7, task: 'Engage patient in conversation and companionship', category: 'Emotional Support', frequency: 'Daily', priority: 'Low', completed: true, completedBy: 'Amina Mensah, RN', completedAt: '15:00' },
-      { id: 8, task: 'Ensure home environment is hazard-free', category: 'Safety', frequency: 'Weekly', priority: 'Medium', completed: false, completedBy: null, completedAt: null },
-    ],
-    '2026-03-21': [
-      { id: 1, task: 'Assist patient with morning bath and oral hygiene', category: 'Personal Care', frequency: 'Daily', priority: 'High', completed: true, completedBy: 'Kwame Boateng, RN', completedAt: '07:20' },
-      { id: 2, task: 'Administer morning medications as prescribed', category: 'Medication Management', frequency: 'Daily', priority: 'High', completed: true, completedBy: 'Kwame Boateng, RN', completedAt: '07:55' },
-      { id: 3, task: 'Blood pressure and blood glucose monitoring', category: 'Monitoring & Vitals', frequency: 'Twice Daily', priority: 'High', completed: true, completedBy: 'Kwame Boateng, RN', completedAt: '08:00' },
-      { id: 4, task: 'Prepare balanced diabetic-friendly meals', category: 'Nutrition & Diet', frequency: 'Three Times Daily', priority: 'Medium', completed: true, completedBy: 'Grace Osei, RN', completedAt: '11:45' },
-      { id: 5, task: 'Assisted walking exercise around the compound', category: 'Mobility & Exercise', frequency: 'Daily', priority: 'Medium', completed: true, completedBy: 'Kwame Boateng, RN', completedAt: '16:30' },
-      { id: 6, task: 'Change wound dressing on left lower leg', category: 'Wound Care', frequency: 'Twice Weekly', priority: 'High', completed: true, completedBy: 'Amina Mensah, RN', completedAt: '09:00' },
-      { id: 7, task: 'Engage patient in conversation and companionship', category: 'Emotional Support', frequency: 'Daily', priority: 'Low', completed: true, completedBy: 'Kwame Boateng, RN', completedAt: '13:30' },
-      { id: 8, task: 'Ensure home environment is hazard-free', category: 'Safety', frequency: 'Weekly', priority: 'Medium', completed: true, completedBy: 'Grace Osei, RN', completedAt: '10:00' },
-    ],
-    '2026-03-20': [
-      { id: 1, task: 'Assist patient with morning bath and oral hygiene', category: 'Personal Care', frequency: 'Daily', priority: 'High', completed: true, completedBy: 'Amina Mensah, RN', completedAt: '07:00' },
-      { id: 2, task: 'Administer morning medications as prescribed', category: 'Medication Management', frequency: 'Daily', priority: 'High', completed: true, completedBy: 'Amina Mensah, RN', completedAt: '08:15' },
-      { id: 3, task: 'Blood pressure and blood glucose monitoring', category: 'Monitoring & Vitals', frequency: 'Twice Daily', priority: 'High', completed: false, completedBy: null, completedAt: null },
-      { id: 4, task: 'Prepare balanced diabetic-friendly meals', category: 'Nutrition & Diet', frequency: 'Three Times Daily', priority: 'Medium', completed: true, completedBy: 'Grace Osei, RN', completedAt: '12:00' },
-      { id: 5, task: 'Assisted walking exercise around the compound', category: 'Mobility & Exercise', frequency: 'Daily', priority: 'Medium', completed: true, completedBy: 'Amina Mensah, RN', completedAt: '15:00' },
-      { id: 6, task: 'Change wound dressing on left lower leg', category: 'Wound Care', frequency: 'Twice Weekly', priority: 'High', completed: true, completedBy: 'Grace Osei, RN', completedAt: '09:30' },
-      { id: 7, task: 'Engage patient in conversation and companionship', category: 'Emotional Support', frequency: 'Daily', priority: 'Low', completed: false, completedBy: null, completedAt: null },
-      { id: 8, task: 'Ensure home environment is hazard-free', category: 'Safety', frequency: 'Weekly', priority: 'Medium', completed: true, completedBy: 'Amina Mensah, RN', completedAt: '11:00' },
-    ],
-  });
-
-  /* Get checklist data for a specific date — use history if available, else fallback to live carePlanItems for today */
+  /* ── Care Checklist Status (daily checklist API) ── */
   const getChecklistForDate = (dateStr) => {
-    if (checklistHistory[dateStr]) return checklistHistory[dateStr];
-    const today = new Date().toISOString().slice(0, 10);
-    if (dateStr === today) {
-      return carePlanItems.map(item => ({
-        id: item.id, task: item.task, category: item.category, frequency: item.frequency,
-        priority: item.priority, completed: item.checked, completedBy: item.checked ? 'Current Session' : null,
-        completedAt: item.checked ? '—' : null,
-      }));
-    }
+    const e = dailyChecklistByDate[dateStr];
+    if (e && Array.isArray(e.items)) return e.items;
     return null;
   };
+  const selectedDailyEntry = dailyChecklistByDate[checklistStatusDate];
   const selectedDateChecklist = getChecklistForDate(checklistStatusDate);
   const selectedDateCompleted = selectedDateChecklist ? selectedDateChecklist.filter(i => i.completed).length : 0;
   const selectedDateTotal = selectedDateChecklist ? selectedDateChecklist.length : 0;
   const selectedDatePercent = selectedDateTotal > 0 ? Math.round((selectedDateCompleted / selectedDateTotal) * 100) : 0;
   const getCompletionLabel = (pct) => {
-    if (pct === 100) return { text: 'Fully Completed', bg: '#F0F7FE', color: '#1565A0', border: '#BAE0FD', icon: '✅' };
-    if (pct >= 75) return { text: 'Mostly Completed', bg: '#eff6ff', color: '#2563eb', border: '#bfdbfe', icon: '🔵' };
-    if (pct >= 50) return { text: 'Partially Completed', bg: '#fffbeb', color: '#d97706', border: '#fde68a', icon: '🟡' };
-    if (pct > 0) return { text: 'Minimally Completed', bg: '#fff7ed', color: '#ea580c', border: '#fed7aa', icon: '🟠' };
-    return { text: 'Not Started', bg: '#fef2f2', color: '#dc2626', border: '#fecaca', icon: '🔴' };
+    if (pct === 100) return { text: 'Fully completed', bg: '#f8fafc', color: '#334155', border: '#e2e8f0' };
+    if (pct >= 75) return { text: 'Mostly completed', bg: '#f8fafc', color: '#334155', border: '#e2e8f0' };
+    if (pct >= 50) return { text: 'Partially completed', bg: '#fffbeb', color: '#92400e', border: '#fde68a' };
+    if (pct > 0) return { text: 'Minimal progress', bg: '#fff7ed', color: '#9a3412', border: '#fed7aa' };
+    return { text: 'Not started', bg: '#fef2f2', color: '#991b1b', border: '#fecaca' };
   };
   /* Quick nav dates for the last 7 days */
   const quickDates = Array.from({ length: 7 }, (_, i) => {
@@ -4194,6 +4303,16 @@ export default function PatientProfile() {
   }, [vitalSaveSuccess]);
 
   useEffect(() => {
+    if (!carePlanSaveSuccess) return undefined;
+
+    const timer = window.setTimeout(() => {
+      setCarePlanSaveSuccess('');
+    }, 3600);
+
+    return () => window.clearTimeout(timer);
+  }, [carePlanSaveSuccess]);
+
+  useEffect(() => {
     if (showVitalForm && !editingVitalId) {
       setVitalSaveError('');
       setVitalForm((prev) => ({
@@ -4508,6 +4627,35 @@ export default function PatientProfile() {
               setVitalSaveSuccess('');
             }}
             aria-label="Dismiss vital save alert"
+          >
+            <FiX size={16} />
+          </button>
+        </div>
+      )}
+      {carePlanSaveSuccess && (
+        <div
+          className="patient-profile-save-alert"
+          role="status"
+          aria-live="polite"
+          style={{
+            top: `${24
+              + (showProfileSaveAlert ? 68 : 0)
+              + (showMedicationSaveAlert ? 68 : 0)
+              + (showVitalSaveAlert ? 68 : 0)}px`,
+          }}
+        >
+          <div className="patient-profile-save-alert__icon">
+            <FiCheckCircle size={18} />
+          </div>
+          <div className="patient-profile-save-alert__content">
+            <strong>Care plan item added</strong>
+            <span>{carePlanSaveSuccess}</span>
+          </div>
+          <button
+            type="button"
+            className="patient-profile-save-alert__close"
+            onClick={() => setCarePlanSaveSuccess('')}
+            aria-label="Dismiss care plan save alert"
           >
             <FiX size={16} />
           </button>
@@ -6995,187 +7143,91 @@ export default function PatientProfile() {
           {carePlanLoading && carePlanItems.length === 0 && !carePlanLoadError && (
             <p style={{ margin: 0, fontSize: 13, color: 'var(--kh-text-muted)' }}>Loading care plan…</p>
           )}
-          <header className="patient-care-plan__hero">
-            <div>
-              <span className="patient-care-plan__eyebrow">Patient checklist</span>
-              <h3 className="patient-care-plan__title">Care plan</h3>
-              <p className="patient-care-plan__subtitle">
-                Plan, track, and complete recurring care tasks for {p.name}. Filter by category and mark items as done during visits.
-              </p>
-            </div>
-            <div className="patient-care-plan__stats" aria-label="Care plan summary">
-              <div className="patient-care-plan__stat patient-care-plan__stat--done">
-                <span className="patient-care-plan__stat-value">{carePlanCompletedCount}</span>
-                <span className="patient-care-plan__stat-label">Done</span>
+          <div className="patient-care-plan__card">
+            <div className="patient-care-plan__card-bar">
+              <div className="patient-care-plan__card-head-static">
+                <span className="patient-care-plan__card-bar-title">Care plan</span>
+                <span className="patient-care-plan__card-bar-meta">
+                  <span>{carePlanCompletedCount} done</span>
+                  <span className="patient-care-plan__card-bar-dot" aria-hidden>·</span>
+                  <span>{carePlanRemainingCount} open</span>
+                  <span className="patient-care-plan__card-bar-dot" aria-hidden>·</span>
+                  <span>{carePlanHighOpenCount} high</span>
+                  <span className="patient-care-plan__card-bar-dot" aria-hidden>·</span>
+                  <span>{carePlanProgress}%</span>
+                </span>
               </div>
-              <div className="patient-care-plan__stat patient-care-plan__stat--open">
-                <span className="patient-care-plan__stat-value">{carePlanRemainingCount}</span>
-                <span className="patient-care-plan__stat-label">Open</span>
-              </div>
-              <div className="patient-care-plan__stat patient-care-plan__stat--risk">
-                <span className="patient-care-plan__stat-value">{carePlanHighOpenCount}</span>
-                <span className="patient-care-plan__stat-label">High · open</span>
-              </div>
-            </div>
-            <button
-              type="button"
-              className="patient-care-plan__add-btn"
-              onClick={() => {
-                setCarePlanSaveError('');
-                setShowCarePlanForm(true);
-                setEditingCarePlan(null);
-                setCarePlanForm({ task: '', category: 'Personal Care', frequency: 'Daily', priority: 'Medium', notes: '' });
-              }}
-            >
-              <FiPlus size={16} strokeWidth={2.25} aria-hidden />
-              Add care item
-            </button>
-          </header>
-
-          <section className="patient-care-plan__progress-card" aria-label="Overall completion">
-            <div className="patient-care-plan__progress-top">
-              <span className="patient-care-plan__progress-label">Overall completion</span>
-              <span className="patient-care-plan__progress-pct">{carePlanProgress}%</span>
-            </div>
-            <div className="patient-care-plan__progress-track">
-              <div
-                className={`patient-care-plan__progress-fill${carePlanProgress === 100 ? ' is-complete' : ''}`}
-                style={{ width: `${carePlanProgress}%` }}
-              />
-            </div>
-          </section>
-
-          <div className="patient-care-plan__filters" role="tablist" aria-label="Filter by category">
-            {['All', ...CARE_CATEGORIES].map((cat) => (
               <button
-                key={cat}
                 type="button"
-                role="tab"
-                aria-selected={carePlanFilter === cat}
-                className={`patient-care-plan__filter-btn${carePlanFilter === cat ? ' is-active' : ''}`}
-                onClick={() => setCarePlanFilter(cat)}
+                className="patient-care-plan__add-btn patient-care-plan__add-btn--toolbar"
+                onClick={() => {
+                  setCarePlanSaveError('');
+                  setShowCarePlanForm(true);
+                  setEditingCarePlan(null);
+                  setCarePlanForm({ task: '', category: 'Personal Care', frequency: 'Daily', priority: 'Medium', notes: '' });
+                }}
               >
-                {cat}
+                <FiPlus size={16} strokeWidth={2.25} aria-hidden />
+                Add care item
               </button>
-            ))}
-          </div>
+            </div>
 
-          {showCarePlanForm && (
-            <section className="patient-care-plan__composer" aria-label={editingCarePlan ? 'Edit care item' : 'Add care item'}>
-              <div className="patient-care-plan__composer-head">
-                <div>
-                  <h4 className="patient-care-plan__composer-title">
-                    {editingCarePlan ? 'Edit care item' : 'New care item'}
-                  </h4>
-                  <p className="patient-care-plan__composer-hint">
-                    {editingCarePlan ? 'Update task details and save changes.' : 'Describe the task, cadence, and priority so the team can execute consistently.'}
-                  </p>
+            <div className="patient-care-plan__card-panel">
+              <p className="patient-care-plan__panel-hint">
+                Plan and complete recurring tasks for {p.name}. Filter by category and mark items during visits.
+              </p>
+
+              <section className="patient-care-plan__progress-card" aria-label="Overall completion">
+                <div className="patient-care-plan__progress-top">
+                  <span className="patient-care-plan__progress-label">Overall completion</span>
+                  <span className="patient-care-plan__progress-pct">{carePlanProgress}%</span>
                 </div>
+                <div className="patient-care-plan__progress-track">
+                  <div
+                    className={`patient-care-plan__progress-fill${carePlanProgress === 100 ? ' is-complete' : ''}`}
+                    style={{ width: `${carePlanProgress}%` }}
+                  />
+                </div>
+              </section>
+
+              <div className="patient-care-plan__filters" role="tablist" aria-label="Filter by category">
+                {['All', ...CARE_CATEGORIES].map((cat) => (
+                  <button
+                    key={cat}
+                    type="button"
+                    role="tab"
+                    aria-selected={carePlanFilter === cat}
+                    className={`patient-care-plan__filter-btn${carePlanFilter === cat ? ' is-active' : ''}`}
+                    onClick={() => setCarePlanFilter(cat)}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+
+              <div className="patient-care-plan__list-block">
                 <button
                   type="button"
-                  className="patient-care-plan__icon-btn"
-                  onClick={() => { setShowCarePlanForm(false); setEditingCarePlan(null); setCarePlanSaveError(''); }}
-                  aria-label="Close form"
+                  className="patient-care-plan__list-toggle"
+                  id="care-plan-list-toggle"
+                  aria-expanded={carePlanListExpanded}
+                  aria-controls="care-plan-tasks-panel"
+                  onClick={() => setCarePlanListExpanded((v) => !v)}
                 >
-                  <FiX size={18} />
+                  <FiChevronDown className={`patient-care-plan__list-chevron${carePlanListExpanded ? ' is-open' : ''}`} size={18} aria-hidden />
+                  <span className="patient-care-plan__list-toggle-label">
+                    Care tasks
+                    <span className="patient-care-plan__list-toggle-count">{filteredCarePlanItems.length}</span>
+                  </span>
+                  <span className="patient-care-plan__list-toggle-hint">{carePlanListExpanded ? 'Hide list' : 'Show list'}</span>
                 </button>
-              </div>
-              <div className="patient-care-plan__composer-body">
-                <div className="patient-care-plan__field">
-                  <label className="patient-care-plan__field-label" htmlFor="care-plan-task">Care task *</label>
-                  <input
-                    id="care-plan-task"
-                    className="patient-care-plan__input"
-                    type="text"
-                    placeholder="e.g. Morning medications after breakfast"
-                    value={carePlanForm.task}
-                    onChange={(e) => setCarePlanForm((f) => ({ ...f, task: e.target.value }))}
-                  />
-                </div>
-                <div className="patient-care-plan__grid3">
-                  <div className="patient-care-plan__field">
-                    <label className="patient-care-plan__field-label" htmlFor="care-plan-category">Category</label>
-                    <select
-                      id="care-plan-category"
-                      className="patient-care-plan__select"
-                      value={carePlanForm.category}
-                      onChange={(e) => setCarePlanForm((f) => ({ ...f, category: e.target.value }))}
-                    >
-                      {CARE_CATEGORIES.map((c) => (
-                        <option key={c} value={c}>{c}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="patient-care-plan__field">
-                    <label className="patient-care-plan__field-label" htmlFor="care-plan-frequency">Frequency</label>
-                    <select
-                      id="care-plan-frequency"
-                      className="patient-care-plan__select"
-                      value={carePlanForm.frequency}
-                      onChange={(e) => setCarePlanForm((f) => ({ ...f, frequency: e.target.value }))}
-                    >
-                      {CARE_FREQUENCIES.map((f) => (
-                        <option key={f} value={f}>{f}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="patient-care-plan__field">
-                    <label className="patient-care-plan__field-label" htmlFor="care-plan-priority">Priority</label>
-                    <select
-                      id="care-plan-priority"
-                      className="patient-care-plan__select"
-                      value={carePlanForm.priority}
-                      onChange={(e) => setCarePlanForm((f) => ({ ...f, priority: e.target.value }))}
-                    >
-                      {CARE_PRIORITIES.map((pr) => (
-                        <option key={pr} value={pr}>{pr}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-                <div className="patient-care-plan__field">
-                  <label className="patient-care-plan__field-label" htmlFor="care-plan-notes">Description / notes</label>
-                  <textarea
-                    id="care-plan-notes"
-                    className="patient-care-plan__textarea"
-                    rows={3}
-                    placeholder="Instructions, precautions, or escalation criteria…"
-                    value={carePlanForm.notes}
-                    onChange={(e) => setCarePlanForm((f) => ({ ...f, notes: e.target.value }))}
-                  />
-                </div>
-                {!!carePlanSaveError && (
-                  <div
-                    className="patient-care-plan__field"
-                    style={{ color: '#b91c1c', fontSize: 13, fontWeight: 600 }}
-                    role="alert"
-                  >
-                    {carePlanSaveError}
-                  </div>
-                )}
-                <div className="patient-care-plan__composer-actions">
-                  <button
-                    type="button"
-                    className="patient-care-plan__btn-secondary"
-                    disabled={savingCarePlan}
-                    onClick={() => { setShowCarePlanForm(false); setEditingCarePlan(null); setCarePlanSaveError(''); }}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    className="patient-care-plan__btn-primary"
-                    onClick={handleAddCarePlanItem}
-                    disabled={savingCarePlan || !carePlanForm.task.trim()}
-                  >
-                    <FiCheckCircle size={15} aria-hidden />
-                    {savingCarePlan ? 'Saving…' : (editingCarePlan ? 'Save changes' : 'Add to plan')}
-                  </button>
-                </div>
-              </div>
-            </section>
-          )}
-
+                <div
+                  id="care-plan-tasks-panel"
+                  role="region"
+                  aria-labelledby="care-plan-list-toggle"
+                  className="patient-care-plan__list-panel"
+                  hidden={!carePlanListExpanded}
+                >
           {filteredCarePlanItems.length === 0 ? (
             <div className="patient-care-plan__empty">
               <div className="patient-care-plan__empty-icon">
@@ -7213,7 +7265,6 @@ export default function PatientProfile() {
                         </p>
                         <div className="patient-care-plan__meta">
                           <span className="patient-care-plan__badge patient-care-plan__badge--cat">
-                            <span aria-hidden>{getCareCategoryIcon(item.category)}</span>
                             {item.category}
                           </span>
                           <span className="patient-care-plan__badge patient-care-plan__badge--freq">
@@ -7260,6 +7311,8 @@ export default function PatientProfile() {
               })}
             </ul>
           )}
+                </div>
+              </div>
 
           {carePlanItems.length > 0 && (
             <footer className="patient-care-plan__footer">
@@ -7273,256 +7326,383 @@ export default function PatientProfile() {
               </span>
             </footer>
           )}
+            </div>
+
+          {showCarePlanForm && (
+            <div
+              className="kh-modal-overlay patient-care-plan-form-overlay"
+              style={{ zIndex: 2100 }}
+              onClick={() => {
+                if (savingCarePlan) return;
+                setShowCarePlanForm(false);
+                setEditingCarePlan(null);
+                setCarePlanSaveError('');
+              }}
+              role="presentation"
+            >
+              <div
+                className="patient-care-plan__modal-shell"
+                onClick={(e) => e.stopPropagation()}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="care-plan-modal-title"
+              >
+                <section className="patient-care-plan__composer patient-care-plan__composer--modal" aria-label={editingCarePlan ? 'Edit care item' : 'Add care item'}>
+                  <div className="patient-care-plan__composer-head">
+                    <div>
+                      <h4 className="patient-care-plan__composer-title" id="care-plan-modal-title">
+                        {editingCarePlan ? 'Edit care item' : 'New care item'}
+                      </h4>
+                      <p className="patient-care-plan__composer-hint">
+                        {editingCarePlan ? 'Update task details and save changes.' : 'Describe the task, cadence, and priority so the team can execute consistently.'}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className="patient-care-plan__icon-btn"
+                      disabled={savingCarePlan}
+                      onClick={() => { setShowCarePlanForm(false); setEditingCarePlan(null); setCarePlanSaveError(''); }}
+                      aria-label="Close form"
+                    >
+                      <FiX size={18} />
+                    </button>
+                  </div>
+                  <div className="patient-care-plan__composer-body">
+                    <div className="patient-care-plan__field">
+                      <label className="patient-care-plan__field-label" htmlFor="care-plan-task">Care task *</label>
+                      <input
+                        id="care-plan-task"
+                        className="patient-care-plan__input"
+                        type="text"
+                        placeholder="e.g. Morning medications after breakfast"
+                        value={carePlanForm.task}
+                        onChange={(e) => setCarePlanForm((f) => ({ ...f, task: e.target.value }))}
+                      />
+                    </div>
+                    <div className="patient-care-plan__grid3">
+                      <div className="patient-care-plan__field">
+                        <label className="patient-care-plan__field-label" htmlFor="care-plan-category">Category</label>
+                        <select
+                          id="care-plan-category"
+                          className="patient-care-plan__select"
+                          value={carePlanForm.category}
+                          onChange={(e) => setCarePlanForm((f) => ({ ...f, category: e.target.value }))}
+                        >
+                          {CARE_CATEGORIES.map((c) => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="patient-care-plan__field">
+                        <label className="patient-care-plan__field-label" htmlFor="care-plan-frequency">Frequency</label>
+                        <select
+                          id="care-plan-frequency"
+                          className="patient-care-plan__select"
+                          value={carePlanForm.frequency}
+                          onChange={(e) => setCarePlanForm((f) => ({ ...f, frequency: e.target.value }))}
+                        >
+                          {CARE_FREQUENCIES.map((f) => (
+                            <option key={f} value={f}>{f}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="patient-care-plan__field">
+                        <label className="patient-care-plan__field-label" htmlFor="care-plan-priority">Priority</label>
+                        <select
+                          id="care-plan-priority"
+                          className="patient-care-plan__select"
+                          value={carePlanForm.priority}
+                          onChange={(e) => setCarePlanForm((f) => ({ ...f, priority: e.target.value }))}
+                        >
+                          {CARE_PRIORITIES.map((pr) => (
+                            <option key={pr} value={pr}>{pr}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    <div className="patient-care-plan__field">
+                      <label className="patient-care-plan__field-label" htmlFor="care-plan-notes">Description / notes</label>
+                      <textarea
+                        id="care-plan-notes"
+                        className="patient-care-plan__textarea"
+                        rows={3}
+                        placeholder="Instructions, precautions, or escalation criteria…"
+                        value={carePlanForm.notes}
+                        onChange={(e) => setCarePlanForm((f) => ({ ...f, notes: e.target.value }))}
+                      />
+                    </div>
+                    {!!carePlanSaveError && (
+                      <div
+                        className="patient-care-plan__field"
+                        style={{ color: '#b91c1c', fontSize: 13, fontWeight: 600 }}
+                        role="alert"
+                      >
+                        {carePlanSaveError}
+                      </div>
+                    )}
+                    <div className="patient-care-plan__composer-actions">
+                      <button
+                        type="button"
+                        className="patient-care-plan__btn-secondary"
+                        disabled={savingCarePlan}
+                        onClick={() => { setShowCarePlanForm(false); setEditingCarePlan(null); setCarePlanSaveError(''); }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        className="patient-care-plan__btn-primary"
+                        onClick={handleAddCarePlanItem}
+                        disabled={savingCarePlan || !carePlanForm.task.trim()}
+                      >
+                        <FiCheckCircle size={15} aria-hidden />
+                        {savingCarePlan ? 'Saving…' : (editingCarePlan ? 'Save changes' : 'Add to plan')}
+                      </button>
+                    </div>
+                  </div>
+                </section>
+              </div>
+            </div>
+          )}
+          </div>
         </div>
       )}
 
       {/* ── Care Checklist Status Tab ── */}
-      {tab === 'checkliststatus' && (
-        <div style={{ padding: '0 2px' }}>
-
-          {/* Header */}
-          <div className="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
-            <div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--kh-text)' }}>
-                <FiBarChart2 size={15} style={{ color: '#45B6FE', marginRight: 6, verticalAlign: -2 }} />
-                Care Checklist Status
+      {tab === 'checkliststatus' && (() => {
+        const checklistToday = new Date().toISOString().slice(0, 10);
+        const summaryTone = selectedDatePercent === 100 ? 'complete' : selectedDatePercent >= 50 ? 'warn' : 'low';
+        const completionLbl = getCompletionLabel(selectedDatePercent);
+        return (
+          <section className="patient-checklist-status" aria-labelledby="patient-checklist-status-title">
+            <header className="patient-checklist-status__hero">
+              <div className="patient-checklist-status__hero-icon" aria-hidden>
+                <FiBarChart2 size={16} />
               </div>
-              <div style={{ fontSize: 11.5, color: 'var(--kh-text-muted)', marginTop: 2 }}>Track daily care checklist completion — select a date to review</div>
-            </div>
-          </div>
+              <div className="patient-checklist-status__hero-text">
+                <h2 id="patient-checklist-status-title" className="patient-checklist-status__title">Care Checklist Status</h2>
+                <p className="patient-checklist-status__subtitle">Completion for the day you select below.</p>
+              </div>
+            </header>
 
-          {/* Date Picker & Quick Nav */}
-          <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 5, padding: 16, marginBottom: 16 }}>
-            <div className="d-flex align-items-center gap-3 mb-3 flex-wrap">
-              <div>
-                <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--kh-text)', display: 'block', marginBottom: 4 }}>Select Date</label>
+            <div className="patient-checklist-status__date-panel">
+              <div className="patient-checklist-status__date-primary">
+                <label htmlFor="checklist-status-date" className="patient-checklist-status__date-label">Date</label>
                 <input
-                  type="date" value={checklistStatusDate}
+                  id="checklist-status-date"
+                  className="patient-checklist-status__date-input"
+                  type="date"
+                  value={checklistStatusDate}
                   onChange={e => setChecklistStatusDate(e.target.value)}
-                  max={new Date().toISOString().slice(0, 10)}
-                  style={{ padding: '8px 12px', fontSize: 13, borderRadius: 3, border: '1px solid #d1d5db', outline: 'none' }}
+                  max={checklistToday}
                 />
               </div>
-              <div style={{ flex: 1 }}>
-                <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--kh-text)', display: 'block', marginBottom: 4 }}>Quick Select — Last 7 Days</label>
-                <div className="d-flex gap-1 flex-wrap">
-                  {quickDates.map(qd => {
-                    const fd = formatShortDate(qd);
-                    const isActive = checklistStatusDate === qd;
-                    const hasData = !!checklistHistory[qd] || qd === new Date().toISOString().slice(0, 10);
-                    const qdChecklist = getChecklistForDate(qd);
-                    const qdPct = qdChecklist ? Math.round((qdChecklist.filter(i => i.completed).length / qdChecklist.length) * 100) : -1;
-                    return (
-                      <button key={qd} onClick={() => setChecklistStatusDate(qd)} style={{
-                        padding: '6px 10px', borderRadius: 2, cursor: 'pointer', textAlign: 'center', minWidth: 52,
-                        background: isActive ? '#45B6FE' : '#fff',
-                        color: isActive ? '#fff' : hasData ? 'var(--kh-text)' : 'var(--kh-text-muted)',
-                        border: `1px solid ${isActive ? '#45B6FE' : '#e5e7eb'}`,
-                        opacity: hasData ? 1 : 0.5,
-                      }}>
-                        <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase' }}>{fd.day}</div>
-                        <div style={{ fontSize: 14, fontWeight: 700 }}>{fd.date}</div>
-                        <div style={{ fontSize: 9.5, fontWeight: 500 }}>{fd.month}</div>
-                        {hasData && qdPct >= 0 && (
-                          <div style={{
-                            fontSize: 9, fontWeight: 700, marginTop: 2,
-                            color: isActive ? 'rgba(255,255,255,0.85)' : qdPct === 100 ? '#1565A0' : qdPct >= 50 ? '#d97706' : '#dc2626',
-                          }}>{qdPct}%</div>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Status Summary Card */}
-          {selectedDateChecklist ? (
-            <>
-              <div style={{
-                background: '#fff', border: '1px solid #e5e7eb', borderRadius: 5, padding: 20, marginBottom: 16,
-              }}>
-                <div className="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
-                  <div className="d-flex align-items-center gap-3">
-                    {/* Circular progress */}
-                    <div style={{ position: 'relative', width: 64, height: 64 }}>
-                      <svg width="64" height="64" viewBox="0 0 64 64">
-                        <circle cx="32" cy="32" r="28" fill="none" stroke="#f3f4f6" strokeWidth="5" />
-                        <circle cx="32" cy="32" r="28" fill="none"
-                          stroke={selectedDatePercent === 100 ? '#45B6FE' : selectedDatePercent >= 50 ? '#d97706' : '#dc2626'}
-                          strokeWidth="5" strokeLinecap="round"
-                          strokeDasharray={`${(selectedDatePercent / 100) * 175.9} 175.9`}
-                          transform="rotate(-90 32 32)" style={{ transition: 'stroke-dasharray 0.5s ease' }}
-                        />
-                      </svg>
-                      <div style={{
-                        position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: 15, fontWeight: 800,
-                        color: selectedDatePercent === 100 ? '#45B6FE' : selectedDatePercent >= 50 ? '#d97706' : '#dc2626',
-                      }}>{selectedDatePercent}%</div>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--kh-text)' }}>
-                        {checklistStatusDate === new Date().toISOString().slice(0, 10) ? 'Today' : checklistStatusDate}
-                      </div>
-                      <div style={{
-                        display: 'inline-block', fontSize: 11.5, fontWeight: 700, padding: '3px 10px', borderRadius: 2, marginTop: 4,
-                        background: getCompletionLabel(selectedDatePercent).bg,
-                        color: getCompletionLabel(selectedDatePercent).color,
-                        border: `1px solid ${getCompletionLabel(selectedDatePercent).border}`,
-                      }}>
-                        {getCompletionLabel(selectedDatePercent).icon} {getCompletionLabel(selectedDatePercent).text}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="d-flex gap-4">
-                    <div className="text-center">
-                      <div style={{ fontSize: 22, fontWeight: 800, color: '#45B6FE' }}>{selectedDateCompleted}</div>
-                      <div style={{ fontSize: 11, color: 'var(--kh-text-muted)', fontWeight: 600 }}>Completed</div>
-                    </div>
-                    <div className="text-center">
-                      <div style={{ fontSize: 22, fontWeight: 800, color: '#dc2626' }}>{selectedDateTotal - selectedDateCompleted}</div>
-                      <div style={{ fontSize: 11, color: 'var(--kh-text-muted)', fontWeight: 600 }}>Missed</div>
-                    </div>
-                    <div className="text-center">
-                      <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--kh-text)' }}>{selectedDateTotal}</div>
-                      <div style={{ fontSize: 11, color: 'var(--kh-text-muted)', fontWeight: 600 }}>Total</div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Full-width progress bar */}
-                <div style={{ background: '#f3f4f6', borderRadius: 2, height: 8, overflow: 'hidden' }}>
-                  <div style={{
-                    width: `${selectedDatePercent}%`, height: '100%', borderRadius: 2,
-                    background: selectedDatePercent === 100 ? '#45B6FE' : selectedDatePercent >= 50 ? 'linear-gradient(90deg, #d97706, #f59e0b)' : 'linear-gradient(90deg, #dc2626, #ef4444)',
-                    transition: 'width 0.5s ease',
-                  }} />
-                </div>
-              </div>
-
-              {/* Checklist Items for Selected Date */}
-              <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 5, overflow: 'hidden' }}>
-                <div style={{ padding: '12px 16px', borderBottom: '1px solid #f3f4f6', background: '#f9fafb' }}>
-                  <div className="d-flex align-items-center justify-content-between">
-                    <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--kh-text)' }}>Checklist Items</span>
-                    <span style={{ fontSize: 11.5, color: 'var(--kh-text-muted)', fontWeight: 600 }}>{selectedDateCompleted}/{selectedDateTotal} completed</span>
-                  </div>
-                </div>
-
-                {selectedDateChecklist.map((item, idx) => {
-                  const prStyle = getCarePriorityStyle(item.priority);
+              <div className="patient-checklist-status__day-strip" role="group" aria-label="Last seven days">
+                {quickDates.map(qd => {
+                  const fd = formatShortDate(qd);
+                  const isActive = checklistStatusDate === qd;
+                  const hasData = Array.isArray(dailyChecklistByDate[qd]?.items);
+                  const qdChecklist = getChecklistForDate(qd);
+                  const qdPct = qdChecklist ? Math.round((qdChecklist.filter(i => i.completed).length / qdChecklist.length) * 100) : -1;
+                  const dayAbbr = fd.day.slice(0, 3);
                   return (
-                    <div key={item.id} style={{
-                      padding: '14px 16px', borderBottom: idx < selectedDateChecklist.length - 1 ? '1px solid #f3f4f6' : 'none',
-                      background: item.completed ? '#fafffe' : '#fff',
-                    }}>
-                      <div className="d-flex align-items-start gap-3">
-                        {/* Status icon */}
-                        <div style={{
-                          width: 24, height: 24, borderRadius: '50%', flexShrink: 0, marginTop: 1,
-                          background: item.completed ? '#45B6FE' : '#fef2f2',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        }}>
-                          {item.completed
-                            ? <FiCheckCircle size={13} style={{ color: '#fff' }} />
-                            : <FiX size={12} style={{ color: '#dc2626' }} />
-                          }
-                        </div>
-
-                        {/* Content */}
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div className="d-flex align-items-center gap-2 flex-wrap">
-                            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--kh-text)' }}>{item.task}</span>
-                          </div>
-                          <div className="d-flex align-items-center gap-2 flex-wrap" style={{ marginTop: 5 }}>
-                            <span style={{
-                              fontSize: 10.5, fontWeight: 600, padding: '2px 7px', borderRadius: 2,
-                              background: '#F0F7FE', color: '#2E7DB8', border: '1px solid #dcfce7',
-                            }}>
-                              {getCareCategoryIcon(item.category)} {item.category}
-                            </span>
-                            <span style={{
-                              fontSize: 10.5, fontWeight: 600, padding: '2px 7px', borderRadius: 2,
-                              background: '#eff6ff', color: '#2563eb', border: '1px solid #dbeafe',
-                            }}>
-                              <FiClock size={9} style={{ marginRight: 2, verticalAlign: -1 }} />{item.frequency}
-                            </span>
-                            <span style={{
-                              fontSize: 10.5, fontWeight: 600, padding: '2px 7px', borderRadius: 2,
-                              background: prStyle.bg, color: prStyle.color, border: `1px solid ${prStyle.border}`,
-                            }}>
-                              {item.priority}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Completion detail */}
-                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                          {item.completed ? (
-                            <>
-                              <div style={{ fontSize: 11.5, fontWeight: 700, color: '#45B6FE' }}>Completed</div>
-                              <div style={{ fontSize: 10.5, color: 'var(--kh-text-muted)', marginTop: 2 }}>
-                                <FiClock size={10} style={{ marginRight: 3, verticalAlign: -1 }} />{item.completedAt}
-                              </div>
-                              <div style={{ fontSize: 10.5, color: 'var(--kh-text-muted)', marginTop: 1 }}>
-                                <FiUser size={10} style={{ marginRight: 3, verticalAlign: -1 }} />{item.completedBy}
-                              </div>
-                            </>
-                          ) : (
-                            <div style={{ fontSize: 11.5, fontWeight: 700, color: '#dc2626' }}>Missed</div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
+                    <button
+                      key={qd}
+                      type="button"
+                      className={
+                        'patient-checklist-status__day-btn'
+                        + (isActive ? ' is-active' : '')
+                        + (hasData ? '' : ' is-muted')
+                      }
+                      onClick={() => setChecklistStatusDate(qd)}
+                      aria-pressed={isActive}
+                    >
+                      <span className="patient-checklist-status__day-main">{dayAbbr} {fd.date}</span>
+                      <span
+                        className={
+                          'patient-checklist-status__day-sub'
+                          + (!hasData || qdPct < 0 ? ' is-empty' : '')
+                          + (hasData && qdPct >= 0
+                            ? (qdPct === 100 ? ' is-full' : qdPct >= 50 ? ' is-mid' : ' is-low')
+                            : '')
+                        }
+                      >
+                        {hasData && qdPct >= 0 ? `${qdPct}%` : '—'}
+                      </span>
+                    </button>
                   );
                 })}
               </div>
-
-              {/* 7-Day Trend */}
-              <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 5, padding: 16, marginTop: 16 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--kh-text)', marginBottom: 12 }}>7-Day Completion Trend</div>
-                <div className="d-flex align-items-end gap-2" style={{ height: 80 }}>
-                  {[...quickDates].reverse().map(qd => {
-                    const qdData = getChecklistForDate(qd);
-                    const qdPct = qdData ? Math.round((qdData.filter(i => i.completed).length / qdData.length) * 100) : 0;
-                    const fd = formatShortDate(qd);
-                    const isSelected = checklistStatusDate === qd;
-                    return (
-                      <div key={qd} className="d-flex flex-column align-items-center" style={{ flex: 1, cursor: 'pointer' }} onClick={() => setChecklistStatusDate(qd)}>
-                        <div style={{ fontSize: 10, fontWeight: 700, color: qdPct === 100 ? '#45B6FE' : qdPct >= 50 ? '#d97706' : qdPct > 0 ? '#dc2626' : '#d1d5db', marginBottom: 4 }}>
-                          {qdData ? `${qdPct}%` : '—'}
-                        </div>
-                        <div style={{
-                          width: '100%', borderRadius: '2px 2px 0 0', minHeight: 4,
-                          height: `${Math.max(qdPct * 0.6, 4)}px`,
-                          background: isSelected
-                            ? '#45B6FE'
-                            : qdPct === 100 ? '#BAE0FD' : qdPct >= 50 ? '#fde68a' : qdPct > 0 ? '#fecaca' : '#f3f4f6',
-                          border: isSelected ? '2px solid #45B6FE' : 'none',
-                          transition: 'all 0.3s ease',
-                        }} />
-                        <div style={{
-                          fontSize: 10, fontWeight: isSelected ? 700 : 500, marginTop: 4,
-                          color: isSelected ? '#45B6FE' : 'var(--kh-text-muted)',
-                        }}>{fd.day} {fd.date}</div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </>
-          ) : (
-            <div className="text-center py-5" style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 5 }}>
-              <FiCalendar size={36} style={{ color: '#e5e7eb', marginBottom: 12 }} />
-              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--kh-text-muted)' }}>No checklist data for this date</div>
-              <div style={{ fontSize: 12, color: 'var(--kh-text-muted)', marginTop: 4 }}>Select a date with recorded care activity to view completion status</div>
             </div>
-          )}
-        </div>
-      )}
+
+            {selectedDailyEntry?.loading && selectedDateChecklist == null ? (
+              <div className="patient-checklist-status__empty" role="status">
+                <p className="patient-checklist-status__empty-title">Loading checklist…</p>
+              </div>
+            ) : selectedDailyEntry?.error && selectedDateChecklist == null ? (
+              <div className="patient-checklist-status__empty" role="alert">
+                <p className="patient-checklist-status__empty-title">{selectedDailyEntry.error}</p>
+                <p className="patient-checklist-status__empty-hint">Try another date or refresh the page.</p>
+              </div>
+            ) : selectedDateChecklist ? (
+              <>
+                <div className="patient-checklist-status__card patient-checklist-status__summary">
+                  <div className="patient-checklist-status__summary-main">
+                    <div className={`patient-checklist-status__ring patient-checklist-status__ring--${summaryTone}`}>
+                      <svg className="patient-checklist-status__ring-svg" width="58" height="58" viewBox="0 0 64 64" aria-hidden>
+                        <circle className="patient-checklist-status__ring-track" cx="32" cy="32" r="28" />
+                        <circle
+                          className="patient-checklist-status__ring-fill"
+                          cx="32" cy="32" r="28"
+                          strokeDasharray={`${(selectedDatePercent / 100) * 175.9} 175.9`}
+                          transform="rotate(-90 32 32)"
+                        />
+                      </svg>
+                      <span className="patient-checklist-status__ring-label">{selectedDatePercent}%</span>
+                    </div>
+                    <div className="patient-checklist-status__summary-copy">
+                      <p className="patient-checklist-status__summary-date">
+                        {checklistStatusDate === checklistToday ? 'Today' : checklistStatusDate}
+                        {checklistStatusDate === checklistToday && (
+                          <span className="patient-checklist-status__summary-date-sub">{checklistStatusDate}</span>
+                        )}
+                      </p>
+                      <span
+                        className="patient-checklist-status__pill"
+                        style={{
+                          background: completionLbl.bg,
+                          color: completionLbl.color,
+                          borderColor: completionLbl.border,
+                        }}
+                      >
+                        {completionLbl.text}
+                      </span>
+                    </div>
+                  </div>
+                  <ul className="patient-checklist-status__stats" aria-label="Completion counts">
+                    <li className="patient-checklist-status__stat">
+                      <span className="patient-checklist-status__stat-value patient-checklist-status__stat-value--ok">{selectedDateCompleted}</span>
+                      <span className="patient-checklist-status__stat-label">Done</span>
+                    </li>
+                    <li className="patient-checklist-status__stat">
+                      <span className="patient-checklist-status__stat-value patient-checklist-status__stat-value--miss">{selectedDateTotal - selectedDateCompleted}</span>
+                      <span className="patient-checklist-status__stat-label">Missed</span>
+                    </li>
+                    <li className="patient-checklist-status__stat">
+                      <span className="patient-checklist-status__stat-value">{selectedDateTotal}</span>
+                      <span className="patient-checklist-status__stat-label">Total</span>
+                    </li>
+                  </ul>
+                  <div className={`patient-checklist-status__bar-track patient-checklist-status__bar-track--${summaryTone}`}>
+                    <div
+                      className="patient-checklist-status__bar-fill"
+                      style={{ width: `${selectedDatePercent}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div className="patient-checklist-status__card patient-checklist-status__tasks-card">
+                  <header className="patient-checklist-status__tasks-head">
+                    <h3 className="patient-checklist-status__tasks-title">Checklist items</h3>
+                    <span className="patient-checklist-status__tasks-meta">{selectedDateCompleted}/{selectedDateTotal} completed</span>
+                  </header>
+                  <ul className="patient-checklist-status__task-list">
+                    {selectedDateChecklist.map(item => {
+                      const prStyle = getCarePriorityStyle(item.priority);
+                      return (
+                        <li
+                          key={item.id}
+                          className={`patient-checklist-status__task-row${item.completed ? ' is-done' : ''}`}
+                        >
+                          <div className={`patient-checklist-status__task-icon${item.completed ? ' is-done' : ' is-miss'}`} aria-hidden>
+                            {item.completed ? <FiCheckCircle size={12} /> : <FiX size={11} />}
+                          </div>
+                          <div className="patient-checklist-status__task-body">
+                            <p className="patient-checklist-status__task-name">{item.task}</p>
+                            <div className="patient-checklist-status__task-tags">
+                              <span className="patient-checklist-status__tag patient-checklist-status__tag--cat">
+                                {item.category}
+                              </span>
+                              <span className="patient-checklist-status__tag patient-checklist-status__tag--freq">
+                                <FiClock size={10} aria-hidden /> {item.frequency}
+                              </span>
+                              <span
+                                className="patient-checklist-status__tag patient-checklist-status__tag--pri"
+                                style={{
+                                  background: prStyle.bg,
+                                  color: prStyle.color,
+                                  borderColor: prStyle.border,
+                                }}
+                              >
+                                {item.priority}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="patient-checklist-status__task-aside">
+                            {item.completed ? (
+                              <>
+                                <span className="patient-checklist-status__aside-status patient-checklist-status__aside-status--ok">Completed</span>
+                                <span className="patient-checklist-status__aside-line">
+                                  <FiClock size={10} aria-hidden /> {item.completedAt}
+                                </span>
+                                <span className="patient-checklist-status__aside-line">
+                                  <FiUser size={10} aria-hidden /> {item.completedBy}
+                                </span>
+                              </>
+                            ) : (
+                              <span className="patient-checklist-status__aside-status patient-checklist-status__aside-status--miss">Missed</span>
+                            )}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+
+                <div className="patient-checklist-status__card patient-checklist-status__trend-card">
+                  <h3 className="patient-checklist-status__trend-title">7-day trend</h3>
+                  <div className="patient-checklist-status__trend-chart" role="group" aria-label="Select day on chart">
+                    {[...quickDates].reverse().map(qd => {
+                      const qdData = getChecklistForDate(qd);
+                      const qdPct = qdData ? Math.round((qdData.filter(i => i.completed).length / qdData.length) * 100) : 0;
+                      const fd = formatShortDate(qd);
+                      const isSelected = checklistStatusDate === qd;
+                      const trendTone = qdPct === 100 ? 'full' : qdPct >= 50 ? 'mid' : qdPct > 0 ? 'low' : 'empty';
+                      return (
+                        <button
+                          key={qd}
+                          type="button"
+                          className={`patient-checklist-status__trend-col${isSelected ? ' is-selected' : ''}`}
+                          onClick={() => setChecklistStatusDate(qd)}
+                          aria-pressed={isSelected}
+                          aria-label={`${fd.day} ${fd.date}: ${qdData ? `${qdPct}% complete` : 'no data'}`}
+                        >
+                          <span
+                            className={`patient-checklist-status__trend-pct patient-checklist-status__trend-pct--${trendTone}`}
+                          >
+                            {qdData ? `${qdPct}%` : '—'}
+                          </span>
+                          <span
+                            className={`patient-checklist-status__trend-bar patient-checklist-status__trend-bar--${trendTone}${isSelected ? ' is-selected' : ''}`}
+                            style={{ height: `${Math.max(qdPct * 0.48, 4)}px` }}
+                          />
+                          <span className="patient-checklist-status__trend-label">{fd.day} {fd.date}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="patient-checklist-status__empty" role="status">
+                <FiCalendar className="patient-checklist-status__empty-icon" size={32} aria-hidden />
+                <p className="patient-checklist-status__empty-title">No checklist for this date</p>
+                <p className="patient-checklist-status__empty-hint">Choose another day or use the chips above when data exists.</p>
+              </div>
+            )}
+          </section>
+        );
+      })()}
 
           </div>
         </div>

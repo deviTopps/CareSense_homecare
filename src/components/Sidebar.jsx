@@ -14,10 +14,10 @@ import {
   FiAlertCircle,
   FiMessageSquare,
   FiMessageCircle,
-  FiRepeat,
   FiCreditCard,
   FiSmartphone,
   FiHelpCircle,
+  FiMail,
 } from '../icons/hugeicons-feather';
 
 const sidebarGroups = [
@@ -28,7 +28,7 @@ const sidebarGroups = [
       { to: '/patients', icon: FiActivity, label: 'Patients' },
       { to: '/workforce', icon: FiUsers, label: 'Nurses' },
       { to: '/scheduling', icon: FiCalendar, label: 'Care Visits' },
-      { to: '/nurse-scheduling', icon: FiRepeat, label: 'Scheduling' },
+      { to: '/nurse-scheduling', icon: FiMail, label: 'Enquires' },
       { to: '/clinical', icon: FiAlertCircle, label: 'Emergency Cases' },
       { to: '/attendance', icon: FiClock, label: 'Attendance' },
     ],
