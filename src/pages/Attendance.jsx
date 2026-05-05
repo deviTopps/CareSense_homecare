@@ -1,58 +1,160 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { FiCheckCircle, FiAlertCircle, FiXCircle, FiMapPin, FiClock, FiX, FiSearch, FiChevronLeft, FiChevronRight, FiChevronsLeft, FiChevronsRight, FiFilter } from '../icons/hugeicons-feather';
+import { getUser, getToken } from '../api';
+import { clockInAttendance, clockOutAttendance, fetchNurseMonthlyAttendance, fetchNurseDailyAttendance } from '../utils/attendance';
 
-/* ── All Clock-in Records ── */
-const records = [
-  /* ── March 2026 ── */
-  { id: 'A-301', nurse: 'Efua Mensah', patient: 'Kwame Boateng', date: '2026-03-24', clockIn: '08:55', clockOut: '09:42', gps: { lat: 5.6037, lng: -0.1870 }, distance: '12m', status: 'verified', region: 'Accra' },
-  { id: 'A-302', nurse: 'Efua Mensah', patient: 'Akosua Mensah', date: '2026-03-24', clockIn: '10:30', clockOut: '11:15', gps: { lat: 5.6145, lng: -0.1790 }, distance: '5m', status: 'verified', region: 'Accra' },
-  { id: 'A-303', nurse: 'Yaa Asantewaa', patient: 'Abena Osei', date: '2026-03-24', clockIn: '10:28', clockOut: '11:30', gps: { lat: 6.6884, lng: -1.6244 }, distance: '8m', status: 'verified', region: 'Kumasi' },
-  { id: 'A-304', nurse: 'Ama Darko', patient: 'Kofi Ankrah', date: '2026-03-24', clockIn: '10:58', clockOut: '11:40', gps: { lat: 9.4034, lng: -0.8393 }, distance: '15m', status: 'verified', region: 'Tamale' },
-  { id: 'A-305', nurse: 'Abena Fosu', patient: 'Samuel Asante', date: '2026-03-24', clockIn: '14:58', clockOut: '15:50', gps: { lat: 5.1036, lng: -1.2437 }, distance: '22m', status: 'verified', region: 'Cape Coast' },
-  { id: 'A-306', nurse: 'Akua Owusu', patient: 'Grace Ampofo', date: '2026-03-24', clockIn: '09:00', clockOut: '10:00', gps: { lat: 5.6350, lng: -0.1675 }, distance: '10m', status: 'verified', region: 'Accra' },
-  { id: 'A-307', nurse: 'Efua Mensah', patient: 'Kwame Boateng', date: '2026-03-23', clockIn: '09:00', clockOut: '09:50', gps: { lat: 5.6037, lng: -0.1870 }, distance: '12m', status: 'verified', region: 'Accra' },
-  { id: 'A-308', nurse: 'Efua Mensah', patient: 'Akosua Mensah', date: '2026-03-23', clockIn: '11:00', clockOut: '11:45', gps: { lat: 5.6145, lng: -0.1790 }, distance: '5m', status: 'verified', region: 'Accra' },
-  { id: 'A-309', nurse: 'Yaa Asantewaa', patient: 'Abena Osei', date: '2026-03-23', clockIn: '10:15', clockOut: '11:20', gps: { lat: 6.6884, lng: -1.6244 }, distance: '8m', status: 'verified', region: 'Kumasi' },
-  { id: 'A-310', nurse: 'Ama Darko', patient: 'Kofi Ankrah', date: '2026-03-23', clockIn: '11:00', clockOut: '11:45', gps: { lat: 9.4034, lng: -0.8393 }, distance: '145m', status: 'flagged', region: 'Tamale' },
-  { id: 'A-311', nurse: 'Efua Mensah', patient: 'Kwame Boateng', date: '2026-03-22', clockIn: '08:45', clockOut: '09:30', gps: { lat: 5.6037, lng: -0.1870 }, distance: '12m', status: 'verified', region: 'Accra' },
-  { id: 'A-312', nurse: 'Yaa Asantewaa', patient: 'Kwadwo Appiah', date: '2026-03-22', clockIn: '12:30', clockOut: '13:20', gps: { lat: 6.6900, lng: -1.6250 }, distance: '180m', status: 'flagged', region: 'Kumasi' },
-  { id: 'A-313', nurse: 'Adwoa Badu', patient: 'Yaw Frimpong', date: '2026-03-22', clockIn: null, clockOut: null, gps: null, distance: null, status: 'missed', region: 'Takoradi' },
-  { id: 'A-314', nurse: 'Abena Fosu', patient: 'Samuel Asante', date: '2026-03-22', clockIn: '14:30', clockOut: '15:30', gps: { lat: 5.1036, lng: -1.2437 }, distance: '22m', status: 'verified', region: 'Cape Coast' },
-  { id: 'A-315', nurse: 'Efua Mensah', patient: 'Kwame Boateng', date: '2026-03-21', clockIn: '09:05', clockOut: '09:48', gps: { lat: 5.6037, lng: -0.1870 }, distance: '12m', status: 'verified', region: 'Accra' },
-  { id: 'A-316', nurse: 'Yaa Asantewaa', patient: 'Abena Osei', date: '2026-03-21', clockIn: '10:00', clockOut: '11:05', gps: { lat: 6.6884, lng: -1.6244 }, distance: '8m', status: 'verified', region: 'Kumasi' },
-  { id: 'A-317', nurse: 'Akua Owusu', patient: 'Grace Ampofo', date: '2026-03-21', clockIn: null, clockOut: null, gps: null, distance: null, status: 'missed', region: 'Accra' },
-  { id: 'A-318', nurse: 'Efua Mensah', patient: 'Kwame Boateng', date: '2026-03-20', clockIn: null, clockOut: null, gps: null, distance: null, status: 'missed', region: 'Accra' },
-  { id: 'A-319', nurse: 'Ama Darko', patient: 'Kofi Ankrah', date: '2026-03-20', clockIn: '10:30', clockOut: '11:15', gps: { lat: 9.4034, lng: -0.8393 }, distance: '15m', status: 'verified', region: 'Tamale' },
-  { id: 'A-320', nurse: 'Abena Fosu', patient: 'Samuel Asante', date: '2026-03-20', clockIn: '15:10', clockOut: '15:55', gps: { lat: 5.1036, lng: -1.2437 }, distance: '22m', status: 'verified', region: 'Cape Coast' },
-  /* ── February 2026 ── */
-  { id: 'A-250', nurse: 'Efua Mensah', patient: 'Kwame Boateng', date: '2026-02-28', clockIn: '09:10', clockOut: '09:55', gps: { lat: 5.6037, lng: -0.1870 }, distance: '12m', status: 'verified', region: 'Accra' },
-  { id: 'A-251', nurse: 'Yaa Asantewaa', patient: 'Abena Osei', date: '2026-02-27', clockIn: '10:20', clockOut: '11:15', gps: { lat: 6.6884, lng: -1.6244 }, distance: '8m', status: 'verified', region: 'Kumasi' },
-  { id: 'A-252', nurse: 'Ama Darko', patient: 'Kofi Ankrah', date: '2026-02-26', clockIn: '11:05', clockOut: '11:50', gps: { lat: 9.4034, lng: -0.8393 }, distance: '200m', status: 'flagged', region: 'Tamale' },
-  { id: 'A-253', nurse: 'Efua Mensah', patient: 'Akosua Mensah', date: '2026-02-25', clockIn: '10:30', clockOut: '11:20', gps: { lat: 5.6145, lng: -0.1790 }, distance: '5m', status: 'verified', region: 'Accra' },
-  { id: 'A-254', nurse: 'Adwoa Badu', patient: 'Yaw Frimpong', date: '2026-02-20', clockIn: '09:15', clockOut: '10:10', gps: { lat: 4.8965, lng: -1.7500 }, distance: '18m', status: 'verified', region: 'Takoradi' },
-  { id: 'A-255', nurse: 'Akua Owusu', patient: 'Grace Ampofo', date: '2026-02-18', clockIn: '08:50', clockOut: '09:50', gps: { lat: 5.6350, lng: -0.1675 }, distance: '10m', status: 'verified', region: 'Accra' },
-  { id: 'A-256', nurse: 'Abena Fosu', patient: 'Samuel Asante', date: '2026-02-15', clockIn: '14:50', clockOut: '15:35', gps: { lat: 5.1036, lng: -1.2437 }, distance: '22m', status: 'verified', region: 'Cape Coast' },
-  { id: 'A-257', nurse: 'Yaa Asantewaa', patient: 'Kwadwo Appiah', date: '2026-02-12', clockIn: null, clockOut: null, gps: null, distance: null, status: 'missed', region: 'Kumasi' },
-  /* ── January 2026 ── */
-  { id: 'A-200', nurse: 'Efua Mensah', patient: 'Kwame Boateng', date: '2026-01-28', clockIn: '08:50', clockOut: '09:40', gps: { lat: 5.6037, lng: -0.1870 }, distance: '12m', status: 'verified', region: 'Accra' },
-  { id: 'A-201', nurse: 'Yaa Asantewaa', patient: 'Abena Osei', date: '2026-01-25', clockIn: '10:30', clockOut: '11:25', gps: { lat: 6.6884, lng: -1.6244 }, distance: '8m', status: 'verified', region: 'Kumasi' },
-  { id: 'A-202', nurse: 'Ama Darko', patient: 'Kofi Ankrah', date: '2026-01-22', clockIn: '10:45', clockOut: '11:30', gps: { lat: 9.4034, lng: -0.8393 }, distance: '15m', status: 'verified', region: 'Tamale' },
-  { id: 'A-203', nurse: 'Efua Mensah', patient: 'Akosua Mensah', date: '2026-01-18', clockIn: '11:00', clockOut: '11:50', gps: { lat: 5.6145, lng: -0.1790 }, distance: '5m', status: 'verified', region: 'Accra' },
-  { id: 'A-204', nurse: 'Adwoa Badu', patient: 'Yaw Frimpong', date: '2026-01-15', clockIn: '09:30', clockOut: '10:20', gps: { lat: 4.8965, lng: -1.7500 }, distance: '18m', status: 'verified', region: 'Takoradi' },
-  /* ── December 2025 ── */
-  { id: 'A-150', nurse: 'Efua Mensah', patient: 'Kwame Boateng', date: '2025-12-20', clockIn: '09:00', clockOut: '09:45', gps: { lat: 5.6037, lng: -0.1870 }, distance: '12m', status: 'verified', region: 'Accra' },
-  { id: 'A-151', nurse: 'Yaa Asantewaa', patient: 'Abena Osei', date: '2025-12-18', clockIn: '10:15', clockOut: '11:10', gps: { lat: 6.6884, lng: -1.6244 }, distance: '8m', status: 'verified', region: 'Kumasi' },
-  { id: 'A-152', nurse: 'Ama Darko', patient: 'Kofi Ankrah', date: '2025-12-15', clockIn: '11:00', clockOut: '11:40', gps: { lat: 9.4034, lng: -0.8393 }, distance: '160m', status: 'flagged', region: 'Tamale' },
-  { id: 'A-153', nurse: 'Abena Fosu', patient: 'Samuel Asante', date: '2025-12-12', clockIn: '14:40', clockOut: '15:30', gps: { lat: 5.1036, lng: -1.2437 }, distance: '22m', status: 'verified', region: 'Cape Coast' },
-  { id: 'A-154', nurse: 'Adwoa Badu', patient: 'Yaw Frimpong', date: '2025-12-10', clockIn: null, clockOut: null, gps: null, distance: null, status: 'missed', region: 'Takoradi' },
-  /* ── November 2025 ── */
-  { id: 'A-100', nurse: 'Efua Mensah', patient: 'Kwame Boateng', date: '2025-11-28', clockIn: '08:55', clockOut: '09:40', gps: { lat: 5.6037, lng: -0.1870 }, distance: '12m', status: 'verified', region: 'Accra' },
-  { id: 'A-101', nurse: 'Yaa Asantewaa', patient: 'Abena Osei', date: '2025-11-25', clockIn: '10:00', clockOut: '11:00', gps: { lat: 6.6884, lng: -1.6244 }, distance: '8m', status: 'verified', region: 'Kumasi' },
-  { id: 'A-102', nurse: 'Akua Owusu', patient: 'Grace Ampofo', date: '2025-11-20', clockIn: '09:10', clockOut: '10:05', gps: { lat: 5.6350, lng: -0.1675 }, distance: '10m', status: 'verified', region: 'Accra' },
-];
+const ACTIVE_ATTENDANCE_SESSION_KEY = 'attendanceActiveSessionId';
 
-const nursesList = ['All Nurses', 'Efua Mensah', 'Yaa Asantewaa', 'Ama Darko', 'Adwoa Badu', 'Akua Owusu', 'Abena Fosu'];
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+function pickFirst(obj, keys) {
+  for (const k of keys) {
+    if (obj[k] != null && obj[k] !== '') return obj[k];
+  }
+  return null;
+}
+
+function resolveNurseIdFromUser(u) {
+  if (u && typeof u === 'object') {
+    const id = u.nurseId ?? u.nurse_id ?? u.nurse?.id ?? u.nurse?._id ?? u.id ?? u._id;
+    if (id != null && id !== '') {
+      const s = String(id).trim();
+      if (s) return s;
+    }
+  }
+  try {
+    const t = getToken();
+    if (!t) return null;
+    const payload = JSON.parse(atob(t.split('.')[1]));
+    const j = payload.nurseId ?? payload.nurse_id ?? payload.userId ?? payload.id ?? payload._id;
+    if (j != null && String(j).trim()) return String(j).trim();
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+/** Prefer nested `attendance` object when API wraps the record. */
+function mergeAttendanceShape(data) {
+  const nested = data?.attendance && typeof data.attendance === 'object' ? data.attendance : null;
+  return nested ? { ...nested, ...data } : data;
+}
+
+function extractServerAttendanceId(data) {
+  const m = mergeAttendanceShape(data);
+  const id = pickFirst(m, ['id', '_id', 'attendanceId']);
+  return id != null ? String(id) : null;
+}
+
+function formatHHMMFromApi(raw) {
+  if (raw == null || raw === '') return null;
+  if (typeof raw === 'string' && raw.includes('T')) {
+    const d = new Date(raw);
+    if (!Number.isNaN(d.getTime())) {
+      return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    }
+  }
+  return typeof raw === 'string' ? raw : String(raw);
+}
+
+/** Normalize API clock-in response into a table row (best-effort for varying backends). */
+function attendanceRowFromApiResponse(data, user) {
+  const src = mergeAttendanceShape(data);
+  const nurseFallback = [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim() || user?.email || 'Current user';
+  const nurseRaw = pickFirst(src, ['nurseName', 'nurseFullName', 'nurse']);
+  const nurse = resolveNamedField(nurseRaw, nurseFallback);
+
+  const now = new Date();
+  const serverId = extractServerAttendanceId(data);
+  const id = serverId || String(pickFirst(src, ['id', '_id', 'attendanceId']) || `clk-${now.getTime()}`);
+  const clockInRaw = pickFirst(src, ['clockIn', 'clockInTime', 'clockedInAt', 'checkInTime']);
+  let clockIn = formatHHMMFromApi(clockInRaw);
+  if (!clockIn) {
+    clockIn = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  }
+
+  let dateVal = pickFirst(src, ['date', 'visitDate']);
+  if (dateVal && typeof dateVal === 'string' && dateVal.includes('T')) {
+    dateVal = dateVal.slice(0, 10);
+  }
+  if (!dateVal && clockInRaw && typeof clockInRaw === 'string' && clockInRaw.includes('T')) {
+    dateVal = clockInRaw.slice(0, 10);
+  }
+  if (!dateVal) dateVal = now.toISOString().slice(0, 10);
+
+  const patientRaw = pickFirst(src, ['patientName', 'patient']);
+  const patient = patientRaw != null && patientRaw !== ''
+    ? resolveNamedField(patientRaw, '—')
+    : (src.patientId != null ? String(src.patientId) : '—');
+  const lat = pickFirst(src, ['latitude', 'lat']);
+  const lng = pickFirst(src, ['longitude', 'lng', 'lon']);
+  let gps = null;
+  if (lat != null && lng != null) {
+    const la = Number(lat);
+    const ln = Number(lng);
+    if (!Number.isNaN(la) && !Number.isNaN(ln)) gps = { lat: la, lng: ln };
+  }
+  const statusRaw = (pickFirst(src, ['status']) || 'verified').toString().toLowerCase();
+  const status = ['verified', 'flagged', 'missed'].includes(statusRaw) ? statusRaw : 'verified';
+
+  const clockOutRaw = pickFirst(src, ['clockOut', 'clockOutTime', 'clockedOutAt', 'checkOutTime']);
+  const clockOut = formatHHMMFromApi(clockOutRaw);
+
+  return {
+    id,
+    nurse,
+    patient,
+    date: typeof dateVal === 'string' ? dateVal.slice(0, 10) : dateVal,
+    clockIn,
+    clockOut: clockOut || null,
+    gps,
+    distance: src.distanceFromPatient != null ? `${src.distanceFromPatient}` : (src.distance != null ? String(src.distance) : null),
+    status,
+    region: pickFirst(src, ['region']) || '—',
+  };
+}
+
+function attendanceListFromMonthlyResponse(json) {
+  if (Array.isArray(json)) return json;
+  const raw = json?.data ?? json?.records ?? json?.attendances ?? json?.items ?? json?.rows ?? json?.result;
+  return Array.isArray(raw) ? raw : [];
+}
+
+function resolveNamedField(val, fallbackStr) {
+  if (val == null || val === '') return fallbackStr;
+  if (typeof val === 'object') {
+    const n = [val.firstName, val.lastName].filter(Boolean).join(' ').trim() || val.name || val.email || val.fullName;
+    return n ? String(n) : fallbackStr;
+  }
+  return String(val);
+}
+
+function sortRecordsByDateDesc(rows) {
+  return [...rows].sort((a, b) => {
+    const d = (b.date || '').localeCompare(a.date || '');
+    if (d !== 0) return d;
+    return String(b.clockIn || '').localeCompare(String(a.clockIn || ''));
+  });
+}
+
+function readGeoPosition() {
+  return new Promise((resolve, reject) => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      reject(new Error('Geolocation is not available in this browser.'));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve({
+        latitude: pos.coords.latitude,
+        longitude: pos.coords.longitude,
+        accuracy: pos.coords.accuracy,
+      }),
+      (err) => reject(err),
+      { enableHighAccuracy: true, timeout: 15_000, maximumAge: 0 },
+    );
+  });
+}
 
 const statusIcon = {
   verified: <FiCheckCircle size={14} style={{ color: '#45B6FE' }} />,
@@ -72,6 +174,21 @@ const calcDuration = (cin, cout) => {
 };
 
 export default function Attendance() {
+  const navigate = useNavigate();
+  const user = getUser();
+  const authToken = getToken();
+  const nurseIdResolved = useMemo(
+    () => resolveNurseIdFromUser(getUser()),
+    [
+      authToken,
+      user?.nurseId,
+      user?.nurse_id,
+      user?.id,
+      user?._id,
+      user?.nurse?.id,
+      user?.nurse?._id,
+    ],
+  );
   const [selected, setSelected] = useState(null);
   const [statusFilter, setStatusFilter] = useState('All');
   const [nurseFilter, setNurseFilter] = useState('All Nurses');
@@ -81,15 +198,62 @@ export default function Attendance() {
   const [page, setPage] = useState(1);
   const perPage = 10;
 
+  const [apiRecords, setApiRecords] = useState([]);
+  const [clockPatientId, setClockPatientId] = useState('');
+  const [clockNotes, setClockNotes] = useState('');
+  const [includeGps, setIncludeGps] = useState(true);
+  const [clockInLoading, setClockInLoading] = useState(false);
+  const [clockOutLoading, setClockOutLoading] = useState(false);
+  const [sessionError, setSessionError] = useState('');
+  const [sessionSuccess, setSessionSuccess] = useState('');
+  const [activeAttendanceId, setActiveAttendanceId] = useState(null);
+  const [clockOutAttendanceId, setClockOutAttendanceId] = useState('');
+  const [clockOutNotes, setClockOutNotes] = useState('');
+
+  const [monthlyRecords, setMonthlyRecords] = useState([]);
+  const [dailyRecords, setDailyRecords] = useState([]);
+  const [listLoading, setListLoading] = useState(false);
+  const [dailyLoading, setDailyLoading] = useState(false);
+  const [listError, setListError] = useState('');
+  const [dailyError, setDailyError] = useState('');
+  const lastMonthlyQueryRef = useRef(null);
+  const lastDailyQueryRef = useRef(null);
+
+  const allRecords = useMemo(() => {
+    const map = new Map();
+    for (const r of monthlyRecords) map.set(r.id, r);
+    for (const r of dailyRecords) map.set(r.id, r);
+    for (const r of apiRecords) map.set(r.id, r);
+    return sortRecordsByDateDesc(Array.from(map.values()));
+  }, [monthlyRecords, dailyRecords, apiRecords]);
+
+  useEffect(() => {
+    try {
+      const stored = sessionStorage.getItem(ACTIVE_ATTENDANCE_SESSION_KEY);
+      if (stored) {
+        setActiveAttendanceId(stored);
+        setClockOutAttendanceId((prev) => prev || stored);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const nursesList = useMemo(() => {
+    const names = new Set();
+    allRecords.forEach((r) => { if (r.nurse) names.add(r.nurse); });
+    return ['All Nurses', ...Array.from(names).sort()];
+  }, [allRecords]);
+
   /* Derive available years */
   const years = useMemo(() => {
-    const ySet = new Set(records.map(r => r.date.slice(0, 4)));
+    const ySet = new Set(allRecords.map(r => r.date.slice(0, 4)));
     return ['', ...Array.from(ySet).sort().reverse()];
-  }, []);
+  }, [allRecords]);
 
   /* Filter records */
   const filtered = useMemo(() => {
-    return records.filter(r => {
+    return allRecords.filter(r => {
       if (statusFilter !== 'All' && r.status !== statusFilter.toLowerCase()) return false;
       if (nurseFilter !== 'All Nurses' && r.nurse !== nurseFilter) return false;
       if (selectedDate && r.date !== selectedDate) return false;
@@ -99,7 +263,211 @@ export default function Attendance() {
       }
       return true;
     });
-  }, [statusFilter, nurseFilter, selectedDate, selectedMonth, selectedYear]);
+  }, [statusFilter, nurseFilter, selectedDate, selectedMonth, selectedYear, allRecords]);
+
+  const onUnauthorized = useCallback(() => {
+    navigate('/login', { replace: true });
+  }, [navigate]);
+
+  const loadMonthlyAttendance = useCallback(async (year, month1to12) => {
+    setListLoading(true);
+    setListError('');
+    const nid = String(nurseIdResolved || '').trim();
+    if (!nid) {
+      setListLoading(false);
+      setMonthlyRecords([]);
+      return;
+    }
+    const y = Number(year);
+    const m = Number(month1to12);
+    if (!Number.isFinite(y) || !Number.isFinite(m) || m < 1 || m > 12) {
+      setListLoading(false);
+      setListError('Invalid month.');
+      return;
+    }
+    const monthParam = `${y}-${String(m).padStart(2, '0')}`;
+    try {
+      const body = await fetchNurseMonthlyAttendance(nid, { month: monthParam }, onUnauthorized);
+      const list = attendanceListFromMonthlyResponse(body);
+      const u = getUser();
+      const rows = list.map((item) => attendanceRowFromApiResponse(item, u));
+      setMonthlyRecords(sortRecordsByDateDesc(rows));
+      lastMonthlyQueryRef.current = { year: y, month: m, monthParam };
+    } catch (e) {
+      setListError(e.message || 'Could not load attendance.');
+      setMonthlyRecords([]);
+    } finally {
+      setListLoading(false);
+    }
+  }, [onUnauthorized, nurseIdResolved]);
+
+  const loadDailyAttendance = useCallback(async (nurseId, dateYYYYMMDD) => {
+    const nid = String(nurseId || '').trim();
+    if (!nid) {
+      setDailyRecords([]);
+      setDailyError('');
+      return;
+    }
+    setDailyLoading(true);
+    setDailyError('');
+    try {
+      const body = await fetchNurseDailyAttendance(
+        nid,
+        dateYYYYMMDD ? { date: dateYYYYMMDD } : {},
+        onUnauthorized,
+      );
+      const list = attendanceListFromMonthlyResponse(body);
+      const u = getUser();
+      const rows = list.map((item) => attendanceRowFromApiResponse(item, u));
+      setDailyRecords(sortRecordsByDateDesc(rows));
+      lastDailyQueryRef.current = { nurseId: nid, date: dateYYYYMMDD || new Date().toISOString().slice(0, 10) };
+    } catch (e) {
+      setDailyError(e.message || 'Could not load daily attendance.');
+      setDailyRecords([]);
+    } finally {
+      setDailyLoading(false);
+    }
+  }, [onUnauthorized]);
+
+  useEffect(() => {
+    const now = new Date();
+    if (selectedYear && selectedMonth !== '') {
+      loadMonthlyAttendance(Number(selectedYear), Number(selectedMonth) + 1);
+    } else {
+      loadMonthlyAttendance(now.getFullYear(), now.getMonth() + 1);
+    }
+  }, [selectedYear, selectedMonth, loadMonthlyAttendance]);
+
+  useEffect(() => {
+    if (!nurseIdResolved) {
+      setDailyRecords([]);
+      setDailyError('');
+      return;
+    }
+    const date = selectedDate || new Date().toISOString().slice(0, 10);
+    loadDailyAttendance(nurseIdResolved, date);
+  }, [nurseIdResolved, selectedDate, loadDailyAttendance]);
+
+  const handleClockIn = async () => {
+    setSessionError('');
+    setSessionSuccess('');
+    const nid = String(nurseIdResolved || resolveNurseIdFromUser(getUser()) || '').trim();
+    if (!nid) {
+      setSessionError('Clock-in requires a nurse ID on your account (or in your login token). Contact your administrator.');
+      return;
+    }
+    setClockInLoading(true);
+    try {
+      let coords = null;
+      if (includeGps) {
+        try {
+          coords = await readGeoPosition();
+        } catch {
+          /* optional: still allow clock-in without coordinates */
+        }
+      }
+      const payload = {
+        nurseId: nid,
+        ...(clockPatientId.trim() && { patientId: clockPatientId.trim() }),
+        ...(clockNotes.trim() && { notes: clockNotes.trim() }),
+        ...(coords && {
+          latitude: coords.latitude,
+          longitude: coords.longitude,
+          ...(coords.accuracy != null && { accuracy: coords.accuracy }),
+        }),
+      };
+      const data = await clockInAttendance(payload, onUnauthorized);
+      const row = attendanceRowFromApiResponse(data, user);
+      const serverId = extractServerAttendanceId(data);
+      if (serverId) {
+        row.id = serverId;
+        setActiveAttendanceId(serverId);
+        setClockOutAttendanceId(serverId);
+        try {
+          sessionStorage.setItem(ACTIVE_ATTENDANCE_SESSION_KEY, serverId);
+        } catch {
+          /* ignore */
+        }
+      }
+      setApiRecords((prev) => [row, ...prev]);
+      setSessionSuccess(`Clock-in recorded at ${row.clockIn}. Use Clock out when the visit ends.`);
+      setPage(1);
+      const q = lastMonthlyQueryRef.current;
+      if (q?.year != null && q?.month != null) {
+        void loadMonthlyAttendance(q.year, q.month);
+      }
+      if (nurseIdResolved) {
+        const d = selectedDate || new Date().toISOString().slice(0, 10);
+        void loadDailyAttendance(nurseIdResolved, d);
+      }
+    } catch (err) {
+      setSessionError(err.message || 'Clock-in failed.');
+    } finally {
+      setClockInLoading(false);
+    }
+  };
+
+  const handleClockOut = async () => {
+    const id = (clockOutAttendanceId.trim() || activeAttendanceId || '').trim();
+    setSessionError('');
+    setSessionSuccess('');
+    if (!id) {
+      setSessionError('Enter an attendance ID, or clock in first.');
+      return;
+    }
+    setClockOutLoading(true);
+    try {
+      let coords = null;
+      if (includeGps) {
+        try {
+          coords = await readGeoPosition();
+        } catch {
+          /* optional */
+        }
+      }
+      const payload = {
+        ...(clockOutNotes.trim() && { notes: clockOutNotes.trim() }),
+        ...(coords && {
+          latitude: coords.latitude,
+          longitude: coords.longitude,
+          ...(coords.accuracy != null && { accuracy: coords.accuracy }),
+        }),
+      };
+      const data = await clockOutAttendance(id, payload, onUnauthorized);
+      const src = mergeAttendanceShape(data);
+      const outTime = formatHHMMFromApi(
+        pickFirst(src, ['clockOut', 'clockOutTime', 'clockedOutAt', 'checkOutTime']),
+      ) || `${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`;
+
+      setApiRecords((prev) => prev.map((r) => (r.id === id ? { ...r, clockOut: outTime } : r)));
+
+      if (activeAttendanceId === id) {
+        setActiveAttendanceId(null);
+      }
+      try {
+        if (sessionStorage.getItem(ACTIVE_ATTENDANCE_SESSION_KEY) === id) {
+          sessionStorage.removeItem(ACTIVE_ATTENDANCE_SESSION_KEY);
+        }
+      } catch {
+        /* ignore */
+      }
+      setClockOutNotes('');
+      setClockOutAttendanceId('');
+      setSessionSuccess(`Clock-out recorded at ${outTime}.`);
+      const q = lastMonthlyQueryRef.current;
+      if (q?.year != null && q?.month != null) {
+        void loadMonthlyAttendance(q.year, q.month);
+      }
+      if (nurseIdResolved) {
+        const d = selectedDate || new Date().toISOString().slice(0, 10);
+        void loadDailyAttendance(nurseIdResolved, d);
+      }
+    } catch (err) {
+      setSessionError(err.message || 'Clock-out failed.');
+    } finally {
+      setClockOutLoading(false);
+    }
+  };
 
   const totalPages = Math.ceil(filtered.length / perPage) || 1;
   const paged = filtered.slice((page - 1) * perPage, page * perPage);
@@ -115,16 +483,135 @@ export default function Attendance() {
   return (
     <div className="page-wrapper" style={{ background: '#f8f9fa' }}>
 
+      {/* ── Clock in / Clock out (API) ── */}
+      <div className="kh-card" style={{ marginBottom: 16, padding: 0 }}>
+        <div style={{ background: '#1565A0', padding: '14px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+          <div className="d-flex align-items-center gap-2">
+            <FiClock size={18} style={{ color: '#fff' }} />
+            <div>
+              <div style={{ color: '#fff', fontWeight: 800, fontSize: 14 }}>Attendance</div>
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.85)', fontWeight: 500 }}>
+                Signed in as {[user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.email || 'user'}
+                {!nurseIdResolved && user && (
+                  <span style={{ display: 'block', marginTop: 4, fontSize: 11, opacity: 0.88 }}>
+                    No nurse ID on this account — daily attendance from the server is skipped.
+                  </span>
+                )}
+                {activeAttendanceId && (
+                  <span style={{ display: 'block', marginTop: 4, opacity: 0.95 }}>
+                    Open session: <code style={{ fontSize: 11, background: 'rgba(0,0,0,0.15)', padding: '2px 6px', borderRadius: 2 }}>{activeAttendanceId}</code>
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="d-flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={handleClockIn}
+              disabled={clockInLoading || clockOutLoading}
+              style={{
+                padding: '10px 22px', fontSize: 13, fontWeight: 800, borderRadius: 2, cursor: clockInLoading ? 'wait' : 'pointer',
+                background: '#fff', color: '#1565A0', border: 'none',
+                opacity: clockInLoading || clockOutLoading ? 0.85 : 1,
+              }}
+            >
+              {clockInLoading ? 'Submitting…' : 'Clock in'}
+            </button>
+            <button
+              type="button"
+              onClick={handleClockOut}
+              disabled={clockInLoading || clockOutLoading}
+              style={{
+                padding: '10px 22px', fontSize: 13, fontWeight: 800, borderRadius: 2, cursor: clockOutLoading ? 'wait' : 'pointer',
+                background: '#0d4f7c', color: '#fff', border: '1px solid rgba(255,255,255,0.35)',
+                opacity: clockInLoading || clockOutLoading ? 0.85 : 1,
+              }}
+            >
+              {clockOutLoading ? 'Submitting…' : 'Clock out'}
+            </button>
+          </div>
+        </div>
+        <div style={{ padding: '16px 20px', display: 'grid', gap: 14, gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', alignItems: 'end', borderBottom: '1px solid #e5e7eb' }}>
+          <div>
+            <label style={{ display: 'block', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text-muted)', marginBottom: 4 }}>Patient ID (optional · clock in)</label>
+            <input
+              value={clockPatientId}
+              onChange={(e) => setClockPatientId(e.target.value)}
+              placeholder="e.g. visit / patient id"
+              className="form-control form-control-kh"
+              style={{ fontSize: 13, fontWeight: 600 }}
+            />
+          </div>
+          <div style={{ gridColumn: 'span 2' }}>
+            <label style={{ display: 'block', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text-muted)', marginBottom: 4 }}>Notes (optional · clock in)</label>
+            <input
+              value={clockNotes}
+              onChange={(e) => setClockNotes(e.target.value)}
+              placeholder="Short note for this check-in"
+              className="form-control form-control-kh"
+              style={{ fontSize: 13 }}
+            />
+          </div>
+          <div style={{ gridColumn: 'minmax(200px, 1fr)' }}>
+            <label style={{ display: 'block', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text-muted)', marginBottom: 4 }}>Attendance ID (clock out)</label>
+            <input
+              value={clockOutAttendanceId}
+              onChange={(e) => setClockOutAttendanceId(e.target.value)}
+              placeholder="Filled after clock-in, or paste ID"
+              className="form-control form-control-kh"
+              style={{ fontSize: 13, fontFamily: 'ui-monospace, monospace' }}
+            />
+          </div>
+          <div style={{ gridColumn: 'span 2' }}>
+            <label style={{ display: 'block', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text-muted)', marginBottom: 4 }}>Notes (optional · clock out)</label>
+            <input
+              value={clockOutNotes}
+              onChange={(e) => setClockOutNotes(e.target.value)}
+              placeholder="Short note for this check-out"
+              className="form-control form-control-kh"
+              style={{ fontSize: 13 }}
+            />
+          </div>
+          <label className="d-flex align-items-center gap-2" style={{ cursor: 'pointer', fontSize: 13, fontWeight: 600, color: 'var(--kh-text)', userSelect: 'none' }}>
+            <input type="checkbox" checked={includeGps} onChange={(e) => setIncludeGps(e.target.checked)} style={{ width: 16, height: 16 }} />
+            Include GPS on clock in / clock out
+          </label>
+        </div>
+        {sessionError && (
+          <div style={{ padding: '12px 20px', background: '#fef2f2', color: '#b91c1c', fontSize: 13, fontWeight: 600, borderTop: '1px solid #fecaca' }}>
+            {sessionError}
+          </div>
+        )}
+        {sessionSuccess && (
+          <div style={{ padding: '12px 20px', background: '#ecfdf5', color: '#047857', fontSize: 13, fontWeight: 600, borderTop: '1px solid #a7f3d0' }}>
+            {sessionSuccess}
+          </div>
+        )}
+      </div>
+
       {/* ── Filter Bar ── */}
       <div className="kh-card" style={{ marginBottom: 16, padding: 0 }}>
         {/* Green header */}
-        <div style={{ background: '#45B6FE', padding: '14px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ background: '#45B6FE', padding: '14px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
           <div className="d-flex align-items-center gap-2">
             <FiFilter size={16} style={{ color: '#fff' }} />
             <span style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>Clock-in Records</span>
           </div>
-          <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.8)', fontWeight: 500 }}>{filtered.length} records</span>
+          <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.8)', fontWeight: 500, minWidth: 140, textAlign: 'right' }}>
+            {listLoading || dailyLoading ? 'Loading records…' : `${filtered.length} records`}
+          </span>
         </div>
+        {listError && (
+          <div style={{ padding: '10px 20px', background: '#fff7ed', color: '#9a3412', fontSize: 12.5, fontWeight: 600, borderBottom: '1px solid #fed7aa' }}>
+            {listError}
+          </div>
+        )}
+        {dailyError && (
+          <div style={{ padding: '10px 20px', background: '#fef2f2', color: '#991b1b', fontSize: 12.5, fontWeight: 600, borderBottom: '1px solid #fecaca' }}>
+            Daily attendance: {dailyError}
+          </div>
+        )}
 
         {/* Filters row */}
         <div style={{ padding: '14px 20px', display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: 12, borderBottom: '1px solid #e5e7eb' }}>
@@ -204,13 +691,23 @@ export default function Attendance() {
       </div>
 
       {/* ── Table + Detail ── */}
-      <div className="d-flex gap-3" style={{ minHeight: 400 }}>
-        <div className="kh-card" style={{ flex: 1, padding: 0, overflow: 'hidden' }}>
+      <div className="d-flex gap-3" style={{ minHeight: 420, alignItems: 'stretch' }}>
+        <div className="kh-card" style={{ flex: 1, padding: 0, overflow: 'hidden', minHeight: 380 }}>
           {filtered.length === 0 ? (
-            <div style={{ padding: '48px 20px', textAlign: 'center', color: 'var(--kh-text-muted)' }}>
-              <FiSearch size={32} style={{ marginBottom: 12, opacity: 0.3 }} />
+            <div style={{
+              padding: '48px 20px',
+              color: 'var(--kh-text-muted)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              textAlign: 'center',
+            }}>
+              <span style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', marginBottom: 12 }}>
+                <FiSearch size={32} style={{ opacity: 0.3 }} />
+              </span>
               <div style={{ fontSize: 14, fontWeight: 600 }}>No records found</div>
-              <div style={{ fontSize: 12.5, marginTop: 4 }}>Adjust the filters above to view clock-in records.</div>
+              <div style={{ fontSize: 12.5, marginTop: 4, maxWidth: 360 }}>Adjust the filters above to view clock-in records.</div>
             </div>
           ) : (
             <>

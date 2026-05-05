@@ -293,7 +293,9 @@ export default function Dashboard() {
   }, []);
 
   const filtered = flagTab === 'all' ? flaggedIssues : flaggedIssues.filter((flag) => flag.type === flagTab);
-  const criticalCount = flaggedIssues.filter((flag) => flag.severity === 'critical').length;
+  const urgentCaseCount = flaggedIssues.filter(
+    (flag) => flag.severity === 'critical' || flag.severity === 'high',
+  ).length;
   const statisticCards = [
     {
       key: 'patients',
@@ -301,6 +303,7 @@ export default function Dashboard() {
       value: `${patientCount}`,
       note: 'Total registered patients',
       Icon: FiUsers,
+      showLoadingUntilFetch: true,
     },
     {
       key: 'nures',
@@ -310,9 +313,9 @@ export default function Dashboard() {
       Icon: FiUser,
     },
     {
-      key: 'emerency',
-      title: 'Emerency',
-      value: `${criticalCount}`,
+      key: 'emergency',
+      title: 'Emergency',
+      value: `${urgentCaseCount}`,
       note: 'Active urgent cases',
       Icon: FiAlertTriangle,
     },
@@ -357,7 +360,7 @@ export default function Dashboard() {
                       <span className="dashboard-summary-card__icon"><card.Icon size={16} /></span>
                       <div>
                         <h4>{card.title}</h4>
-                        {isDashboardCardsLoading ? (
+                        {card.showLoadingUntilFetch && isDashboardCardsLoading ? (
                           <span className="dashboard-skeleton dashboard-skeleton--text dashboard-stat-card__skeleton-note" aria-hidden="true" />
                         ) : (
                           <p>{card.note}</p>
@@ -366,7 +369,7 @@ export default function Dashboard() {
                     </div>
                   </div>
                   <div className="dashboard-stat-card__center">
-                    {isDashboardCardsLoading ? (
+                    {card.showLoadingUntilFetch && isDashboardCardsLoading ? (
                       <div className="dashboard-stat-card__loading" role="status" aria-live="polite" aria-label={`${card.title} data is loading`}>
                         <span className="dashboard-skeleton dashboard-skeleton--value" aria-hidden="true" />
                         <small>Loading data...</small>
