@@ -41,10 +41,83 @@ function mergeAttendanceShape(data) {
   return nested ? { ...nested, ...data } : data;
 }
 
+/** True if object looks like an attendance / clock-in record (narrow deep search). */
+function hasClockRecordHints(obj) {
+  if (!obj || typeof obj !== 'object') return false;
+  return ['clockIn', 'clockInTime', 'clockedInAt', 'checkInTime', 'clock_out', 'clockOut'].some((k) => obj[k] != null);
+}
+
+/**
+ * ID for POST /attendance/:id/clock-out must be the attendance (clock) document id.
+ * Handles common API envelopes (data, payload, etc.) and uuid field names.
+ */
 function extractServerAttendanceId(data) {
-  const m = mergeAttendanceShape(data);
-  const id = pickFirst(m, ['id', '_id', 'attendanceId']);
-  return id != null ? String(id) : null;
+  if (!data || typeof data !== 'object') return null;
+
+  const tryObject = (obj) => {
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null;
+    const nestedAtt = obj.attendance && typeof obj.attendance === 'object' ? obj.attendance : null;
+    if (nestedAtt) {
+      const v = pickFirst(nestedAtt, ['uuid', 'attendanceId', 'attendance_id', '_id', 'id']);
+      if (v != null && String(v).trim()) return String(v).trim();
+    }
+    const v = pickFirst(obj, [
+      'uuid', 'attendanceUuid', 'attendance_uuid', 'attendanceId', 'attendance_id',
+      'clockId', 'clock_id', 'clockInId', 'clock_in_id', 'clockRecordId', 'visitAttendanceId',
+    ]);
+    if (v != null && String(v).trim()) return String(v).trim();
+    const flat = pickFirst(obj, ['_id', 'id']);
+    return flat != null && String(flat).trim() ? String(flat).trim() : null;
+  };
+
+  const candidates = [];
+  const add = (x) => {
+    if (x && typeof x === 'object' && !Array.isArray(x)) candidates.push(x);
+  };
+  add(data);
+  add(data.data);
+  add(data.record);
+  add(data.result);
+  add(data.payload);
+  add(data.attendance);
+  add(data.clock);
+  add(data.session);
+  add(data.visit);
+  if (data.data && typeof data.data === 'object') {
+    add(data.data.attendance);
+    add(data.data.clock);
+    add(data.data.record);
+  }
+
+  for (const obj of candidates) {
+    const sid = tryObject(obj);
+    if (sid) return sid;
+    for (const sk of ['session', 'clock', 'visit', 'record', 'clockRecord']) {
+      const sub = obj[sk];
+      if (sub && typeof sub === 'object' && !Array.isArray(sub)) {
+        const inner = tryObject(sub);
+        if (inner) return inner;
+      }
+    }
+  }
+
+  const visited = new WeakSet();
+  const walk = (obj, depth) => {
+    if (!obj || typeof obj !== 'object' || depth < 0 || visited.has(obj)) return null;
+    visited.add(obj);
+    if (hasClockRecordHints(obj)) {
+      const hit = tryObject(obj);
+      if (hit) return hit;
+    }
+    for (const v of Object.values(obj)) {
+      if (v && typeof v === 'object' && !Array.isArray(v)) {
+        const w = walk(v, depth - 1);
+        if (w) return w;
+      }
+    }
+    return null;
+  };
+  return walk(data, 5);
 }
 
 function formatHHMMFromApi(raw) {
@@ -58,6 +131,77 @@ function formatHHMMFromApi(raw) {
   return typeof raw === 'string' ? raw : String(raw);
 }
 
+/** Milliseconds since epoch from API value, or null. */
+function extractTimestampMs(raw) {
+  if (raw == null || raw === '') return null;
+  if (typeof raw === 'number' && Number.isFinite(raw)) {
+    return raw > 1e12 ? raw : raw * 1000;
+  }
+  if (typeof raw === 'string' && /\d/.test(raw)) {
+    const d = new Date(raw.trim());
+    if (!Number.isNaN(d.getTime())) return d.getTime();
+  }
+  return null;
+}
+
+function coerceNonNegativeMinutes(v) {
+  if (v == null || v === '') return null;
+  const n = typeof v === 'string' ? parseFloat(String(v).replace(/,/g, '')) : Number(v);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+/** Minutes from clock display "HH:MM" or "HH:MM:SS" (local same-day). */
+function minutesFromClockDisplay(str) {
+  if (str == null || str === '') return null;
+  const s = String(str).trim();
+  if (s.includes('T')) {
+    const d = new Date(s);
+    if (!Number.isNaN(d.getTime())) return d.getHours() * 60 + d.getMinutes() + Math.round(d.getSeconds() / 60);
+    return null;
+  }
+  const parts = s.split(':').map((p) => parseInt(String(p).trim(), 10));
+  if (parts.length < 2 || parts.some((x) => Number.isNaN(x))) return null;
+  const h = parts[0]|0;
+  const m = parts[1]|0;
+  const sec = parts[2]|0;
+  return h * 60 + m + Math.round(sec / 60);
+}
+
+function formatMinutesTotal(totalMinutes) {
+  const m = Math.max(0, Math.round(Number(totalMinutes) || 0));
+  const h = Math.floor(m / 60);
+  const r = m % 60;
+  if (h > 0 && r > 0) return `${h}h ${r}m`;
+  if (h > 0) return `${h}h`;
+  return `${r}m`;
+}
+
+/** Prefer API duration hints, then full timestamps, then same-day time-of-day pairs. */
+function formatAttendanceDuration(row) {
+  if (!row) return '—';
+
+  const apiDur = coerceNonNegativeMinutes(row.durationMinutesFromApi);
+  if (apiDur != null) return formatMinutesTotal(apiDur);
+
+  if (row.clockInMs != null && row.clockOutMs != null) {
+    const diff = row.clockOutMs - row.clockInMs;
+    if (diff > 60_000) return formatMinutesTotal(diff / 60_000);
+    if (diff > 0) return '< 1m';
+  }
+
+  const cin = row.clockIn;
+  const cout = row.clockOut;
+  if (!cin || !cout) return '—';
+
+  const mi = minutesFromClockDisplay(cin);
+  const mo = minutesFromClockDisplay(cout);
+  if (mi == null || mo == null) return '—';
+
+  let dm = mo - mi;
+  if (dm <= 0) dm += 24 * 60;
+  return formatMinutesTotal(dm);
+}
+
 /** Normalize API clock-in response into a table row (best-effort for varying backends). */
 function attendanceRowFromApiResponse(data, user) {
   const src = mergeAttendanceShape(data);
@@ -67,7 +211,7 @@ function attendanceRowFromApiResponse(data, user) {
 
   const now = new Date();
   const serverId = extractServerAttendanceId(data);
-  const id = serverId || String(pickFirst(src, ['id', '_id', 'attendanceId']) || `clk-${now.getTime()}`);
+  const id = serverId || `clk-${now.getTime()}`;
   const clockInRaw = pickFirst(src, ['clockIn', 'clockInTime', 'clockedInAt', 'checkInTime']);
   let clockIn = formatHHMMFromApi(clockInRaw);
   if (!clockIn) {
@@ -101,6 +245,22 @@ function attendanceRowFromApiResponse(data, user) {
   const clockOutRaw = pickFirst(src, ['clockOut', 'clockOutTime', 'clockedOutAt', 'checkOutTime']);
   const clockOut = formatHHMMFromApi(clockOutRaw);
 
+  const clockInMs = extractTimestampMs(clockInRaw);
+  const clockOutMs = extractTimestampMs(clockOutRaw);
+
+  let durationMinutesFromApi = coerceNonNegativeMinutes(pickFirst(src, [
+    'durationMinutes',
+    'duration_minutes',
+    'visitDurationMinutes',
+    'totalMinutes',
+    'minutesWorked',
+    'workedMinutes',
+  ]));
+  if (durationMinutesFromApi == null) {
+    const hrs = coerceNonNegativeMinutes(pickFirst(src, ['durationHours', 'totalHours', 'hoursWorked']));
+    if (hrs != null) durationMinutesFromApi = hrs * 60;
+  }
+
   return {
     id,
     nurse,
@@ -108,6 +268,9 @@ function attendanceRowFromApiResponse(data, user) {
     date: typeof dateVal === 'string' ? dateVal.slice(0, 10) : dateVal,
     clockIn,
     clockOut: clockOut || null,
+    clockInMs,
+    clockOutMs,
+    durationMinutesFromApi,
     gps,
     distance: src.distanceFromPatient != null ? `${src.distanceFromPatient}` : (src.distance != null ? String(src.distance) : null),
     status,
@@ -162,16 +325,28 @@ const statusIcon = {
   missed: <FiXCircle size={14} style={{ color: '#dc2626' }} />,
 };
 
-const calcDuration = (cin, cout) => {
-  if (!cin || !cout) return '—';
-  const [h1, m1] = cin.split(':').map(Number);
-  const [h2, m2] = cout.split(':').map(Number);
-  const diff = (h2 * 60 + m2) - (h1 * 60 + m1);
-  if (diff <= 0) return '—';
-  const hrs = Math.floor(diff / 60);
-  const mins = diff % 60;
-  return hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
-};
+function isSyntheticClientRowId(id) {
+  return typeof id === 'string' && id.startsWith('clk-');
+}
+
+/** Most recent row that is clocked in without clock-out, with a usable server attendance id. */
+function deriveOpenAttendanceIdFromRecords(rows) {
+  const open = (rows || []).filter((r) => {
+    if (!r?.clockIn) return false;
+    const cout = r.clockOut;
+    if (cout != null && String(cout).trim() !== '' && cout !== '—') return false;
+    const rid = String(r?.id ?? '').trim();
+    if (!rid || isSyntheticClientRowId(rid)) return false;
+    return true;
+  });
+  if (!open.length) return null;
+  open.sort((a, b) => {
+    const ka = `${a.date || ''} ${a.clockIn || ''}`;
+    const kb = `${b.date || ''} ${b.clockIn || ''}`;
+    return kb.localeCompare(ka);
+  });
+  return String(open[0].id).trim();
+}
 
 export default function Attendance() {
   const navigate = useNavigate();
@@ -207,7 +382,6 @@ export default function Attendance() {
   const [sessionError, setSessionError] = useState('');
   const [sessionSuccess, setSessionSuccess] = useState('');
   const [activeAttendanceId, setActiveAttendanceId] = useState(null);
-  const [clockOutAttendanceId, setClockOutAttendanceId] = useState('');
   const [clockOutNotes, setClockOutNotes] = useState('');
 
   const [monthlyRecords, setMonthlyRecords] = useState([]);
@@ -227,13 +401,37 @@ export default function Attendance() {
     return sortRecordsByDateDesc(Array.from(map.values()));
   }, [monthlyRecords, dailyRecords, apiRecords]);
 
+  /** Open shift id from server-backed lists when this tab never stored clock-in uuid. */
+  const inferredOpenAttendanceId = useMemo(
+    () =>
+      deriveOpenAttendanceIdFromRecords(dailyRecords)
+      || deriveOpenAttendanceIdFromRecords(monthlyRecords)
+      || deriveOpenAttendanceIdFromRecords(apiRecords),
+    [dailyRecords, monthlyRecords, apiRecords],
+  );
+
+  const displayOpenAttendanceId = useMemo(() => {
+    const a = String(activeAttendanceId || '').trim();
+    if (a && !isSyntheticClientRowId(a)) return a;
+    return String(inferredOpenAttendanceId || '').trim();
+  }, [activeAttendanceId, inferredOpenAttendanceId]);
+
+  useEffect(() => {
+    if (!inferredOpenAttendanceId) return;
+    const a = String(activeAttendanceId || '').trim();
+    if (a && !isSyntheticClientRowId(a)) return;
+    setActiveAttendanceId(inferredOpenAttendanceId);
+    try {
+      sessionStorage.setItem(ACTIVE_ATTENDANCE_SESSION_KEY, inferredOpenAttendanceId);
+    } catch {
+      /* ignore */
+    }
+  }, [inferredOpenAttendanceId, activeAttendanceId]);
+
   useEffect(() => {
     try {
       const stored = sessionStorage.getItem(ACTIVE_ATTENDANCE_SESSION_KEY);
-      if (stored) {
-        setActiveAttendanceId(stored);
-        setClockOutAttendanceId((prev) => prev || stored);
-      }
+      if (stored) setActiveAttendanceId(stored);
     } catch {
       /* ignore */
     }
@@ -382,12 +580,13 @@ export default function Attendance() {
       if (serverId) {
         row.id = serverId;
         setActiveAttendanceId(serverId);
-        setClockOutAttendanceId(serverId);
         try {
           sessionStorage.setItem(ACTIVE_ATTENDANCE_SESSION_KEY, serverId);
         } catch {
           /* ignore */
         }
+      } else if (typeof console !== 'undefined' && console.warn) {
+        console.warn('[Attendance] Clock-in returned no recognizable attendance/session id.', data);
       }
       setApiRecords((prev) => [row, ...prev]);
       setSessionSuccess(`Clock-in recorded at ${row.clockIn}. Use Clock out when the visit ends.`);
@@ -408,11 +607,23 @@ export default function Attendance() {
   };
 
   const handleClockOut = async () => {
-    const id = (clockOutAttendanceId.trim() || activeAttendanceId || '').trim();
+    let id = String(activeAttendanceId || '').trim();
+    if (!id || isSyntheticClientRowId(id)) {
+      try {
+        id = String(sessionStorage.getItem(ACTIVE_ATTENDANCE_SESSION_KEY) || '').trim();
+      } catch {
+        id = '';
+      }
+    }
+    if (!id || isSyntheticClientRowId(id)) {
+      id = String(inferredOpenAttendanceId || '').trim();
+    }
     setSessionError('');
     setSessionSuccess('');
     if (!id) {
-      setSessionError('Enter an attendance ID, or clock in first.');
+      setSessionError(
+        'No open attendance session was found. Use Date = today (or the day you clocked in), wait for records to load, then try Clock out again.',
+      );
       return;
     }
     setClockOutLoading(true);
@@ -438,8 +649,17 @@ export default function Attendance() {
       const outTime = formatHHMMFromApi(
         pickFirst(src, ['clockOut', 'clockOutTime', 'clockedOutAt', 'checkOutTime']),
       ) || `${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`;
+      const outRaw = pickFirst(src, ['clockOut', 'clockOutTime', 'clockedOutAt', 'checkOutTime']);
+      const outMs = extractTimestampMs(outRaw);
 
-      setApiRecords((prev) => prev.map((r) => (r.id === id ? { ...r, clockOut: outTime } : r)));
+      setApiRecords((prev) => prev.map((r) => (r.id === id ? {
+        ...r,
+        clockOut: outTime,
+        clockOutMs: outMs ?? r.clockOutMs,
+        durationMinutesFromApi: coerceNonNegativeMinutes(pickFirst(src, [
+          'durationMinutes', 'duration_minutes', 'totalMinutes', 'minutesWorked',
+        ])) ?? r.durationMinutesFromApi,
+      } : r)));
 
       if (activeAttendanceId === id) {
         setActiveAttendanceId(null);
@@ -452,7 +672,6 @@ export default function Attendance() {
         /* ignore */
       }
       setClockOutNotes('');
-      setClockOutAttendanceId('');
       setSessionSuccess(`Clock-out recorded at ${outTime}.`);
       const q = lastMonthlyQueryRef.current;
       if (q?.year != null && q?.month != null) {
@@ -497,9 +716,9 @@ export default function Attendance() {
                     No nurse ID on this account — daily attendance from the server is skipped.
                   </span>
                 )}
-                {activeAttendanceId && (
+                {displayOpenAttendanceId && (
                   <span style={{ display: 'block', marginTop: 4, opacity: 0.95 }}>
-                    Open session: <code style={{ fontSize: 11, background: 'rgba(0,0,0,0.15)', padding: '2px 6px', borderRadius: 2 }}>{activeAttendanceId}</code>
+                    Open session: <code style={{ fontSize: 11, background: 'rgba(0,0,0,0.15)', padding: '2px 6px', borderRadius: 2 }}>{displayOpenAttendanceId}</code>
                   </span>
                 )}
               </div>
@@ -551,16 +770,6 @@ export default function Attendance() {
               placeholder="Short note for this check-in"
               className="form-control form-control-kh"
               style={{ fontSize: 13 }}
-            />
-          </div>
-          <div style={{ gridColumn: 'minmax(200px, 1fr)' }}>
-            <label style={{ display: 'block', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text-muted)', marginBottom: 4 }}>Attendance ID (clock out)</label>
-            <input
-              value={clockOutAttendanceId}
-              onChange={(e) => setClockOutAttendanceId(e.target.value)}
-              placeholder="Filled after clock-in, or paste ID"
-              className="form-control form-control-kh"
-              style={{ fontSize: 13, fontFamily: 'ui-monospace, monospace' }}
             />
           </div>
           <div style={{ gridColumn: 'span 2' }}>
@@ -753,7 +962,7 @@ export default function Attendance() {
                           {r.clockOut || '—'}
                         </td>
                         <td style={{ padding: '10px 12px', fontSize: 12.5, fontWeight: 600, color: 'var(--kh-text)', whiteSpace: 'nowrap', border: '1px solid #e5e7eb' }}>
-                          {calcDuration(r.clockIn, r.clockOut)}
+                          {formatAttendanceDuration(r)}
                         </td>
                         <td style={{ padding: '10px 12px', fontSize: 12.5, color: 'var(--kh-text-muted)', border: '1px solid #e5e7eb' }}>
                           {r.distance || '—'}
@@ -856,7 +1065,7 @@ export default function Attendance() {
                 </div>
                 <div style={{ padding: '10px 16px', borderRadius: 2, background: '#f9fafb', border: '1px solid #e5e7eb', marginTop: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: 11, color: 'var(--kh-text-muted)', fontWeight: 600 }}>Duration</span>
-                  <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--kh-text)' }}>{calcDuration(selected.clockIn, selected.clockOut)}</span>
+                  <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--kh-text)' }}>{formatAttendanceDuration(selected)}</span>
                 </div>
               </div>
 

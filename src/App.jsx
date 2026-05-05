@@ -13,8 +13,7 @@ import Attendance from './pages/Attendance';
 import Patients from './pages/Patients';
 import PatientProfile from './pages/PatientProfile';
 import NurseProfile from './pages/NurseProfile';
-import Complaint from './pages/Complaint';
-import Feedback from './pages/Feedback';
+import Enquiries from './pages/Enquiries';
 import NurseScheduling from './pages/NurseScheduling';
 import Account from './pages/Account';
 import Billing from './pages/Billing';
@@ -137,7 +136,11 @@ function App() {
         user={user}
       />
       <div className={`main-content bg-base-200 text-base-content${sidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
-        <Topbar onToggleSidebar={() => setSidebarOpen(prev => !prev)} onLogout={handleLogout} />
+        <Topbar
+          onToggleSidebar={() => setSidebarOpen(prev => !prev)}
+          onLogout={handleLogout}
+          user={user}
+        />
         <AnimatePresence mode="wait" initial={false}>
           <motion.div
             key={location.pathname}
@@ -214,14 +217,9 @@ function App() {
           <AuthLayout><PatientProfile /></AuthLayout>
         </ProtectedRoute>
       } />
-      <Route path="/complaints" element={
+      <Route path="/enquiries" element={
         <ProtectedRoute isAuthenticated={isAuthenticated}>
-          <AuthLayout><Complaint /></AuthLayout>
-        </ProtectedRoute>
-      } />
-      <Route path="/feedback" element={
-        <ProtectedRoute isAuthenticated={isAuthenticated}>
-          <AuthLayout><Feedback /></AuthLayout>
+          <AuthLayout><Enquiries /></AuthLayout>
         </ProtectedRoute>
       } />
       <Route path="/account" element={

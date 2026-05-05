@@ -1,6 +1,14 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { apiFetch } from '../api';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import Modal from 'react-bootstrap/Modal';
+import { apiFetch, getUser } from '../api';
+import {
+  resolveAlertViaApi,
+  updateAlertStatusViaApi,
+  fetchPatientResolvedAlerts,
+  fetchAllResolvedAlerts,
+  fetchAlertsOptionalPath,
+} from '../utils/alerts';
 import {
   FiAlertCircle, FiAlertTriangle, FiCheckCircle, FiClock, FiX, FiSearch,
   FiChevronLeft, FiChevronRight, FiChevronsLeft, FiChevronsRight,
@@ -26,28 +34,129 @@ function formatAlertDate(v) {
   return s.length >= 10 ? s.slice(0, 10) : s;
 }
 
+function coerceNonEmptyStr(v) {
+  if (v == null || v === '') return null;
+  const s = String(v).trim();
+  return s || null;
+}
+
+/** Build display name from a person-like object (patient, client, populated ref, etc.). */
+function nameFromPersonObject(p) {
+  if (!p || typeof p !== 'object') return null;
+  const fn = coerceNonEmptyStr(pickFirst(p, ['firstName', 'first_name', 'givenName', 'forename']));
+  const ln = coerceNonEmptyStr(pickFirst(p, ['lastName', 'last_name', 'familyName', 'surname']));
+  const combined = [fn, ln].filter(Boolean).join(' ').trim();
+  if (combined) return combined;
+  const single = coerceNonEmptyStr(pickFirst(p, [
+    'fullName', 'full_name', 'displayName', 'display_name',
+    'name', 'patientName', 'patient_name', 'label', 'preferredName',
+  ]));
+  return single;
+}
+
 function patientDisplayName(a) {
-  const p = a.patient;
-  if (p && typeof p === 'object') {
-    const fn = pickFirst(p, ['firstName', 'first_name', 'givenName']);
-    const ln = pickFirst(p, ['lastName', 'last_name', 'familyName']);
-    const combined = [fn, ln].filter(Boolean).join(' ').trim();
-    if (combined) return combined;
-    const n = pickFirst(p, ['fullName', 'full_name', 'name', 'patientName']);
-    if (n) return String(n);
+  const o = a && typeof a === 'object' ? a : {};
+
+  const topStringName = coerceNonEmptyStr(pickFirst(o, [
+    'patientName', 'patient_name', 'patientFullName', 'fullPatientName',
+    'clientName', 'client_name', 'serviceUserName', 'service_user_name',
+    'subjectName', 'subject_name', 'personName', 'person_name',
+  ]));
+  if (topStringName) return topStringName;
+
+  if (typeof o.patient === 'string') {
+    const s = coerceNonEmptyStr(o.patient);
+    if (s) return s;
   }
-  const n = pickFirst(a, ['patientName', 'patient_name', 'name', 'patientFullName']);
-  return n != null ? String(n) : 'Unknown patient';
+
+  const nestedObjects = [
+    o.patient,
+    o.patientInfo,
+    o.patient_info,
+    o.patientData,
+    o.patient_data,
+    o.patientRecord,
+    o.patient_record,
+    o.relatedPatient,
+    o.related_patient,
+    o.careRecipient,
+    o.care_recipient,
+    o.client,
+    o.serviceUser,
+    o.service_user,
+    o.subject,
+    o.person,
+    o.user,
+  ];
+  for (const obj of nestedObjects) {
+    if (obj && typeof obj === 'object') {
+      const n = nameFromPersonObject(obj);
+      if (n) return n;
+    }
+  }
+
+  if (o.data && typeof o.data === 'object') {
+    const d = o.data;
+    const inner = pickFirst(d, ['patient', 'patientInfo', 'patient_info']);
+    if (typeof inner === 'string') {
+      const s = coerceNonEmptyStr(inner);
+      if (s) return s;
+    }
+    if (inner && typeof inner === 'object') {
+      const n = nameFromPersonObject(inner);
+      if (n) return n;
+    }
+    const dn = coerceNonEmptyStr(pickFirst(d, ['patientName', 'patient_name', 'fullName']));
+    if (dn) return dn;
+  }
+
+  if (o.metadata && typeof o.metadata === 'object') {
+    const md = coerceNonEmptyStr(pickFirst(o.metadata, ['patientName', 'patient_name', 'fullName', 'name']));
+    if (md) return md;
+    if (o.metadata.patient && typeof o.metadata.patient === 'object') {
+      const n = nameFromPersonObject(o.metadata.patient);
+      if (n) return n;
+    }
+  }
+
+  const uuidOnly = coerceNonEmptyStr(pickFirst(o, ['patientUuid', 'patient_uuid']));
+  if (uuidOnly) return `Patient (${uuidOnly.slice(0, 8)}…)`;
+
+  const pid = o.patientId;
+  if (pid && typeof pid === 'object') {
+    const n = nameFromPersonObject(pid);
+    if (n) return n;
+  }
+
+  return 'Unknown patient';
 }
 
 function patientIdFrom(a) {
-  const p = a.patient;
-  if (p && typeof p === 'object') {
-    const id = pickFirst(p, ['patientId', 'patient_id', 'id', '_id', 'registrationNumber']);
-    if (id != null) return String(id);
+  const o = a && typeof a === 'object' ? a : {};
+
+  const fromPerson = (obj) => {
+    if (!obj || typeof obj !== 'object') return '';
+    const raw = pickFirst(obj, ['patientId', 'patient_id', 'id', '_id', 'registrationNumber', 'nhsNumber', 'nhs_number']);
+    if (raw != null && raw !== '') return String(raw);
+    return '';
+  };
+
+  let s = fromPerson(o.patient);
+  if (s) return s;
+
+  const pidTop = pickFirst(o, ['patientId', 'patient_id', 'patientUuid', 'patient_uuid']);
+  if (pidTop != null && typeof pidTop !== 'object') return String(pidTop).trim();
+  if (pidTop && typeof pidTop === 'object') return fromPerson(pidTop);
+
+  if (o.data && typeof o.data === 'object') {
+    s = fromPerson(o.data.patient);
+    if (s) return s;
+    const pidD = pickFirst(o.data, ['patientId', 'patient_id']);
+    if (pidD != null && typeof pidD !== 'object') return String(pidD);
+    if (pidD && typeof pidD === 'object') return fromPerson(pidD);
   }
-  const id = pickFirst(a, ['patientId', 'patient_id']);
-  return id != null ? String(id) : '';
+
+  return '';
 }
 
 function normalizeSeverity(raw) {
@@ -57,13 +166,20 @@ function normalizeSeverity(raw) {
   }
   if (v === 'severe' || v === 'urgent') return 'critical';
   if (v === 'warn' || v === 'warning') return 'high';
+  if (v === 'high-risk' || v === 'highrisk') return 'high';
   return 'medium';
 }
 
 function normalizeCaseStatus(raw) {
   let v = String(raw ?? 'open').toLowerCase().trim().replace(/_/g, '-');
-  if (v === 'inprogress' || v === 'in progress') v = 'in-progress';
+  const compact = v.replace(/[\s-]+/g, '');
+  if (compact === 'inprogress') return 'in-progress';
+  if (['investigating', 'assigned', 'processing', 'acknowledged', 'handling'].includes(compact)) {
+    return 'in-progress';
+  }
+  if (v === 'in progress') v = 'in-progress';
   if (v === 'pending' || v === 'active') v = 'open';
+  if (v === 'closed' || v === 'completed') v = 'resolved';
   if (['open', 'in-progress', 'resolved'].includes(v)) return v;
   return 'open';
 }
@@ -71,27 +187,299 @@ function normalizeCaseStatus(raw) {
 function extractAlertsArray(json) {
   if (!json) return [];
   if (Array.isArray(json)) return json;
+  /** Common list keys on root and under `data` (resolved endpoint shapes vary by backend). */
+  const listKeys = ['alerts', 'items', 'results', 'resolvedAlerts', 'resolved', 'history', 'records', 'rows', 'documents'];
+  for (const k of listKeys) {
+    if (Array.isArray(json[k])) return json[k];
+  }
   const d = json.data;
   if (Array.isArray(d)) return d;
   if (d && typeof d === 'object') {
-    if (Array.isArray(d.alerts)) return d.alerts;
-    if (Array.isArray(d.items)) return d.items;
-    if (Array.isArray(d.results)) return d.results;
+    for (const k of listKeys) {
+      if (Array.isArray(d[k])) return d[k];
+    }
   }
-  if (Array.isArray(json.alerts)) return json.alerts;
-  if (Array.isArray(json.items)) return json.items;
-  if (Array.isArray(json.results)) return json.results;
   return [];
+}
+
+function coerceAlertNote(raw, fallback = '—') {
+  if (raw == null || raw === '') return fallback;
+  if (typeof raw === 'string' || typeof raw === 'number' || typeof raw === 'boolean') {
+    const s = String(raw).trim();
+    return s || fallback;
+  }
+  if (typeof raw === 'object') {
+    const nested = raw.message ?? raw.msg ?? raw.text ?? raw.description ?? raw.reason;
+    if (nested != null && String(nested).trim()) return String(nested).trim();
+    try {
+      const j = JSON.stringify(raw);
+      return j.length > 420 ? `${j.slice(0, 417)}…` : j;
+    } catch {
+      return fallback;
+    }
+  }
+  return String(raw);
+}
+
+function formatActivityTime(v) {
+  if (v == null || v === '') return '';
+  const s = String(v).trim();
+  if (!s) return '';
+  try {
+    const d = new Date(s);
+    if (!Number.isNaN(d.getTime())) {
+      return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    }
+  } catch { /* ignore */ }
+  if (s.includes('T') && s.length >= 16) {
+    const slice = s.slice(11, 16);
+    if (/^\d{2}:\d{2}$/.test(slice)) return slice;
+  }
+  return s.length > 8 ? s.slice(0, 8) : s;
+}
+
+function vitalValueToString(v) {
+  if (v == null || v === '') return '—';
+  if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') return String(v);
+  if (typeof v === 'object' && !Array.isArray(v)) {
+    const inner = pickFirst(v, ['value', 'reading', 'display', 'text', 'amount', 'result']);
+    if (inner != null && inner !== '') return vitalValueToString(inner);
+    return coerceAlertNote(v, '—');
+  }
+  return coerceAlertNote(v, '—');
+}
+
+function normalizeVitals(raw) {
+  if (raw == null || raw === '') return {};
+  if (Array.isArray(raw)) {
+    const out = {};
+    for (let i = 0; i < raw.length; i++) {
+      const item = raw[i];
+      if (item == null) continue;
+      if (typeof item === 'string' || typeof item === 'number') {
+        const label = vitalValueToString(item);
+        if (label && label !== '—') out[`Reading ${i + 1}`] = label;
+        continue;
+      }
+      if (typeof item !== 'object') continue;
+      const k = String(
+        pickFirst(item, ['label', 'name', 'key', 'type', 'vital', 'metric']) || '',
+      ).trim();
+      const val = pickFirst(item, ['value', 'reading', 'amount', 'display', 'result', 'text']);
+      const keyLabel = k || `Reading ${i + 1}`;
+      out[keyLabel] = vitalValueToString(val);
+    }
+    return out;
+  }
+  if (typeof raw === 'object') {
+    const out = {};
+    for (const [k, val] of Object.entries(raw)) {
+      if (val == null || val === '') continue;
+      out[k] = vitalValueToString(val);
+    }
+    return out;
+  }
+  return {};
+}
+
+function normalizeMedications(raw) {
+  if (raw == null || raw === '') return [];
+  if (typeof raw === 'string') {
+    const t = raw.trim();
+    return t ? [t] : [];
+  }
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((m) => {
+      if (m == null || m === '') return '';
+      if (typeof m === 'string') return m.trim();
+      if (typeof m === 'object') {
+        const name = String(
+          pickFirst(m, ['name', 'label', 'medication', 'drug', 'title', 'displayName']) || '',
+        ).trim();
+        if (name) return name;
+        return coerceAlertNote(m, '').trim();
+      }
+      return String(m).trim();
+    })
+    .filter(Boolean);
+}
+
+function normalizeActivities(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((act) => {
+      if (act == null || act === '') return null;
+      if (typeof act === 'string') {
+        const s = act.trim();
+        return s ? { time: '', action: s, note: '', status: 'pending' } : null;
+      }
+      if (typeof act !== 'object') return null;
+      const st = String(pickFirst(act, ['status']) || '').toLowerCase();
+      const status = ['alert', 'done', 'pending'].includes(st) ? st : 'pending';
+      const timeRaw = pickFirst(act, ['time', 'at', 'timestamp', 'createdAt', 'created_at', 'date']);
+      return {
+        time: formatActivityTime(timeRaw),
+        action: String(pickFirst(act, ['action', 'title', 'label', 'type', 'event']) || '—'),
+        note: String(pickFirst(act, ['note', 'message', 'description', 'details']) || ''),
+        status,
+      };
+    })
+    .filter(Boolean);
+}
+
+/** True if id is UI-only fallback when the API omitted a real identifier */
+function isFallbackAlertId(id) {
+  return /^AL-\d+$/i.test(String(id ?? '').trim());
+}
+
+/**
+ * Extract backend alert id from common shapes: string keys, Mongo _id / Extended JSON $oid,
+ * BSON ObjectId-like toHexString, nested data.
+ */
+function normalizeAlertRecordId(raw, index) {
+  const a = raw && typeof raw === 'object' ? raw : {};
+  const dataObj = a.data && typeof a.data === 'object' ? a.data : null;
+  const metaObj = a.metadata && typeof a.metadata === 'object' ? a.metadata : null;
+
+  const asString = (v) => {
+    if (v == null || v === '') return null;
+    if (typeof v === 'string') {
+      const s = v.trim();
+      return s ? s : null;
+    }
+    if (typeof v === 'object') {
+      if (typeof v.$oid === 'string' && v.$oid.trim()) return v.$oid.trim();
+      if (typeof v.toHexString === 'function') {
+        try {
+          const h = v.toHexString();
+          if (h && typeof h === 'string' && h.trim()) return h.trim();
+        } catch { /* ignore */ }
+      }
+    }
+    const s = String(v).trim();
+    if (!s || s === '[object Object]') return null;
+    return s;
+  };
+
+  const tryObject = (obj) => {
+    if (!obj || typeof obj !== 'object') return null;
+    const keys = ['id', '_id', 'alertId', 'alert_id', 'uuid', 'alertUUID', 'alert_uuid'];
+    for (const k of keys) {
+      const out = asString(obj[k]);
+      if (out) return out;
+    }
+    return null;
+  };
+
+  return (
+    tryObject(a)
+    || tryObject(metaObj || {})
+    || (dataObj ? tryObject(dataObj) : null)
+    || asString(a._id)
+    || `AL-${index + 1}`
+  );
+}
+
+/** Merge overlapping alert lists (/pending vs /in-progress); keep higher-ranked status when ids collide. */
+function alertStatusRankFromRaw(raw) {
+  const s = normalizeCaseStatus(pickFirst(raw && typeof raw === 'object' ? raw : {}, [
+    'caseStatus', 'case_status', 'status', 'state',
+  ]));
+  if (s === 'resolved') return 3;
+  if (s === 'in-progress') return 2;
+  return 1;
+}
+
+function dedupeMergedAlertRows(rows) {
+  const byId = new Map();
+  rows.forEach((raw, idx) => {
+    if (!raw || typeof raw !== 'object') return;
+    const id = normalizeAlertRecordId(raw, idx);
+    const existing = byId.get(id);
+    if (!existing) {
+      byId.set(id, raw);
+      return;
+    }
+    if (alertStatusRankFromRaw(raw) >= alertStatusRankFromRaw(existing)) {
+      byId.set(id, raw);
+    }
+  });
+  return [...byId.values()];
+}
+
+/** Backend `/alerts/resolved` rows: vitals-based alerts with flat fields (Postman sample). */
+function isFlatResolvedVitalsAlert(raw) {
+  if (!raw || typeof raw !== 'object') return false;
+  if (String(raw.status ?? '').toLowerCase().trim() !== 'resolved') return false;
+  return raw.vitalKey != null || raw.vitalId != null || raw.vitalLabel != null;
+}
+
+function mapFlatResolvedVitalToCase(raw, index) {
+  const id = coerceNonEmptyStr(raw.id) || normalizeAlertRecordId(raw, index);
+  const patientId = coerceNonEmptyStr(raw.patientUuid) || coerceNonEmptyStr(raw.patientId) || '';
+  const vitalLabel = String(raw.vitalLabel || raw.vitalKey || 'Vital').trim();
+  const typeTag = coerceNonEmptyStr(raw.type);
+  const severity = normalizeSeverity(raw.severity || (typeTag === 'high-risk' ? 'high' : typeTag));
+
+  const resolvedByObj = raw.resolvedBy && typeof raw.resolvedBy === 'object' ? raw.resolvedBy : null;
+  const resolvedByStr = resolvedByObj
+    ? (nameFromPersonObject(resolvedByObj) || '')
+    : coerceNonEmptyStr(raw.resolvedBy) || '';
+
+  const reason = coerceNonEmptyStr(raw.description) || coerceNonEmptyStr(raw.resolveMessage) || '—';
+  const flaggedDateRaw = raw.date || raw.triggeredAt || raw.createdAt;
+
+  const vitals = {};
+  if (raw.value != null && String(raw.value).trim() !== '') {
+    vitals[vitalLabel || 'Reading'] = String(raw.value);
+  }
+
+  const diagParts = [vitalLabel, raw.value != null ? String(raw.value) : ''].filter(Boolean);
+  const diagnosis = diagParts.join(': ') || '';
+
+  return {
+    id,
+    patientId,
+    patient: patientDisplayName(raw),
+    age: undefined,
+    gender: undefined,
+    type: 'Vitals Alert',
+    severity,
+    reason,
+    flaggedBy: 'Vitals',
+    flaggedDate: formatAlertDate(flaggedDateRaw) || '—',
+    nurse: resolvedByStr || '—',
+    region: '',
+    phone: '',
+    diagnosis,
+    caseStatus: 'resolved',
+    activities: [],
+    vitals,
+    medications: [],
+    resolution: {
+      resolvedBy: resolvedByStr || '—',
+      resolvedDate: formatAlertDate(raw.resolvedAt) || formatAlertDate(raw.updatedAt),
+      action: coerceNonEmptyStr(raw.resolveMessage) || '',
+    },
+  };
+}
+
+function mapResolvedRowToCase(raw, index) {
+  if (isFlatResolvedVitalsAlert(raw)) {
+    return mapFlatResolvedVitalToCase(raw, index);
+  }
+  const c = mapAlertToCase(raw, index);
+  return c.caseStatus === 'resolved' ? c : { ...c, caseStatus: 'resolved' };
 }
 
 function mapAlertToCase(raw, index) {
   const a = raw && typeof raw === 'object' ? raw : {};
-  const idRaw = pickFirst(a, ['id', '_id', 'alertId', 'alert_id']);
-  const id = idRaw != null ? String(idRaw) : `AL-${index + 1}`;
+  const id = normalizeAlertRecordId(raw, index);
   const patient = patientDisplayName(a);
   const patientId = patientIdFrom(a);
   const type = String(pickFirst(a, ['type', 'alertType', 'alert_type', 'category', 'title']) || 'Alert');
-  const reason = String(pickFirst(a, ['reason', 'message', 'description', 'details', 'note', 'body']) || '—');
+  const reason = coerceAlertNote(pickFirst(a, ['reason', 'message', 'description', 'details', 'note', 'body']));
   const severity = normalizeSeverity(pickFirst(a, ['severity', 'priority', 'level']));
   const caseStatus = normalizeCaseStatus(pickFirst(a, ['caseStatus', 'case_status', 'status', 'state']));
   const flaggedBy = String(pickFirst(a, ['flaggedBy', 'flagged_by', 'createdBy', 'created_by', 'reportedBy', 'source']) || '—');
@@ -99,34 +487,43 @@ function mapAlertToCase(raw, index) {
   const nurse = String(pickFirst(a, ['nurse', 'nurseName', 'nurse_name', 'assignedNurse', 'assigned_to']) || flaggedBy);
   const region = String(pickFirst(a, ['region', 'location', 'area']) || '');
   const phone = String(pickFirst(a, ['phone', 'phoneNumber', 'phone_number', 'contact']) || '');
-  const diagnosis = String(pickFirst(a, ['diagnosis']) || '');
+  const dataObj = a.data && typeof a.data === 'object' ? a.data : null;
+  const diagnosis = String(
+    pickFirst(a, ['diagnosis', 'clinicalDiagnosis', 'primaryDiagnosis', 'clinical_notes'])
+    || (dataObj ? pickFirst(dataObj, ['diagnosis', 'clinicalDiagnosis', 'primaryDiagnosis']) : '')
+    || '',
+  );
   const ageRaw = pickFirst(a, ['age']);
   const ageNum = ageRaw != null && ageRaw !== '' ? Number(ageRaw) : NaN;
   const gender = String(pickFirst(a, ['gender']) || '');
-  const vitals = pickFirst(a, ['vitals']);
-  const medications = pickFirst(a, ['medications']);
-  const activities = pickFirst(a, ['activities', 'timeline', 'history']);
+  const vitalsRaw = pickFirst(a, ['vitals']) ?? (dataObj ? pickFirst(dataObj, ['vitals']) : undefined);
+  const medsRaw = pickFirst(a, ['medications']) ?? (dataObj ? pickFirst(dataObj, ['medications', 'meds']) : undefined);
+  const activitiesRaw = pickFirst(a, ['activities', 'timeline', 'history'])
+    ?? (dataObj ? pickFirst(dataObj, ['activities', 'timeline', 'history']) : undefined);
   const resNested = a.resolution && typeof a.resolution === 'object' ? a.resolution : null;
 
   let resolution;
   if (caseStatus === 'resolved') {
+    const rbRaw = pickFirst(a, ['resolvedBy', 'resolved_by'])
+      || pickFirst(resNested || {}, ['resolvedBy', 'resolved_by']);
+    const resolvedByLabel = rbRaw != null && typeof rbRaw === 'object'
+      ? (nameFromPersonObject(rbRaw) || '')
+      : String(rbRaw ?? '').trim();
+
     resolution = {
-      resolvedBy: String(
-        pickFirst(a, ['resolvedBy', 'resolved_by'])
-        || pickFirst(resNested || {}, ['resolvedBy', 'resolved_by'])
-        || '',
-      ),
+      resolvedBy: resolvedByLabel,
       resolvedDate: formatAlertDate(
         pickFirst(a, ['resolvedDate', 'resolved_date', 'resolvedAt'])
         || pickFirst(resNested || {}, ['resolvedDate', 'resolved_date', 'resolvedAt']),
       ),
       action: String(
-        pickFirst(a, ['resolution', 'resolutionNote'])
+        pickFirst(a, ['resolution', 'resolutionNote', 'resolveMessage'])
         || pickFirst(resNested || {}, ['action', 'notes', 'description'])
         || '',
       ),
     };
-    if (!resolution.action && !resolution.resolvedBy && !resolution.resolvedDate) resolution = undefined;
+    const hasResolveMeta = !!(resolution.action || resolution.resolvedBy || resolution.resolvedDate);
+    if (!hasResolveMeta) resolution = undefined;
   }
 
   return {
@@ -145,24 +542,9 @@ function mapAlertToCase(raw, index) {
     phone,
     diagnosis,
     caseStatus,
-    activities: Array.isArray(activities)
-      ? activities.map((act) => {
-        const st = String(pickFirst(act, ['status']) || '').toLowerCase();
-        const status = ['alert', 'done', 'pending'].includes(st) ? st : 'pending';
-        return {
-          time: String(pickFirst(act, ['time', 'at']) || '').slice(0, 8),
-          action: String(pickFirst(act, ['action', 'title', 'label']) || '—'),
-          note: String(pickFirst(act, ['note', 'message', 'description']) || ''),
-          status,
-        };
-      })
-      : [],
-    vitals: vitals && typeof vitals === 'object' && !Array.isArray(vitals) ? vitals : {},
-    medications: Array.isArray(medications)
-      ? medications
-        .map((m) => (typeof m === 'string' ? m : String(pickFirst(m, ['name', 'label', 'medication']) || '')))
-        .filter(Boolean)
-      : [],
+    activities: normalizeActivities(activitiesRaw),
+    vitals: normalizeVitals(vitalsRaw),
+    medications: normalizeMedications(medsRaw),
     resolution,
   };
 }
@@ -212,30 +594,85 @@ const activityStatusDot = {
   pending: { bg: '#d97706' },
 };
 
+function formatCaseStatusLabel(caseStatus) {
+  const v = String(caseStatus ?? '').toLowerCase();
+  if (v === 'open') return 'Open';
+  if (v === 'in-progress') return 'In progress';
+  if (v === 'resolved') return 'Resolved';
+  return String(caseStatus ?? '').replace(/-/g, ' ') || '—';
+}
+
+function formatSeverityLabel(severity) {
+  const s = String(severity ?? '').toLowerCase();
+  if (!s) return '—';
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function shortenTableText(text, maxLen) {
+  const t = String(text ?? '').trim();
+  if (!t) return '—';
+  return t.length > maxLen ? `${t.slice(0, maxLen - 1)}…` : t;
+}
+
 export default function ClinicalDocs() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [cases, setCases] = useState([]);
   const [alertsLoading, setAlertsLoading] = useState(true);
   const [alertsError, setAlertsError] = useState(null);
   const [selected, setSelected] = useState(null);
+  const [caseQueue, setCaseQueue] = useState('pending');
+  const [resolvedPatientId, setResolvedPatientId] = useState('');
+  const pendingSnapshotRef = useRef([]);
+  const resolvedReloadRef = useRef({ kind: 'none' });
   const [typeFilter, setTypeFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('All');
   const [searchTerm, setSearchTerm] = useState('');
   const [page, setPage] = useState(1);
   const perPage = 8;
 
+  /** Pending → Resolved (or URL) with status/type still on e.g. Open hides every resolved row — reset when switching queue. */
+  const resetListFilters = useCallback(() => {
+    setTypeFilter('all');
+    setStatusFilter('All');
+    setSearchTerm('');
+  }, []);
+
   const loadPendingAlerts = useCallback(async () => {
     setAlertsError(null);
     setAlertsLoading(true);
+    const on401 = () => navigate('/login', { replace: true });
     try {
-      const response = await apiFetch('/alerts/pending?page=1&limit=100', { method: 'GET' }, () => navigate('/login', { replace: true }));
+      const response = await apiFetch('/alerts/pending?page=1&limit=100', { method: 'GET' }, on401);
       const json = await response.json().catch(() => ({}));
       if (!response.ok) {
         const msg = json.message || json.error || `Could not load alerts (${response.status})`;
         throw new Error(typeof msg === 'string' ? msg : 'Could not load alerts');
       }
-      const rows = extractAlertsArray(json);
-      const mapped = rows.map((row, i) => mapAlertToCase(row, i));
+      const mergedRaw = [...extractAlertsArray(json)];
+      /** Backends often exclude in-progress rows from `/alerts/pending`; merge optional lists when they exist */
+      const secondaryPaths = [
+        '/alerts/in-progress?page=1&limit=100',
+        '/alerts/in_progress?page=1&limit=100',
+        '/alerts/inProgress?page=1&limit=100',
+        '/alerts/active?page=1&limit=100',
+      ];
+      const extras = await Promise.all(
+        secondaryPaths.map((path) =>
+          fetchAlertsOptionalPath(path, on401).catch((e) => {
+            const msg = String(e.message || '').toLowerCase();
+            if (msg.includes('session expired') || msg.includes('log in')) throw e;
+            return null;
+          }),
+        ),
+      );
+      extras.forEach((extraJson) => {
+        if (extraJson) mergedRaw.push(...extractAlertsArray(extraJson));
+      });
+      const deduped = dedupeMergedAlertRows(mergedRaw);
+      const mapped = deduped.map((row, i) => mapAlertToCase(row, i));
+      pendingSnapshotRef.current = mapped;
+      resolvedReloadRef.current = { kind: 'none' };
       setCases(mapped);
       setSelected((prev) => {
         if (!prev) return null;
@@ -250,15 +687,144 @@ export default function ClinicalDocs() {
     }
   }, [navigate]);
 
+  const mapRowsToCasesDeduped = (rows) => {
+    const byId = new Map();
+    rows.forEach((row, i) => {
+      const c = mapResolvedRowToCase(row, i);
+      byId.set(c.id, c);
+    });
+    return [...byId.values()];
+  };
+
+  const loadGlobalResolvedAlerts = useCallback(async () => {
+    setAlertsError(null);
+    setAlertsLoading(true);
+    try {
+      const json = await fetchAllResolvedAlerts(
+        { page: 1, limit: 100 },
+        () => navigate('/login', { replace: true }),
+      );
+      const rows = extractAlertsArray(json);
+      const mapped = mapRowsToCasesDeduped(rows);
+      mapped.sort((a, b) => String(b.flaggedDate).localeCompare(String(a.flaggedDate)));
+      resolvedReloadRef.current = { kind: 'global' };
+      setCases(mapped);
+      setSelected((prev) => {
+        if (!prev) return null;
+        return mapped.find((item) => item.id === prev.id) || null;
+      });
+      setPage(1);
+    } catch (e) {
+      setCases([]);
+      setSelected(null);
+      setAlertsError(e.message || 'Failed to load resolved alerts');
+    } finally {
+      setAlertsLoading(false);
+    }
+  }, [navigate]);
+
+  const loadResolvedForPatient = useCallback(async (patientId) => {
+    const pid = String(patientId ?? '').trim();
+    if (!pid) {
+      setAlertsError('Enter a patient UUID to load resolved cases.');
+      return;
+    }
+    setAlertsError(null);
+    setAlertsLoading(true);
+    try {
+      const json = await fetchPatientResolvedAlerts(
+        pid,
+        { page: 1, limit: 100 },
+        () => navigate('/login', { replace: true }),
+      );
+      const rows = extractAlertsArray(json);
+      const mapped = mapRowsToCasesDeduped(rows);
+      resolvedReloadRef.current = { kind: 'patient', patientId: pid };
+      setCases(mapped);
+      setSelected((prev) => {
+        if (!prev) return null;
+        return mapped.find((item) => item.id === prev.id) || null;
+      });
+      setPage(1);
+    } catch (e) {
+      setCases([]);
+      setSelected(null);
+      setAlertsError(e.message || 'Failed to load resolved alerts');
+    } finally {
+      setAlertsLoading(false);
+    }
+  }, [navigate]);
+
+  const loadAllResolvedAcrossPendingPatients = useCallback(async () => {
+    await loadGlobalResolvedAlerts();
+  }, [loadGlobalResolvedAlerts]);
+
+  const selectPendingQueue = useCallback(() => {
+    resetListFilters();
+    setCaseQueue('pending');
+    setPage(1);
+    if (searchParams.get('patientId')?.trim()) {
+      navigate('/clinical', { replace: true });
+    } else {
+      loadPendingAlerts();
+    }
+  }, [loadPendingAlerts, navigate, searchParams, resetListFilters]);
+
+  const selectResolvedQueue = useCallback(() => {
+    resetListFilters();
+    setCaseQueue('resolved');
+    setPage(1);
+    const pid = resolvedPatientId.trim();
+    if (pid) {
+      loadResolvedForPatient(pid);
+    } else {
+      loadGlobalResolvedAlerts();
+    }
+  }, [resolvedPatientId, loadResolvedForPatient, loadGlobalResolvedAlerts, resetListFilters]);
+
+  const handleRefreshAlerts = useCallback(() => {
+    if (caseQueue === 'pending') {
+      loadPendingAlerts();
+      return;
+    }
+    const r = resolvedReloadRef.current;
+    if (r.kind === 'patient' && r.patientId) {
+      loadResolvedForPatient(r.patientId);
+    } else if (r.kind === 'global') {
+      loadGlobalResolvedAlerts();
+    } else {
+      const pid = resolvedPatientId.trim();
+      if (pid) loadResolvedForPatient(pid);
+      else loadGlobalResolvedAlerts();
+    }
+  }, [
+    caseQueue,
+    loadPendingAlerts,
+    loadResolvedForPatient,
+    loadGlobalResolvedAlerts,
+    resolvedPatientId,
+  ]);
+
+  /** Deep link `/clinical?patientId=uuid` opens Resolved + GET `/alerts/patient/{patientId}/resolved`. No query → Pending. */
   useEffect(() => {
-    loadPendingAlerts();
-  }, [loadPendingAlerts]);
+    const p = searchParams.get('patientId')?.trim() ?? '';
+    setResolvedPatientId(p);
+    resetListFilters();
+    if (p) {
+      setCaseQueue('resolved');
+      loadResolvedForPatient(p);
+    } else {
+      loadPendingAlerts();
+    }
+  }, [searchParams, loadPendingAlerts, loadResolvedForPatient, resetListFilters]);
 
   /* Resolution form state */
   const [showResolveForm, setShowResolveForm] = useState(false);
   const [selectedSolution, setSelectedSolution] = useState('');
   const [resolutionNotes, setResolutionNotes] = useState('');
   const [newStatus, setNewStatus] = useState('');
+  const [resolutionSubmitting, setResolutionSubmitting] = useState(false);
+  const [resolutionError, setResolutionError] = useState('');
 
   /* Filtered cases */
   const filtered = useMemo(() => {
@@ -273,8 +839,11 @@ export default function ClinicalDocs() {
         return (
           c.patient.toLowerCase().includes(q)
           || c.id.toLowerCase().includes(q)
+          || (c.patientId && String(c.patientId).toLowerCase().includes(q))
           || (c.nurse && c.nurse.toLowerCase().includes(q))
           || (c.region && c.region.toLowerCase().includes(q))
+          || (c.reason && c.reason.toLowerCase().includes(q))
+          || (c.diagnosis && String(c.diagnosis).toLowerCase().includes(q))
         );
       }
       return true;
@@ -296,49 +865,125 @@ export default function ClinicalDocs() {
   const resetFilters = () => { setTypeFilter('all'); setStatusFilter('All'); setSearchTerm(''); setPage(1); };
   const hasFilters = typeFilter !== 'all' || statusFilter !== 'All' || searchTerm;
 
-  /* Apply resolution */
-  const applyResolution = () => {
+  /* Apply resolution — API: see resolveAlertViaApi (POST /alerts/:id/resolve, etc.) */
+  const applyResolution = async () => {
     if (!selected || !selectedSolution || !newStatus) return;
-    setCases(prev => prev.map(c => {
-      if (c.id !== selected.id) return c;
-      const updated = { ...c, caseStatus: newStatus };
-      if (newStatus === 'resolved') {
-        updated.resolution = {
-          resolvedBy: 'Admin',
-          resolvedDate: new Date().toISOString().slice(0, 10),
-          action: `${selectedSolution}${resolutionNotes ? ' — ' + resolutionNotes : ''}`,
+    setResolutionError('');
+    const notesTrim = resolutionNotes.trim();
+    const actionNote = `${selectedSolution}${notesTrim ? ` — ${notesTrim}` : ''}`;
+    const now = new Date();
+    const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const user = getUser();
+    const resolvedByLabel = String(
+      pickFirst(user || {}, ['name', 'fullName', 'displayName', 'email', 'username']),
+    ).trim()
+      || [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim()
+      || String(user?.email || '').trim()
+      || 'Admin';
+
+    const applyLocalCaseUpdate = () => {
+      setCases((prev) =>
+        prev.map((c) => {
+          if (c.id !== selected.id) return c;
+          const updated = { ...c, caseStatus: newStatus };
+          if (newStatus === 'resolved') {
+            updated.resolution = {
+              resolvedBy: resolvedByLabel,
+              resolvedDate: new Date().toISOString().slice(0, 10),
+              action: actionNote,
+            };
+          }
+          updated.activities = [...(c.activities || []), {
+            time: timeStr,
+            action: newStatus === 'resolved' ? 'Case resolved' : 'Status updated',
+            note: actionNote,
+            status: newStatus === 'resolved' ? 'done' : newStatus === 'in-progress' ? 'pending' : 'alert',
+          }];
+          return updated;
+        }),
+      );
+      setSelected((prev) => {
+        if (!prev || prev.id !== selected.id) return prev;
+        const next = {
+          ...prev,
+          caseStatus: newStatus,
+          activities: [...(prev.activities || []), {
+            time: timeStr,
+            action: newStatus === 'resolved' ? 'Case resolved' : 'Status updated',
+            note: actionNote,
+            status: newStatus === 'resolved' ? 'done' : 'pending',
+          }],
         };
+        if (newStatus === 'resolved') {
+          next.resolution = {
+            resolvedBy: resolvedByLabel,
+            resolvedDate: new Date().toISOString().slice(0, 10),
+            action: actionNote,
+          };
+        }
+        return next;
+      });
+    };
+
+    setResolutionSubmitting(true);
+    try {
+      if (newStatus === 'resolved') {
+        if (isFallbackAlertId(selected.id)) {
+          throw new Error(
+            'This alert does not include a backend id — the pending-alerts API should return id or _id per row.',
+          );
+        }
+        await resolveAlertViaApi(
+          selected.id,
+          {
+            solution: selectedSolution,
+            notes: notesTrim || undefined,
+            resolution: actionNote,
+          },
+          () => navigate('/login', { replace: true }),
+        );
+        await loadPendingAlerts();
+        setCaseQueue('pending');
+      } else if (newStatus === 'in-progress') {
+        if (isFallbackAlertId(selected.id)) {
+          throw new Error(
+            'This alert does not include a backend id — the pending-alerts API should return id or _id per row.',
+          );
+        }
+        await updateAlertStatusViaApi(
+          selected.id,
+          {
+            caseStatus: 'in-progress',
+            solution: selectedSolution,
+            notes: notesTrim || undefined,
+            actionNote,
+          },
+          () => navigate('/login', { replace: true }),
+        );
+        await loadPendingAlerts();
+      } else {
+        applyLocalCaseUpdate();
       }
-      /* Add activity entry */
-      const now = new Date();
-      const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-      updated.activities = [...(c.activities || []), {
-        time: timeStr,
-        action: newStatus === 'resolved' ? 'Case resolved' : 'Status updated',
-        note: `${selectedSolution}${resolutionNotes ? ' — ' + resolutionNotes : ''}`,
-        status: newStatus === 'resolved' ? 'done' : newStatus === 'in-progress' ? 'pending' : 'alert',
-      }];
-      return updated;
-    }));
-    /* Update selected to reflect changes */
-    setSelected(prev => {
-      if (!prev) return null;
-      const updated = cases.find(c => c.id === prev.id);
-      if (!updated) return prev;
-      const now = new Date();
-      const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-      return {
-        ...prev,
-        caseStatus: newStatus,
-        resolution: newStatus === 'resolved' ? { resolvedBy: 'Admin', resolvedDate: new Date().toISOString().slice(0, 10), action: `${selectedSolution}${resolutionNotes ? ' — ' + resolutionNotes : ''}` } : prev.resolution,
-        activities: [...(prev.activities || []), { time: timeStr, action: newStatus === 'resolved' ? 'Case resolved' : 'Status updated', note: `${selectedSolution}${resolutionNotes ? ' — ' + resolutionNotes : ''}`, status: newStatus === 'resolved' ? 'done' : 'pending' }],
-      };
-    });
+      setShowResolveForm(false);
+      setSelectedSolution('');
+      setResolutionNotes('');
+      setNewStatus('');
+    } catch (e) {
+      setResolutionError(e.message || 'Request failed');
+    } finally {
+      setResolutionSubmitting(false);
+    }
+  };
+
+  const closeCaseModal = useCallback(() => {
+    setSelected(null);
     setShowResolveForm(false);
     setSelectedSolution('');
     setResolutionNotes('');
     setNewStatus('');
-  };
+    setResolutionError('');
+    setResolutionSubmitting(false);
+  }, []);
 
   return (
     <div className="page-wrapper emergency-cases-page" style={{ background: '#f1f5f9' }}>
@@ -375,7 +1020,7 @@ export default function ClinicalDocs() {
               type="button"
               className="emergency-clear-filters"
               style={{ borderColor: 'rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.12)', color: '#fff' }}
-              onClick={loadPendingAlerts}
+              onClick={handleRefreshAlerts}
               disabled={alertsLoading}
               aria-busy={alertsLoading}
             >
@@ -385,6 +1030,58 @@ export default function ClinicalDocs() {
         </div>
 
         <div className="emergency-cases-toolbar__body">
+          <div className="emergency-case-queue-row mb-3">
+            <span className="emergency-field-label d-block mb-2" style={{ color: '#64748b' }}>Alert queue</span>
+            <div className="d-flex flex-wrap align-items-center gap-2">
+              <button
+                type="button"
+                className={`emergency-status-chip${caseQueue === 'pending' ? ' is-active' : ''}`}
+                onClick={selectPendingQueue}
+              >
+                Pending
+              </button>
+              <button
+                type="button"
+                className={`emergency-status-chip${caseQueue === 'resolved' ? ' is-active' : ''}`}
+                onClick={selectResolvedQueue}
+              >
+                Resolved
+              </button>
+              {caseQueue === 'resolved' && (
+                <>
+                  <label className="visually-hidden" htmlFor="resolved-patient-uuid">Patient UUID</label>
+                  <input
+                    id="resolved-patient-uuid"
+                    type="text"
+                    className="emergency-search-input"
+                    style={{ flex: '1 1 220px', minWidth: 200, maxWidth: 420, paddingLeft: 10 }}
+                    value={resolvedPatientId}
+                    onChange={(e) => setResolvedPatientId(e.target.value)}
+                    placeholder="Patient UUID…"
+                    title="Paste patient id, then Load resolved. Optional: open /clinical?patientId=&lt;uuid&gt; to load automatically."
+                  />
+                  <button
+                    type="button"
+                    className="emergency-clear-filters"
+                    disabled={alertsLoading}
+                    onClick={() => loadResolvedForPatient(resolvedPatientId)}
+                  >
+                    Load resolved
+                  </button>
+                  <button
+                    type="button"
+                    className="emergency-clear-filters"
+                    disabled={alertsLoading}
+                    onClick={loadAllResolvedAcrossPendingPatients}
+                    title="GET /alerts/resolved?page=1&limit=100 — full resolved list"
+                  >
+                    Reload all resolved
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
           <div className="emergency-type-chips" role="tablist" aria-label="Case type">
             {TYPE_TABS.map(t => (
               <button
@@ -440,13 +1137,15 @@ export default function ClinicalDocs() {
         </div>
       </div>
 
-      <div className="emergency-layout">
+      <div className="emergency-cases-shell">
 
         <div className="emergency-cases-main">
           {alertsLoading && cases.length === 0 ? (
             <div className="emergency-cases-empty">
               <FiRefreshCw size={36} style={{ opacity: 0.45 }} className="emergency-cases-loading-icon" aria-hidden />
-              <p className="emergency-cases-empty__title">Loading pending alerts…</p>
+              <p className="emergency-cases-empty__title">
+                {caseQueue === 'resolved' ? 'Loading resolved alerts…' : 'Loading pending alerts…'}
+              </p>
               <p className="emergency-cases-empty__hint">Fetching from the server.</p>
             </div>
           ) : alertsError ? (
@@ -454,80 +1153,123 @@ export default function ClinicalDocs() {
               <FiAlertCircle size={36} style={{ opacity: 0.5, color: '#b91c1c' }} aria-hidden />
               <p className="emergency-cases-empty__title">Could not load alerts</p>
               <p className="emergency-cases-empty__hint">{alertsError}</p>
-              <button type="button" className="emergency-clear-filters" style={{ marginTop: 12 }} onClick={loadPendingAlerts}>
+              <button type="button" className="emergency-clear-filters" style={{ marginTop: 12 }} onClick={handleRefreshAlerts}>
                 <FiRefreshCw size={14} aria-hidden /> Try again
               </button>
             </div>
           ) : filtered.length === 0 ? (
             <div className="emergency-cases-empty">
               <FiSearch size={36} style={{ opacity: 0.35 }} aria-hidden />
-              <p className="emergency-cases-empty__title">{cases.length === 0 ? 'No pending alerts' : 'No cases found'}</p>
+              <p className="emergency-cases-empty__title">
+                {cases.length === 0
+                  ? (caseQueue === 'resolved' ? 'No resolved cases loaded' : 'No pending alerts')
+                  : 'No cases found'}
+              </p>
               <p className="emergency-cases-empty__hint">
-                {cases.length === 0 ? 'There are no items in the pending queue right now.' : 'Try widening your filters or search terms.'}
+                {cases.length === 0
+                  ? (
+                    caseQueue === 'resolved'
+                      ? 'Resolved uses GET /alerts/resolved. Enter a patient UUID and Load resolved to filter, or Reload all resolved / Refresh. Open /clinical?patientId=… for a direct patient filter.'
+                      : 'There are no items in the pending queue right now.'
+                  )
+                  : 'Try widening your filters or search terms.'}
               </p>
             </div>
           ) : (
             <>
-              <div className="emergency-cases-grid">
-                {paged.map((c) => {
-                  const sev = severityStyle[c.severity] || severityStyle.medium;
-                  const cs = caseStatusStyle[c.caseStatus] || caseStatusStyle.open;
-                  const sevKey = c.severity === 'critical' ? 'critical' : c.severity === 'high' ? 'high' : 'medium';
-                  return (
-                    <article
-                      key={c.id}
-                      role="button"
-                      tabIndex={0}
-                      className={`emergency-case-card emergency-case-card--${sevKey}${selected?.id === c.id ? ' is-selected' : ''}`}
-                      onClick={() => { setSelected(c); setShowResolveForm(false); }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          setSelected(c);
-                          setShowResolveForm(false);
-                        }
-                      }}
-                    >
-                      <div className="emergency-case-card__row">
-                        <span className="emergency-case-card__id">{c.id}</span>
-                        <span
-                          className="emergency-case-card__pill"
-                          style={{
-                            background: cs.bg,
-                            color: cs.color,
-                            border: `1px solid ${cs.border}`,
-                            textTransform: 'capitalize',
-                            fontWeight: 700,
+              <div className="table-responsive emergency-cases-table-wrap">
+                <table className="emergency-cases-table">
+                  <colgroup>
+                    <col className="emergency-cases-table__col emergency-cases-table__col--id" />
+                    <col className="emergency-cases-table__col emergency-cases-table__col--patient" />
+                    <col className="emergency-cases-table__col emergency-cases-table__col--type" />
+                    <col className="emergency-cases-table__col emergency-cases-table__col--severity" />
+                    <col className="emergency-cases-table__col emergency-cases-table__col--status" />
+                    <col className="emergency-cases-table__col emergency-cases-table__col--people" />
+                    <col className="emergency-cases-table__col emergency-cases-table__col--date" />
+                    <col className="emergency-cases-table__col emergency-cases-table__col--summary" />
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      {['Case ID', 'Patient', 'Type', 'Severity', 'Status', 'Assigned / Flagged', 'Flagged date', 'Summary'].map((h) => (
+                        <th key={h}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paged.map((c) => {
+                      const sev = severityStyle[c.severity] || severityStyle.medium;
+                      const cs = caseStatusStyle[c.caseStatus] || caseStatusStyle.open;
+                      const sevKey = c.severity === 'critical' ? 'critical' : c.severity === 'high' ? 'high' : 'medium';
+                      const reasonFull = String(c.reason ?? '').trim() || '—';
+                      const reasonShort = shortenTableText(reasonFull, 160);
+                      const typeDisplay = shortenTableText(c.type, 80);
+                      return (
+                        <tr
+                          key={c.id}
+                          tabIndex={0}
+                          role="button"
+                          className={`emergency-cases-table__row emergency-cases-table__row--${sevKey}${selected?.id === c.id ? ' is-selected' : ''}`}
+                          onClick={() => { setSelected(c); setShowResolveForm(false); }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              setSelected(c);
+                              setShowResolveForm(false);
+                            }
                           }}
+                          aria-current={selected?.id === c.id ? 'true' : undefined}
                         >
-                          {cs.icon}
-                          {c.caseStatus}
-                        </span>
-                      </div>
-                      <h3 className="emergency-case-card__patient">{c.patient}</h3>
-                      <div className="emergency-case-card__sub">{c.patientId} · {c.region}</div>
-                      <p className="emergency-case-card__reason">{c.reason}</p>
-                      <div className="emergency-case-card__footer">
-                        <span className="emergency-case-card__pill emergency-case-card__pill--type">{c.type}</span>
-                        <span
-                          className="emergency-case-card__pill"
-                          style={{
-                            background: sev.bg,
-                            color: sev.color,
-                            border: `1px solid ${sev.border}`,
-                          }}
-                        >
-                          {c.severity}
-                        </span>
-                      </div>
-                      <div className="emergency-case-card__meta">
-                        <span><FiUser size={12} aria-hidden /> {c.flaggedBy}</span>
-                        <span><FiClock size={12} aria-hidden /> {c.flaggedDate}</span>
-                        <span><FiActivity size={12} aria-hidden /> {c.nurse}</span>
-                      </div>
-                    </article>
-                  );
-                })}
+                          <td className="emergency-cases-table__mono">{c.id}</td>
+                          <td className="emergency-cases-table__break">
+                            <div className="emergency-cases-table__patient">{c.patient}</div>
+                            <div className="emergency-cases-table__sub">
+                              {[c.patientId && `ID ${c.patientId}`, c.phone].filter(Boolean).join(' · ') || '—'}
+                            </div>
+                          </td>
+                          <td className="emergency-cases-table__break"><span className="emergency-cases-table__type-chip" title={c.type}>{typeDisplay}</span></td>
+                          <td className="emergency-cases-table__pill-cell">
+                            <span
+                              className="emergency-cases-table__pill"
+                              style={{
+                                background: sev.bg,
+                                color: sev.color,
+                                border: `1px solid ${sev.border}`,
+                              }}
+                            >
+                              {formatSeverityLabel(c.severity)}
+                            </span>
+                          </td>
+                          <td className="emergency-cases-table__pill-cell">
+                            <span
+                              className="emergency-cases-table__pill emergency-cases-table__pill--status"
+                              style={{
+                                background: cs.bg,
+                                color: cs.color,
+                                border: `1px solid ${cs.border}`,
+                              }}
+                            >
+                              <span className="emergency-cases-table__pill-icon" aria-hidden>{cs.icon}</span>
+                              <span>{formatCaseStatusLabel(c.caseStatus)}</span>
+                            </span>
+                          </td>
+                          <td className="emergency-cases-table__break">
+                            <div className="emergency-cases-table__stack-row">
+                              <span className="emergency-cases-table__inline-label">Assigned</span>
+                              <span className="emergency-cases-table__muted-strong">{c.nurse || '—'}</span>
+                            </div>
+                            <div className="emergency-cases-table__stack-row">
+                              <span className="emergency-cases-table__inline-label">Flagged by</span>
+                              <span className="emergency-cases-table__sub emergency-cases-table__inline-value">{c.flaggedBy}</span>
+                            </div>
+                          </td>
+                          <td className="emergency-cases-table__muted-strong emergency-cases-table__break emergency-cases-table__nowrap-ish">{c.flaggedDate}</td>
+                          <td className="emergency-cases-table__summary-cell"><span className="emergency-cases-table__reason" title={reasonFull}>{reasonShort}</span></td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
 
               <div className="emergency-pagination">
@@ -563,11 +1305,23 @@ export default function ClinicalDocs() {
             </>
           )}
         </div>
+      </div>
 
-        {selected && (
-          <div className="emergency-detail-panel">
-            <div className="emergency-detail-panel__head">
-              <div className="d-flex justify-content-between align-items-start gap-2">
+      <Modal
+        show={Boolean(selected)}
+        onHide={closeCaseModal}
+        animation={false}
+        size="lg"
+        centered
+        scrollable
+        className="emergency-case-modal"
+        dialogClassName="emergency-case-modal__dialog"
+        contentClassName="emergency-case-modal__content"
+      >
+        {selected ? (
+          <>
+            <Modal.Header closeButton className="emergency-case-modal__header">
+              <Modal.Title as="div" className="w-100 mb-0 pe-1">
                 <div>
                   <div className="d-flex align-items-center gap-2 mb-1 flex-wrap">
                     <span style={{ fontSize: 13, fontWeight: 800, color: '#b91c1c' }}>{selected.id}</span>
@@ -591,7 +1345,7 @@ export default function ClinicalDocs() {
                           }}
                         >
                           {cs.icon}
-                          {selected.caseStatus}
+                          <span>{formatCaseStatusLabel(selected.caseStatus)}</span>
                         </span>
                       );
                     })()}
@@ -601,18 +1355,10 @@ export default function ClinicalDocs() {
                     {[selected.age != null && `${selected.age}y`, selected.gender, selected.patientId].filter(Boolean).join(' · ')}
                   </div>
                 </div>
-                <button
-                  type="button"
-                  className="emergency-detail-close"
-                  onClick={() => { setSelected(null); setShowResolveForm(false); }}
-                  aria-label="Close case details"
-                >
-                  <FiX size={16} />
-                </button>
-              </div>
-            </div>
+            </Modal.Title>
+            </Modal.Header>
 
-            <div className="emergency-detail-panel__body">
+            <Modal.Body className="emergency-case-modal__body">
               {/* Quick info */}
               <div className="d-flex flex-wrap gap-2 mb-4">
                 {[
@@ -627,9 +1373,9 @@ export default function ClinicalDocs() {
               </div>
 
               {/* Reason */}
-              <div style={{ padding: '12px 14px', borderRadius: 2, background: '#fef2f2', border: '1px solid #fecaca', marginBottom: 16 }}>
-                <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#dc2626', marginBottom: 4 }}>Flag Reason</div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: '#991b1b', lineHeight: 1.5 }}>{selected.reason}</div>
+              <div style={{ padding: '12px 14px', borderRadius: 8, background: '#f8fafc', border: '1px solid #e2e8f0', marginBottom: 16 }}>
+                <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text-muted)', marginBottom: 4 }}>Flag Reason</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--kh-text)', lineHeight: 1.5 }}>{selected.reason}</div>
               </div>
 
               {/* Severity + Type badges */}
@@ -654,71 +1400,90 @@ export default function ClinicalDocs() {
                       }}
                     >
                       <FiAlertTriangle size={12} aria-hidden />
-                      {selected.severity}
+                      {formatSeverityLabel(selected.severity)}
                     </span>
                   );
                 })()}
                 <span style={{ fontSize: 11, fontWeight: 700, padding: '4px 12px', borderRadius: 8, background: '#fef2f2', color: '#991b1b', border: '1px solid #fecaca' }}>{selected.type}</span>
               </div>
 
-              {/* Diagnosis */}
-              <div style={{ marginBottom: 16 }}>
-                <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text-muted)', marginBottom: 6 }}>Diagnosis</div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--kh-text)' }}>{selected.diagnosis}</div>
-              </div>
+              <div className="emergency-case-modal__sections">
+                <section className="emergency-case-modal__section">
+                  <h3 className="emergency-case-modal__section-title">Diagnosis</h3>
+                  <p className="emergency-case-modal__section-body">
+                    {selected.diagnosis?.trim() ? selected.diagnosis : 'No diagnosis on file for this alert.'}
+                  </p>
+                </section>
 
-              {/* Vitals */}
-              <div style={{ marginBottom: 16 }}>
-                <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text-muted)', marginBottom: 8 }}>
-                  <FiActivity size={11} style={{ marginRight: 4 }} />Current Vitals
-                </div>
-                <div className="d-flex flex-wrap gap-2">
-                  {Object.entries(selected.vitals || {}).map(([k, v]) => (
-                    <div key={k} style={{ padding: '8px 12px', borderRadius: 2, background: '#f9fafb', border: '1px solid #e5e7eb', minWidth: 80 }}>
-                      <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--kh-text-muted)', textTransform: 'uppercase', marginBottom: 2 }}>{k}</div>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--kh-text)' }}>{v}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Medications */}
-              <div style={{ marginBottom: 16 }}>
-                <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text-muted)', marginBottom: 8 }}>Medications</div>
-                <div className="d-flex flex-column gap-1">
-                  {(selected.medications || []).map((m, i) => (
-                    <div key={i} style={{ fontSize: 12.5, color: 'var(--kh-text)', padding: '8px 12px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                      <FiShield size={14} style={{ color: '#64748b', flexShrink: 0, marginTop: 2 }} aria-hidden />
-                      <span style={{ fontWeight: 600, lineHeight: 1.4 }}>{m}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Activity timeline */}
-              <div style={{ marginBottom: 16, borderTop: '1px solid #f3f4f6', paddingTop: 16 }}>
-                <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text-muted)', marginBottom: 10 }}>
-                  <FiClock size={11} style={{ marginRight: 4 }} />Activity Timeline
-                </div>
-                <div className="d-flex flex-column gap-0" style={{ position: 'relative' }}>
-                  {/* vertical line */}
-                  <div style={{ position: 'absolute', left: 5, top: 8, bottom: 8, width: 2, background: '#e5e7eb' }} />
-                  {(selected.activities || []).map((a, i) => {
-                    const dot = activityStatusDot[a.status] || activityStatusDot.pending;
-                    return (
-                      <div key={i} style={{ display: 'flex', gap: 12, padding: '8px 0', position: 'relative' }}>
-                        <div style={{ width: 12, height: 12, borderRadius: '50%', background: dot.bg, border: '2px solid #fff', flexShrink: 0, marginTop: 2, zIndex: 1, boxShadow: '0 0 0 1px #e5e7eb' }} />
-                        <div style={{ flex: 1 }}>
-                          <div className="d-flex align-items-center gap-2">
-                            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--kh-text-muted)' }}>{a.time}</span>
-                            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--kh-text)' }}>{a.action}</span>
-                          </div>
-                          <div style={{ fontSize: 12, color: 'var(--kh-text-muted)', lineHeight: 1.4, marginTop: 2 }}>{a.note}</div>
+                <section className="emergency-case-modal__section">
+                  <h3 className="emergency-case-modal__section-title">
+                    <FiActivity size={12} aria-hidden className="emergency-case-modal__section-title-icon" />
+                    Current vitals
+                  </h3>
+                  {Object.keys(selected.vitals || {}).length === 0 ? (
+                    <p className="emergency-case-modal__empty">No vitals captured for this case.</p>
+                  ) : (
+                    <div className="emergency-case-modal__vitals-grid">
+                      {Object.entries(selected.vitals || {}).map(([k, v]) => (
+                        <div key={k} className="emergency-case-modal__vital-chip">
+                          <div className="emergency-case-modal__vital-label">{k}</div>
+                          <div className="emergency-case-modal__vital-value">{vitalValueToString(v)}</div>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
+
+                <section className="emergency-case-modal__section">
+                  <h3 className="emergency-case-modal__section-title">Medications</h3>
+                  {(selected.medications || []).length === 0 ? (
+                    <p className="emergency-case-modal__empty">No medications listed.</p>
+                  ) : (
+                    <ul className="emergency-case-modal__med-list">
+                      {(selected.medications || []).map((m, i) => (
+                        <li key={i} className="emergency-case-modal__med-item">
+                          <FiShield size={14} className="emergency-case-modal__med-icon" aria-hidden />
+                          <span>{m}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+
+                <section className="emergency-case-modal__section emergency-case-modal__section--timeline">
+                  <h3 className="emergency-case-modal__section-title">
+                    <FiClock size={12} aria-hidden className="emergency-case-modal__section-title-icon" />
+                    Activity timeline
+                  </h3>
+                  {(selected.activities || []).length === 0 ? (
+                    <p className="emergency-case-modal__empty">No activity history yet.</p>
+                  ) : (
+                    <div className="emergency-case-modal__timeline">
+                      <div className="emergency-case-modal__timeline-line" aria-hidden />
+                      {(selected.activities || []).map((a, i) => {
+                        const dot = activityStatusDot[a.status] || activityStatusDot.pending;
+                        return (
+                          <div key={i} className="emergency-case-modal__timeline-row">
+                            <div
+                              className="emergency-case-modal__timeline-dot"
+                              style={{
+                                background: dot.bg,
+                                boxShadow: '0 0 0 1px #e5e7eb',
+                              }}
+                            />
+                            <div className="emergency-case-modal__timeline-content">
+                              <div className="emergency-case-modal__timeline-meta">
+                                {a.time ? <span className="emergency-case-modal__timeline-time">{a.time}</span> : null}
+                                <span className="emergency-case-modal__timeline-action">{a.action}</span>
+                              </div>
+                              {a.note ? <div className="emergency-case-modal__timeline-note">{a.note}</div> : null}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
               </div>
 
               {/* Resolution (if resolved) */}
@@ -737,14 +1502,14 @@ export default function ClinicalDocs() {
                 <div style={{ borderTop: '1px solid #f3f4f6', paddingTop: 16 }}>
                   {!showResolveForm ? (
                     <div className="d-flex gap-2">
-                      <button onClick={() => { setShowResolveForm(true); setNewStatus('in-progress'); }} style={{
+                      <button onClick={() => { setResolutionError(''); setShowResolveForm(true); setNewStatus('in-progress'); }} style={{
                         flex: 1, padding: '10px 16px', fontSize: 12.5, fontWeight: 700, borderRadius: 2, cursor: 'pointer',
                         background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe',
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                       }}>
                         <FiRefreshCw size={13} /> Update Status
                       </button>
-                      <button onClick={() => { setShowResolveForm(true); setNewStatus('resolved'); }} style={{
+                      <button onClick={() => { setResolutionError(''); setShowResolveForm(true); setNewStatus('resolved'); }} style={{
                         flex: 1, padding: '10px 16px', fontSize: 12.5, fontWeight: 700, borderRadius: 2, cursor: 'pointer',
                         background: '#45B6FE', color: '#fff', border: '1px solid #45B6FE',
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
@@ -760,7 +1525,7 @@ export default function ClinicalDocs() {
                           {newStatus === 'resolved' ? <FiCheckCircle size={16} style={{ color: '#1565A0' }} /> : <FiRefreshCw size={16} style={{ color: '#2563eb' }} />}
                           {newStatus === 'resolved' ? 'Resolve case' : 'Update status'}
                         </span>
-                        <button onClick={() => { setShowResolveForm(false); setSelectedSolution(''); setResolutionNotes(''); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--kh-text-muted)' }}><FiX size={14} /></button>
+                        <button onClick={() => { setShowResolveForm(false); setSelectedSolution(''); setResolutionNotes(''); setResolutionError(''); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--kh-text-muted)' }}><FiX size={14} /></button>
                       </div>
 
                       {/* Status select */}
@@ -792,23 +1557,29 @@ export default function ClinicalDocs() {
                           style={{ width: '100%', padding: '8px 12px', fontSize: 13, border: '1px solid #d1d5db', borderRadius: 2, background: '#fff', color: 'var(--kh-text)', resize: 'vertical', fontFamily: 'inherit' }} />
                       </div>
 
+                      {resolutionError ? (
+                        <div style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 8, background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', fontSize: 12.5, fontWeight: 600 }}>
+                          {resolutionError}
+                        </div>
+                      ) : null}
+
                       {/* Submit */}
-                      <button onClick={applyResolution} disabled={!selectedSolution} style={{
-                        width: '100%', padding: '10px 16px', fontSize: 13, fontWeight: 700, borderRadius: 2, cursor: selectedSolution ? 'pointer' : 'not-allowed',
-                        background: selectedSolution ? (newStatus === 'resolved' ? '#45B6FE' : '#2563eb') : '#e5e7eb',
-                        color: selectedSolution ? '#fff' : '#9ca3af',
+                      <button type="button" onClick={() => applyResolution()} disabled={!selectedSolution || resolutionSubmitting} style={{
+                        width: '100%', padding: '10px 16px', fontSize: 13, fontWeight: 700, borderRadius: 2, cursor: selectedSolution && !resolutionSubmitting ? 'pointer' : 'not-allowed',
+                        background: selectedSolution && !resolutionSubmitting ? (newStatus === 'resolved' ? '#45B6FE' : '#2563eb') : '#e5e7eb',
+                        color: selectedSolution && !resolutionSubmitting ? '#fff' : '#9ca3af',
                         border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                       }}>
-                        <FiSend size={13} /> {newStatus === 'resolved' ? 'Apply Solution & Resolve' : 'Update Case Status'}
+                        <FiSend size={13} /> {resolutionSubmitting ? 'Saving…' : (newStatus === 'resolved' ? 'Apply Solution & Resolve' : 'Update Case Status')}
                       </button>
                     </div>
                   )}
                 </div>
               )}
-            </div>
-          </div>
-        )}
-      </div>
+            </Modal.Body>
+          </>
+        ) : null}
+      </Modal>
     </div>
   );
 }

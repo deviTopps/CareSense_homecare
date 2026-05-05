@@ -1,17 +1,21 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import {
   FiAlertTriangle,
   FiX,
   FiMapPin,
   FiPhone,
-  FiMoreHorizontal,
   FiUser,
   FiUsers,
+  FiMessageCircle,
   FiChevronLeft,
   FiChevronRight,
+  FiCalendar,
+  FiClock,
 } from '../icons/hugeicons-feather';
 import { fetchAllPatients } from '../utils/patients';
+import { fetchEnquiries, extractEnquiriesList } from '../utils/enquiries';
 
 const flaggedIssues = [
   {
@@ -102,9 +106,52 @@ const FLAG_TABS = [
 
 const WORKSPACE_TABS = [
   { key: 'overview', label: 'Overview' },
-  { key: 'watchlist', label: 'Watchlist' },
-  { key: 'activity', label: 'Activity' },
-  { key: 'programs', label: 'Programs' },
+  { key: 'tutorials', label: 'Tutorials' },
+];
+
+const TUTORIAL_ITEMS = [
+  {
+    key: 'enrol',
+    title: 'Enrol a patient',
+    description: 'Capture demographics, care plan, and contacts from the Patients area.',
+    to: '/patients',
+    Icon: FiUsers,
+  },
+  {
+    key: 'visits',
+    title: 'Schedule care visits',
+    description: 'Plan recurring or one-off visits from Care Visits.',
+    to: '/scheduling',
+    Icon: FiCalendar,
+  },
+  {
+    key: 'enquiries',
+    title: 'Log enquiries',
+    description: 'Track prospective clients and follow-ups under Enquiries.',
+    to: '/enquiries',
+    Icon: FiMessageCircle,
+  },
+  {
+    key: 'emergency',
+    title: 'Emergency cases',
+    description: 'Review and act on escalated alerts from Emergency Cases.',
+    to: '/clinical',
+    Icon: FiAlertTriangle,
+  },
+  {
+    key: 'attendance',
+    title: 'Attendance & visits',
+    description: 'Verify completed visits and GPS check-ins.',
+    to: '/attendance',
+    Icon: FiClock,
+  },
+  {
+    key: 'workforce',
+    title: 'Nurse workforce',
+    description: 'Manage nurse profiles, documents, and onboarding.',
+    to: '/workforce',
+    Icon: FiUser,
+  },
 ];
 
 const severityStyle = {
@@ -112,20 +159,6 @@ const severityStyle = {
   high: { bg: '#fff7ed', color: '#ea580c', border: '#fed7aa' },
   medium: { bg: '#fefce8', color: '#ca8a04', border: '#fef08a' },
 };
-
-const carePrograms = [
-  { name: 'Chronic Care', current: '$18,400', target: '$24,000', progress: 76 },
-  { name: 'Post-Surgery Recovery', current: '$9,800', target: '$15,000', progress: 65 },
-  { name: 'Palliative Support', current: '$12,250', target: '$20,000', progress: 61 },
-];
-
-const activityFeed = [
-  { title: 'Jamie Smith updated wound dressing notes', time: '16:05', accent: 'green' },
-  { title: 'Alex Johnson logged in for a new care visit', time: '13:05', accent: 'lime' },
-  { title: 'Morgan Lee added a new diabetes monitoring plan', time: '12:05', accent: 'teal' },
-  { title: 'Taylor Green reviewed missed visit escalations', time: '21:05', accent: 'gold' },
-  { title: 'Wilson Baptista reassigned an emergency visit', time: '09:05', accent: 'green' },
-];
 
 function FlagDetailPanel({ flag, onClose, dense }) {
   const hPad = dense ? '12px 14px' : '18px 24px';
@@ -234,11 +267,13 @@ function FlagDetailPanel({ flag, onClose, dense }) {
 }
 
 export default function Dashboard() {
+  const navigate = useNavigate();
   const [workspaceTab, setWorkspaceTab] = useState('overview');
   const [flagTab, setFlagTab] = useState('all');
   const [selectedFlag, setSelectedFlag] = useState(null);
   const [watchlistInspectorOpen, setWatchlistInspectorOpen] = useState(true);
   const [patientCount, setPatientCount] = useState(0);
+  const [enquiryCount, setEnquiryCount] = useState(0);
   const [isDashboardCardsLoading, setIsDashboardCardsLoading] = useState(true);
   const [wideLayout, setWideLayout] = useState(
     () => typeof window !== 'undefined' && window.matchMedia('(min-width: 992px)').matches,
@@ -259,24 +294,38 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
-    if (workspaceTab !== 'watchlist') {
+    if (workspaceTab !== 'overview') {
       setSelectedFlag(null);
     }
   }, [workspaceTab]);
 
   useEffect(() => {
     let cancelled = false;
+    const on401 = () => navigate('/login', { replace: true });
 
-    const loadPatientCount = async () => {
+    const loadCounts = async () => {
+      setIsDashboardCardsLoading(true);
       try {
-        const patientList = await fetchAllPatients();
+        const [patientsRes, enquiriesRes] = await Promise.allSettled([
+          fetchAllPatients(),
+          fetchEnquiries({ page: 1, limit: 100 }, on401),
+        ]);
 
-        if (!cancelled) {
-          setPatientCount(patientList.length);
-        }
-      } catch {
-        if (!cancelled) {
+        if (cancelled) return;
+
+        if (patientsRes.status === 'fulfilled') {
+          const patientList = patientsRes.value;
+          setPatientCount(Array.isArray(patientList) ? patientList.length : 0);
+        } else {
           setPatientCount(0);
+        }
+
+        if (enquiriesRes.status === 'fulfilled') {
+          const list = extractEnquiriesList(enquiriesRes.value);
+          const normalized = Array.isArray(list) ? list : list && typeof list === 'object' ? [list] : [];
+          setEnquiryCount(normalized.length);
+        } else {
+          setEnquiryCount(0);
         }
       } finally {
         if (!cancelled) {
@@ -285,12 +334,12 @@ export default function Dashboard() {
       }
     };
 
-    loadPatientCount();
+    loadCounts();
 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [navigate]);
 
   const filtered = flagTab === 'all' ? flaggedIssues : flaggedIssues.filter((flag) => flag.type === flagTab);
   const urgentCaseCount = flaggedIssues.filter(
@@ -303,6 +352,14 @@ export default function Dashboard() {
       value: `${patientCount}`,
       note: 'Total registered patients',
       Icon: FiUsers,
+      showLoadingUntilFetch: true,
+    },
+    {
+      key: 'enquiries',
+      title: 'Total Enquiries',
+      value: `${enquiryCount}`,
+      note: 'Prospective client records',
+      Icon: FiMessageCircle,
       showLoadingUntilFetch: true,
     },
     {
@@ -321,8 +378,8 @@ export default function Dashboard() {
     },
   ];
 
-  const showDockedInspector = workspaceTab === 'watchlist' && wideLayout && selectedFlag && watchlistInspectorOpen;
-  const showFlagModal = selectedFlag && (!wideLayout || workspaceTab !== 'watchlist' || !watchlistInspectorOpen);
+  const showDockedInspector = workspaceTab === 'overview' && wideLayout && selectedFlag && watchlistInspectorOpen;
+  const showFlagModal = Boolean(selectedFlag && !showDockedInspector);
 
   return (
     <motion.div className="page-wrapper dashboard-page" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25 }}>
@@ -382,101 +439,85 @@ export default function Dashboard() {
               ))}
             </div>
 
-            <p className="dashboard-workspace-hint">Use the workspace tabs above for watchlist, live activity, and program budgets.</p>
-          </>
-        )}
-
-        {workspaceTab === 'activity' && (
-          <motion.div className="dashboard-activity-card" initial={{ y: 8, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.22 }}>
-            <div className="dashboard-section-header compact">
-              <div>
-                <h4>Recent activity</h4>
-                <p>Today</p>
-              </div>
-              <button type="button" className="dashboard-icon-ghost"><FiMoreHorizontal size={15} /></button>
-            </div>
-            <div className="dashboard-activity-list">
-              {activityFeed.map((activity) => (
-                <div key={`${activity.title}-${activity.time}`} className="dashboard-activity-item">
-                  <div className={`dashboard-activity-item__avatar tone-${activity.accent}`}>{activity.title.split(' ')[0][0]}</div>
-                  <div className="dashboard-activity-item__content">
-                    <strong>{activity.title}</strong>
-                    <span>{activity.time}</span>
+            <motion.div
+              className={`dashboard-watchlist-workspace${showDockedInspector ? '' : ' dashboard-watchlist-workspace--single'}`}
+              initial={{ y: 8, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ duration: 0.22 }}
+            >
+              <div className="dashboard-watchlist-card dashboard-watchlist-card--workspace">
+                <div className="dashboard-section-header dashboard-section-header--toolbar">
+                  <div>
+                    <h4>Critical watchlist</h4>
+                    <p>Flagged exceptions · {filtered.length} shown</p>
                   </div>
-                </div>
-              ))}
-            </div>
-          </motion.div>
-        )}
-
-        {workspaceTab === 'programs' && (
-          <motion.div className="dashboard-programs-card dashboard-programs-card--tall" initial={{ y: 8, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.22 }}>
-            <div className="dashboard-section-header compact">
-              <div>
-                <h4>Care programs</h4>
-                <p>Total savings</p>
-              </div>
-              <button type="button" className="dashboard-link-btn">+ Add Plan</button>
-            </div>
-            <div className="dashboard-programs-total">$84,500</div>
-            <div className="dashboard-program-list">
-              {carePrograms.map((program) => (
-                <div key={program.name} className="dashboard-program-item">
-                  <div className="dashboard-program-item__head">
-                    <div className="dashboard-program-item__label">
-                      <span className="dashboard-program-item__dot" />
-                      <strong>{program.name}</strong>
+                  <div className="dashboard-watchlist-toolbar">
+                    {wideLayout && (
+                      <button
+                        type="button"
+                        className="dashboard-toolbar-btn"
+                        onClick={() => setWatchlistInspectorOpen((o) => !o)}
+                        title={watchlistInspectorOpen ? 'Hide detail pane' : 'Show detail pane'}
+                      >
+                        {watchlistInspectorOpen ? <FiChevronRight size={16} /> : <FiChevronLeft size={16} />}
+                        <span>Detail</span>
+                      </button>
+                    )}
+                    <div className="dashboard-watchlist-card__filters">
+                      {FLAG_TABS.map((tab) => {
+                        const count = tab.key === 'all' ? flaggedIssues.length : flaggedIssues.filter((issue) => issue.type === tab.key).length;
+                        return (
+                          <button
+                            key={tab.key}
+                            type="button"
+                            onClick={() => setFlagTab(tab.key)}
+                            className={`dashboard-tab-pill${flagTab === tab.key ? ' active' : ''}`}
+                          >
+                            <span>{tab.label}</span>
+                            <small>{count}</small>
+                          </button>
+                        );
+                      })}
                     </div>
-                    <button type="button" className="dashboard-icon-ghost"><FiMoreHorizontal size={14} /></button>
-                  </div>
-                  <div className="dashboard-progress small"><span style={{ width: `${program.progress}%` }} /></div>
-                  <div className="dashboard-program-item__meta">
-                    <span>{program.current} · {program.progress}%</span>
-                    <span>Target: {program.target}</span>
                   </div>
                 </div>
-              ))}
-            </div>
-          </motion.div>
-        )}
 
-        {workspaceTab === 'watchlist' && (
-          <motion.div
-            className={`dashboard-watchlist-workspace${showDockedInspector ? '' : ' dashboard-watchlist-workspace--single'}`}
-            initial={{ y: 8, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ duration: 0.22 }}
-          >
-            <div className="dashboard-watchlist-card dashboard-watchlist-card--workspace">
-              <div className="dashboard-section-header dashboard-section-header--toolbar">
-                <div>
-                  <h4>Critical watchlist</h4>
-                  <p>Flagged exceptions · {filtered.length} shown</p>
-                </div>
-                <div className="dashboard-watchlist-toolbar">
-                  {wideLayout && (
-                    <button
-                      type="button"
-                      className="dashboard-toolbar-btn"
-                      onClick={() => setWatchlistInspectorOpen((o) => !o)}
-                      title={watchlistInspectorOpen ? 'Hide detail pane' : 'Show detail pane'}
-                    >
-                      {watchlistInspectorOpen ? <FiChevronRight size={16} /> : <FiChevronLeft size={16} />}
-                      <span>Detail</span>
-                    </button>
-                  )}
-                  <div className="dashboard-watchlist-card__filters">
-                    {FLAG_TABS.map((tab) => {
-                      const count = tab.key === 'all' ? flaggedIssues.length : flaggedIssues.filter((issue) => issue.type === tab.key).length;
+                <div className="dashboard-watchlist-table">
+                  <div className="dashboard-watchlist-table__head">
+                    <span>Patient</span>
+                    <span>Concern</span>
+                    <span>Severity</span>
+                    <span>Region</span>
+                    <span>Date</span>
+                    <span>Action</span>
+                  </div>
+                  <div className="dashboard-watchlist-table__body">
+                    {filtered.map((flag) => {
+                      const sev = severityStyle[flag.severity];
                       return (
                         <button
-                          key={tab.key}
+                          key={flag.id}
                           type="button"
-                          onClick={() => setFlagTab(tab.key)}
-                          className={`dashboard-tab-pill${flagTab === tab.key ? ' active' : ''}`}
+                          className={`dashboard-watchlist-row${selectedFlag?.id === flag.id ? ' dashboard-watchlist-row--active' : ''}`}
+                          onClick={() => {
+                            setSelectedFlag(flag);
+                            if (wideLayout) setWatchlistInspectorOpen(true);
+                          }}
                         >
-                          <span>{tab.label}</span>
-                          <small>{count}</small>
+                          <span>
+                            <strong>{flag.patient}</strong>
+                            <small>{flag.patientId}</small>
+                          </span>
+                          <span>
+                            <strong>{flag.type}</strong>
+                            <small>{flag.reason}</small>
+                          </span>
+                          <span>
+                            <em style={{ background: sev.bg, color: sev.color, borderColor: sev.border }}>{flag.severity}</em>
+                          </span>
+                          <span>{flag.region}</span>
+                          <span>{flag.flaggedDate}</span>
+                          <span className="dashboard-watchlist-row__action">View</span>
                         </button>
                       );
                     })}
@@ -484,56 +525,47 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              <div className="dashboard-watchlist-table">
-                <div className="dashboard-watchlist-table__head">
-                  <span>Patient</span>
-                  <span>Concern</span>
-                  <span>Severity</span>
-                  <span>Region</span>
-                  <span>Date</span>
-                  <span>Action</span>
-                </div>
-                <div className="dashboard-watchlist-table__body">
-                  {filtered.map((flag) => {
-                    const sev = severityStyle[flag.severity];
-                    return (
-                      <button
-                        key={flag.id}
-                        type="button"
-                        className={`dashboard-watchlist-row${selectedFlag?.id === flag.id ? ' dashboard-watchlist-row--active' : ''}`}
-                        onClick={() => {
-                          setSelectedFlag(flag);
-                          if (wideLayout) setWatchlistInspectorOpen(true);
-                        }}
-                      >
-                        <span>
-                          <strong>{flag.patient}</strong>
-                          <small>{flag.patientId}</small>
-                        </span>
-                        <span>
-                          <strong>{flag.type}</strong>
-                          <small>{flag.reason}</small>
-                        </span>
-                        <span>
-                          <em style={{ background: sev.bg, color: sev.color, borderColor: sev.border }}>{flag.severity}</em>
-                        </span>
-                        <span>{flag.region}</span>
-                        <span>{flag.flaggedDate}</span>
-                        <span className="dashboard-watchlist-row__action">View</span>
-                      </button>
-                    );
-                  })}
-                </div>
+              {showDockedInspector && (
+                <aside className="dashboard-flag-inspector" aria-label="Flag detail">
+                  <div className="dashboard-flag-inspector__inner">
+                    <FlagDetailPanel flag={selectedFlag} onClose={() => setSelectedFlag(null)} dense />
+                  </div>
+                </aside>
+              )}
+            </motion.div>
+
+            <p className="dashboard-workspace-hint">Open <strong>Tutorials</strong> for guided shortcuts to core areas of the app.</p>
+          </>
+        )}
+
+        {workspaceTab === 'tutorials' && (
+          <motion.div
+            className="dashboard-tutorials"
+            initial={{ y: 8, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ duration: 0.22 }}
+          >
+            <div className="dashboard-section-header compact">
+              <div>
+                <h4>Tutorials</h4>
+                <p>Quick links to common workflows</p>
               </div>
             </div>
-
-            {showDockedInspector && (
-              <aside className="dashboard-flag-inspector" aria-label="Flag detail">
-                <div className="dashboard-flag-inspector__inner">
-                  <FlagDetailPanel flag={selectedFlag} onClose={() => setSelectedFlag(null)} dense />
-                </div>
-              </aside>
-            )}
+            <div className="dashboard-tutorials-grid">
+              {TUTORIAL_ITEMS.map((item) => {
+                const Icon = item.Icon;
+                return (
+                  <div key={item.key} className="dashboard-tutorial-card">
+                    <span className="dashboard-tutorial-card__icon" aria-hidden><Icon size={18} /></span>
+                    <h5 className="dashboard-tutorial-card__title">{item.title}</h5>
+                    <p className="dashboard-tutorial-card__desc">{item.description}</p>
+                    <button type="button" className="btn btn-sm btn-primary align-self-start" onClick={() => navigate(item.to)}>
+                      Go to section
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
           </motion.div>
         )}
       </div>

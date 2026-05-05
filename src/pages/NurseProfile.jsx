@@ -72,6 +72,7 @@ const DOCUMENT_TYPE_MAP = {
 /* Reverse-map: try to match an API document to a kycDocs slot by documentType.
    Since multiple slots share the same type (e.g. idCard & passport → 'ID'),
    we fill the first unoccupied slot that matches. */
+   
 const DOC_TYPE_TO_SLOTS = {
   Other: ['profilePhoto'],
   ID: ['idCard', 'passport'],

@@ -12,12 +12,9 @@ import {
   FiChevronLeft,
   FiActivity,
   FiAlertCircle,
-  FiMessageSquare,
   FiMessageCircle,
   FiCreditCard,
   FiSmartphone,
-  FiHelpCircle,
-  FiMail,
 } from '../icons/hugeicons-feather';
 
 const sidebarGroups = [
@@ -28,7 +25,7 @@ const sidebarGroups = [
       { to: '/patients', icon: FiActivity, label: 'Patients' },
       { to: '/workforce', icon: FiUsers, label: 'Nurses' },
       { to: '/scheduling', icon: FiCalendar, label: 'Care Visits' },
-      { to: '/nurse-scheduling', icon: FiMail, label: 'Enquires' },
+      { to: '/enquiries', icon: FiMessageCircle, label: 'Enquiries' },
       { to: '/clinical', icon: FiAlertCircle, label: 'Emergency Cases' },
       { to: '/attendance', icon: FiClock, label: 'Attendance' },
     ],
@@ -38,9 +35,6 @@ const sidebarGroups = [
     items: [
       { to: '/account', icon: FiSettings, label: 'Settings' },
       { to: '/billing', icon: FiCreditCard, label: 'Billing' },
-      { to: '/feedback', icon: FiHelpCircle, label: 'Help & Support' },
-      { to: '/complaints', icon: FiMessageSquare, label: 'Complaints' },
-      { to: '/feedback', icon: FiMessageCircle, label: 'Feedback' },
     ],
   },
 ];

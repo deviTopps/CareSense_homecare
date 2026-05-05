@@ -31,38 +31,89 @@ export async function clockInAttendance(payload = {}, onUnauthorized) {
   return data;
 }
 
+function parseJsonBody(text) {
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { message: text };
+  }
+}
+
+function clockOutErrorFromResponse(res, text, data) {
+  const msg = data.error ?? data.message;
+  if (typeof msg === 'string') return msg;
+  if (msg) return JSON.stringify(msg);
+  if (text) return text;
+  return `Clock-out failed (${res.status})`;
+}
+
 /**
  * Clock out an attendance session.
- * POST /attendance/:attendanceId/clock-out
  *
- * @param {string} attendanceId
- * @param {Record<string, unknown>} [payload]
- * @param {() => void} [onUnauthorized]
- * @returns {Promise<Record<string, unknown>>}
+ * Tries several URL + method + body shapes common in Express/Nest apps. The
+ * path-style POST /attendance/:id/clock-out often 404s even when a body-style
+ * POST /attendance/clock-out endpoint exists.
  */
 export async function clockOutAttendance(attendanceId, payload = {}, onUnauthorized) {
-  const id = encodeURIComponent(String(attendanceId).trim());
-  if (!id) throw new Error('Attendance ID is required to clock out.');
-  const res = await apiFetch(
-    `/attendance/${id}/clock-out`,
-    { method: 'POST', body: JSON.stringify(payload) },
-    onUnauthorized,
-  );
-  const text = await res.text();
-  let data = {};
-  if (text) {
-    try {
-      data = JSON.parse(text);
-    } catch {
-      data = { message: text };
-    }
+  const rawId = String(attendanceId).trim();
+  if (!rawId) throw new Error('Attendance ID is required to clock out.');
+  const encodePath = encodeURIComponent(rawId);
+
+  const base = payload && typeof payload === 'object' && !Array.isArray(payload)
+    ? { ...payload }
+    : {};
+
+  /** @type {{ method?: string, path: string, body: string }[]} */
+  const strategies = [
+    { path: '/attendance/clock-out', body: JSON.stringify({ ...base, attendanceId: rawId }) },
+    { path: '/attendance/clock-out', body: JSON.stringify({ ...base, attendance_id: rawId }) },
+    { path: '/attendance/clock-out', body: JSON.stringify({ ...base, id: rawId }) },
+    { path: '/attendance/clock-out', body: JSON.stringify({ ...base, clockId: rawId }) },
+    {
+      path: `/attendance/clock-out?attendanceId=${encodeURIComponent(rawId)}`,
+      body: JSON.stringify(base),
+    },
+    {
+      path: `/attendance/clock-out?id=${encodeURIComponent(rawId)}`,
+      body: JSON.stringify(base),
+    },
+    { path: `/attendance/${encodePath}/clock-out`, body: JSON.stringify(base), method: 'POST' },
+    { path: `/attendance/${encodePath}/clock-out`, body: JSON.stringify(base), method: 'PATCH' },
+    { path: `/attendance/${encodePath}/clock-out`, body: JSON.stringify(base), method: 'PUT' },
+    { path: `/attendance/${encodePath}/checkout`, body: JSON.stringify(base), method: 'POST' },
+    { path: `/attendances/${encodePath}/clock-out`, body: JSON.stringify(base) },
+    { path: `/attendance/${encodePath}/clockOut`, body: JSON.stringify(base) },
+    { path: '/attendance/clockOut', body: JSON.stringify({ ...base, attendanceId: rawId }) },
+  ];
+
+  let lastFail = null;
+
+  for (let i = 0; i < strategies.length; i++) {
+    const { path, body, method: m } = strategies[i];
+    const method = m || 'POST';
+    const res = await apiFetch(path, { method, body }, onUnauthorized);
+    const text = await res.text();
+    const data = parseJsonBody(text);
+
+    if (res.ok) return data;
+
+    lastFail = { res, text, data };
+
+    /** First four POSTs to /attendance/clock-out use different JSON id keys — retry on 400. */
+    const bodyKeyVariant = i <= 3;
+    const tryNext =
+      i < strategies.length - 1 &&
+      (res.status === 404 ||
+        res.status === 405 ||
+        (bodyKeyVariant && res.status === 400));
+
+    if (tryNext) continue;
+
+    throw new Error(clockOutErrorFromResponse(res, text, data));
   }
-  if (!res.ok) {
-    const msg = data.error || data.message;
-    const errText = typeof msg === 'string' ? msg : (msg ? JSON.stringify(msg) : text || `Clock-out failed (${res.status})`);
-    throw new Error(errText);
-  }
-  return data;
+
+  throw new Error(lastFail ? clockOutErrorFromResponse(lastFail.res, lastFail.text, lastFail.data) : 'Clock-out failed.');
 }
 
 /**
