@@ -7492,212 +7492,83 @@ body.sidebar-resizing {
   }
 }
 
-.register-screen {
+/* ── Auth / Login (split layout + hero) ───────────────── */
+.auth-login-page {
   font-family: 'Poppins', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
-.register-showcase {
-  flex: 0 0 390px;
-  background: linear-gradient(180deg, #1663ff 0%, #0f59ec 100%);
-  color: #fff;
-  padding: 38px 30px 28px;
-  display: flex;
-  flex-direction: column;
-  min-height: 720px;
-}
-
-.register-showcase__brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-}
-
-.register-showcase__brand-mark {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.register-showcase__brand-mark span {
-  width: 12px;
-  height: 12px;
-  border: 2px solid rgba(255, 255, 255, 0.92);
-  border-radius: 999px;
-}
-
-.register-showcase__content {
-  margin-top: 92px;
-}
-
-.register-showcase__eyebrow {
-  margin: 0 0 18px;
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.76);
-}
-
-.register-showcase__content h2 {
-  margin: 0 0 18px;
-  max-width: 260px;
-  font-size: 54px;
-  line-height: 1.14;
-  font-weight: 700;
-  letter-spacing: -0.04em;
-}
-
-.register-showcase__content p {
-  max-width: 290px;
-  margin: 0;
-  font-size: 15px;
-  line-height: 1.8;
-  color: rgba(255, 255, 255, 0.78);
-}
-
-.register-showcase__testimonial {
-  margin-top: auto;
-  padding: 22px 20px;
-  border-radius: 18px;
-  background: rgba(15, 51, 190, 0.28);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(6px);
-}
-
-.register-showcase__testimonial h4 {
-  margin: 0 0 10px;
-  font-size: 24px;
-  line-height: 1.25;
-  font-weight: 700;
-}
-
-.register-showcase__testimonial p {
-  margin: 0 0 18px;
-  font-size: 13px;
-  line-height: 1.75;
-  color: rgba(255, 255, 255, 0.85);
-}
-
-.register-showcase__author,
-.register-showcase__author-meta {
-  display: flex;
-  align-items: center;
-}
-
-.register-showcase__author {
-  justify-content: space-between;
-  gap: 14px;
-}
-
-.register-showcase__author-meta {
-  gap: 10px;
-}
-
-.register-showcase__author-meta img {
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  object-fit: cover;
-  border: 2px solid rgba(255, 255, 255, 0.18);
-}
-
-.register-showcase__author-meta strong,
-.register-showcase__author-meta span,
-.register-showcase__rating {
-  display: block;
-}
-
-.register-showcase__author-meta strong {
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.register-showcase__author-meta span {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.72);
-}
-
-.register-showcase__rating {
-  font-size: 14px;
-  letter-spacing: 0.18em;
-  color: #ffe96b;
-}
-
-.register-showcase__pager {
-  margin-top: 26px;
-  display: flex;
-  justify-content: center;
-  gap: 10px;
-}
-
-.register-showcase__pager span {
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.34);
-}
-
-.register-showcase__pager .active {
-  background: #fff;
-}
-
-.register-form-shell {
+.auth-login-frame {
   width: 100%;
 }
 
-.register-form-header {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.register-progress {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 0;
-  align-items: center;
-  margin-bottom: 14px;
-}
-
-.register-progress__step {
+.auth-login-hero {
   position: relative;
+  flex: 1 1 50%;
+  min-height: 100dvh;
+  min-height: 100vh;
   display: flex;
   align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 24px 16px;
 }
 
-.register-progress__step.has-line::after {
-  content: '';
+.auth-login-hero__gradient {
   position: absolute;
-  top: 50%;
-  left: 22px;
-  width: calc(100% - 28px);
-  height: 2px;
-  background: #edf1f5;
-  transform: translateY(-50%);
+  inset: 0;
+  background: linear-gradient(160deg, #f0f9ff 0%, #eff6ff 42%, #dbeafe 100%);
 }
 
-.register-progress__dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 999px;
-  background: #d8dde6;
-  border: 2px solid #d8dde6;
+.auth-login-hero__svg {
   position: relative;
   z-index: 1;
+  width: min(92%, 520px);
+  height: auto;
+  max-height: min(88dvh, 640px);
 }
 
-.register-progress__step.is-active .register-progress__dot {
-  width: 10px;
-  height: 10px;
-  background: #fff;
-  border-color: #1663ff;
-  box-shadow: 0 0 0 3px rgba(22, 99, 255, 0.1);
+.auth-brand-mark {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  margin-bottom: 24px;
 }
 
-.register-form-card {
-  width: 100%;
+.auth-brand-mark__logo {
+  display: block;
+  height: 72px;
+  width: auto;
+  max-width: min(280px, 85vw);
+  object-fit: contain;
+}
+
+@media (max-width: 900px) {
+  .auth-login-frame {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .auth-login-hero {
+    flex: 0 0 auto;
+    min-height: 200px;
+    width: 100%;
+    padding: 28px 20px 16px;
+  }
+
+  .auth-login-hero__svg {
+    max-height: 220px;
+  }
+
+  .auth-login-column {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    padding-top: 32px !important;
+  }
+}
+
+.auth-signup-form.register-form-grid {
+  gap: 20px;
 }
 
 .register-form-grid {
@@ -7720,17 +7591,18 @@ body.sidebar-resizing {
   display: flex;
   align-items: center;
   gap: 12px;
-  min-height: 56px;
-  padding: 0 16px;
-  border: 1px solid #d9e0ea;
-  border-radius: 12px;
-  background: #fff;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  min-height: 48px;
+  padding: 0 14px;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 3px;
+  background: #f9fafb;
+  box-shadow: none;
 }
 
 .register-phone-field:focus-within {
-  border-color: #1663ff;
-  box-shadow: 0 0 0 4px rgba(22, 99, 255, 0.12);
+  border-color: #45b6fe;
+  box-shadow: 0 0 0 4px rgba(69, 182, 254, 0.15);
+  background: #fff;
 }
 
 .register-phone-field__prefix {
@@ -7738,7 +7610,7 @@ body.sidebar-resizing {
   align-items: center;
   gap: 8px;
   padding-right: 12px;
-  border-right: 1px solid #e8edf3;
+  border-right: 1px solid #e2e8f0;
   font-size: 16px;
 }
 
@@ -7747,66 +7619,9 @@ body.sidebar-resizing {
   min-width: 0;
 }
 
-@media (max-width: 1100px) {
-  .register-showcase {
-    flex-basis: 340px;
-  }
-
-  .register-showcase__content h2 {
-    font-size: 46px;
-  }
-}
-
-@media (max-width: 900px) {
-  .register-screen {
-    padding: 20px 14px !important;
-  }
-
-  .register-screen > div {
-    flex-direction: column;
-    border-radius: 24px !important;
-  }
-
-  .register-showcase {
-    min-height: auto;
-    flex-basis: auto;
-    padding-bottom: 24px;
-  }
-
-  .register-showcase__content {
-    margin-top: 48px;
-  }
-
-  .register-showcase__content h2 {
-    max-width: none;
-    font-size: 38px;
-  }
-}
-
 @media (max-width: 640px) {
   .register-form-grid__row--split {
     grid-template-columns: 1fr;
-  }
-
-  .register-progress {
-    gap: 6px;
-  }
-
-  .register-progress__step.has-line::after {
-    width: calc(100% - 20px);
-    left: 16px;
-  }
-
-  .register-showcase {
-    padding: 28px 22px 22px;
-  }
-
-  .register-showcase__content h2 {
-    font-size: 32px;
-  }
-
-  .register-showcase__testimonial h4 {
-    font-size: 20px;
   }
 }
 
