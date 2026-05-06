@@ -25,11 +25,11 @@ const pageMeta = {
   '/':           { title: 'Dashboard',              sub: 'Real-time homecare overview' },
   '/scheduling': { title: 'Care Visits',              sub: 'Schedule patient visits — weekly, biweekly & more' },
   '/nurse-scheduling': { title: 'Scheduling', sub: 'Nurse rotation scheduling & shift assignments' },
-  '/clinical':   { title: 'Emergency Cases', sub: 'Pending alerts; resolved: GET /alerts/resolved — optional patient filter via UUID or /clinical?patientId=…' },
+  '/clinical':   { title: 'Emergency Cases', sub: '' },
   '/workforce':  { title: 'Workforce',              sub: 'Manage nurse profiles & credentials' },
   '/attendance': { title: 'Attendance',              sub: 'GPS-verified visit records' },
   '/patients':   { title: 'Patients',                sub: 'Enrolment & records' },
-  '/enquiries': { title: 'Enquiries', sub: 'Log prospective clients and follow up — POST /enquiries' },
+  '/enquiries': { title: 'Enquiries', sub: '' },
 };
 
 export default function Topbar({ onToggleSidebar, onLogout, user }) {
@@ -71,7 +71,7 @@ export default function Topbar({ onToggleSidebar, onLogout, user }) {
         </button>
         <div>
           <h4>{meta.title}</h4>
-          <p>{meta.sub}</p>
+          {meta.sub ? <p>{meta.sub}</p> : null}
         </div>
       </div>
       <div className="topbar-right">
@@ -107,17 +107,20 @@ export default function Topbar({ onToggleSidebar, onLogout, user }) {
           }}
         >
           <FiMessageCircle size={13} aria-hidden />
-          <span>Create an Enquiry</span>
+          <span className="topbar-enquiry-cta__text topbar-enquiry-cta__text--long">Create an Enquiry</span>
+          <span className="topbar-enquiry-cta__text topbar-enquiry-cta__text--short" aria-hidden="true">
+            Enquiry
+          </span>
         </NavLink>
-        <div style={{ width: 1, height: 24, background: '#e5e7eb', margin: '0 4px' }} />
+        <div className="topbar-divider" aria-hidden="true" />
 
-        <button className="topbar-text-btn">
-          <FiHelpCircle size={14} />
-          <span>Help</span>
+        <button type="button" className="topbar-text-btn topbar-aux-btn" aria-label="Help">
+          <FiHelpCircle size={14} aria-hidden />
+          <span className="topbar-aux-label">Help</span>
         </button>
-        <button className="topbar-text-btn">
-          <FiShield size={14} />
-          <span>Policy</span>
+        <button type="button" className="topbar-text-btn topbar-aux-btn" aria-label="Policy">
+          <FiShield size={14} aria-hidden />
+          <span className="topbar-aux-label">Policy</span>
         </button>
         <div className="topbar-user-menu" ref={userMenuRef}>
           <button

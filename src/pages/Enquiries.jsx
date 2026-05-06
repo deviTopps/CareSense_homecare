@@ -5,6 +5,7 @@ import {
   fetchEnquiries,
   createEnquiry,
   patchEnquiry,
+  deleteEnquiry,
   extractEnquiriesList,
   normalizeEnquiryRecord,
 } from '../utils/enquiries';
@@ -23,6 +24,7 @@ import {
   FiAlertCircle,
   FiCheckCircle,
   FiClock,
+  FiTrash2,
 } from '../icons/hugeicons-feather';
 
 function pickFirst(obj, keys) {
@@ -147,6 +149,8 @@ export default function Enquiries() {
   const [followUpNote, setFollowUpNote] = useState('');
   const [followUpStatus, setFollowUpStatus] = useState('visited');
   const [followUpSubmitting, setFollowUpSubmitting] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
+  const [deleteError, setDeleteError] = useState(null);
 
   const loadEnquiries = useCallback(async () => {
     setError(null);
@@ -293,6 +297,31 @@ export default function Enquiries() {
     }
   };
 
+  const handleDeleteRow = async (row) => {
+    const id = row?.id ?? row?._id;
+    if (id == null || String(id).trim() === '') {
+      setDeleteError('This enquiry has no server id — refresh the list and try again.');
+      return;
+    }
+    const label = String(row.nameOfClient || '').trim() || 'this enquiry';
+    if (!window.confirm(`Delete enquiry for “${label}”? This cannot be undone.`)) return;
+
+    setDeleteError(null);
+    setDeletingId(String(id));
+    try {
+      await deleteEnquiry(id, on401);
+      setRows((prev) => prev.filter((r) => String(r?.id ?? r?._id ?? '') !== String(id)));
+      if (selected && String(selected.id ?? selected._id ?? '') === String(id)) {
+        setShowFollowUp(false);
+        setSelected(null);
+      }
+    } catch (e) {
+      setDeleteError(e.message || 'Could not delete enquiry');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   const resetFilters = () => {
     setStatusFilter('all');
     setSearchTerm('');
@@ -398,6 +427,17 @@ export default function Enquiries() {
           </div>
         )}
 
+        {deleteError && (
+          <div className="alert alert-danger d-flex align-items-center justify-content-between flex-wrap gap-2 enquiries-alert" role="alert">
+            <span className="d-flex align-items-center gap-2">
+              <FiAlertCircle aria-hidden /> {deleteError}
+            </span>
+            <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setDeleteError(null)}>
+              Dismiss
+            </button>
+          </div>
+        )}
+
         <div className="enquiries-board kh-card border-0 shadow-sm">
           {loading ? (
             <div className="enquiries-board__state">
@@ -435,6 +475,9 @@ export default function Enquiries() {
                       const api = coerceApiStatus(r.status);
                       const st = apiStatusPillStyle[api] || apiStatusPillStyle.pending;
                       const rowKey = r.id ?? `idx-${idx}`;
+                      const rowId = r.id ?? r._id;
+                      const canDelete = rowId != null && String(rowId).trim() !== '';
+                      const isDeleting = canDelete && deletingId === String(rowId);
                       return (
                         <tr key={rowKey} className={selected?.id === r.id ? 'table-primary' : ''}>
                           <td>
@@ -466,9 +509,21 @@ export default function Enquiries() {
                           </td>
                           <td className="d-none d-lg-table-cell small">{recordedByLabel(r)}</td>
                           <td className="text-end">
-                            <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => openFollowUp(r)}>
-                              Follow-up
-                            </button>
+                            <div className="d-inline-flex flex-wrap align-items-center justify-content-end gap-1">
+                              <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => openFollowUp(r)}>
+                                Follow-up
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-sm btn-danger enquiries-delete-btn d-inline-flex align-items-center gap-1 text-white"
+                                disabled={!canDelete || isDeleting}
+                                title={canDelete ? 'Delete this enquiry' : 'Cannot delete without a server id'}
+                                onClick={() => handleDeleteRow(r)}
+                              >
+                                <FiTrash2 size={12} aria-hidden />
+                                {isDeleting ? '…' : 'Delete'}
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import {
@@ -13,9 +13,32 @@ import {
   FiChevronRight,
   FiCalendar,
   FiClock,
+  FiLock,
 } from '../icons/hugeicons-feather';
 import { fetchAllPatients } from '../utils/patients';
 import { fetchEnquiries, extractEnquiriesList } from '../utils/enquiries';
+import { getUser, changePassword } from '../api';
+
+async function parseJsonResponse(res) {
+  const text = await res.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error('Unable to read server response. Please try again.');
+  }
+}
+
+/** Show profile password panel for nurse-facing accounts (JWT / user object identifies a nurse). */
+function isNursePortalUser(u) {
+  if (!u || typeof u !== 'object') return false;
+  if (u.nurseId && String(u.nurseId).trim()) return true;
+  const NurseRoleSlug = ['head_nurse', 'field_nurse', 'office_nurse', 'supervising_nurse'];
+  const slug = String(u.role || '').toLowerCase().replace(/\s+/g, '_');
+  if (NurseRoleSlug.includes(slug)) return true;
+  const blob = [u.role, u.nurseRole, u.jobTitle, u.staffRole].filter(Boolean).join(' ').toLowerCase();
+  return blob.includes('nurse');
+}
 
 const flaggedIssues = [
   {
@@ -268,6 +291,60 @@ function FlagDetailPanel({ flag, onClose, dense }) {
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const accountUser = getUser();
+  const showNurseProfilePanel = isNursePortalUser(accountUser);
+
+  const [pwdForm, setPwdForm] = useState({ current: '', next: '', confirm: '' });
+  const [pwdLoading, setPwdLoading] = useState(false);
+  const [pwdError, setPwdError] = useState('');
+  const [pwdSuccess, setPwdSuccess] = useState('');
+
+  const onPwdUnauthorized = useCallback(() => {
+    navigate('/login', { replace: true });
+  }, [navigate]);
+
+  const setPwdField = (key, v) => setPwdForm((prev) => ({ ...prev, [key]: v }));
+
+  const handleNurseChangePassword = async () => {
+    setPwdError('');
+    setPwdSuccess('');
+    const { current, next, confirm } = pwdForm;
+    if (!current.trim() || !next.trim() || !confirm.trim()) {
+      setPwdError('Please fill in all password fields.');
+      return;
+    }
+    if (next !== confirm) {
+      setPwdError('New password and confirmation do not match.');
+      return;
+    }
+    if (next.length < 8) {
+      setPwdError('New password must be at least 8 characters.');
+      return;
+    }
+    setPwdLoading(true);
+    try {
+      const res = await changePassword(
+        { currentPassword: current, newPassword: next },
+        onPwdUnauthorized,
+      );
+      const data = await parseJsonResponse(res);
+      if (!res.ok) {
+        throw new Error(data.error || data.message || 'Could not update password.');
+      }
+      if (data.token) {
+        localStorage.setItem('token', data.token);
+      }
+      setPwdForm({ current: '', next: '', confirm: '' });
+      setPwdSuccess('Password updated successfully.');
+    } catch (err) {
+      if (err.message !== 'Session expired. Please log in again.') {
+        setPwdError(err.message || 'Could not update password.');
+      }
+    } finally {
+      setPwdLoading(false);
+    }
+  };
+
   const [workspaceTab, setWorkspaceTab] = useState('overview');
   const [flagTab, setFlagTab] = useState('all');
   const [selectedFlag, setSelectedFlag] = useState(null);
@@ -381,6 +458,13 @@ export default function Dashboard() {
   const showDockedInspector = workspaceTab === 'overview' && wideLayout && selectedFlag && watchlistInspectorOpen;
   const showFlagModal = Boolean(selectedFlag && !showDockedInspector);
 
+  const nurseDisplayName = [accountUser?.firstName, accountUser?.lastName].filter(Boolean).join(' ') || accountUser?.email?.split('@')[0] || 'Your profile';
+  const nurseInitials =
+    accountUser
+      ? `${accountUser.firstName?.[0] || ''}${accountUser.lastName?.[0] || ''}`.toUpperCase()
+        || (accountUser.email?.[0] || '?').toUpperCase()
+      : '?';
+
   return (
     <motion.div className="page-wrapper dashboard-page" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25 }}>
       <div className="dashboard-shell">
@@ -406,6 +490,100 @@ export default function Dashboard() {
           </div>
           <div className="dashboard-welcome-banner__date">{todayLabel}</div>
         </motion.div>
+
+        {showNurseProfilePanel && (
+          <motion.div
+            className="dashboard-nurse-profile"
+            id="dashboard-nurse-profile"
+            initial={{ y: 8, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ duration: 0.22 }}
+          >
+            <div className="dashboard-nurse-profile__identity">
+              <div className="dashboard-nurse-profile__avatar" aria-hidden="true">
+                {nurseInitials}
+              </div>
+              <div>
+                <h3 className="dashboard-nurse-profile__name">{nurseDisplayName}</h3>
+                {accountUser?.email ? (
+                  <p className="dashboard-nurse-profile__email">{accountUser.email}</p>
+                ) : null}
+                {accountUser?.role ? (
+                  <span className="dashboard-nurse-profile__role-chip">{accountUser.role}</span>
+                ) : null}
+              </div>
+            </div>
+            <div className="dashboard-nurse-profile__password">
+              <h4 className="dashboard-nurse-profile__password-title">
+                <FiLock size={14} aria-hidden /> Change password
+              </h4>
+              <p className="dashboard-nurse-profile__hint">
+                At least 8 characters. Uses the same sign-in credentials as CareSense mobile or web.
+              </p>
+              {pwdError ? (
+                <div className="dashboard-nurse-profile__alert dashboard-nurse-profile__alert--error" role="alert">
+                  {pwdError}
+                </div>
+              ) : null}
+              {pwdSuccess ? (
+                <div className="dashboard-nurse-profile__alert dashboard-nurse-profile__alert--ok" role="status">
+                  {pwdSuccess}
+                </div>
+              ) : null}
+              <div className="row g-2 align-items-end">
+                <div className="col-md-4">
+                  <label className="dashboard-nurse-profile__label" htmlFor="nurse-dash-pwd-current">
+                    Current password
+                  </label>
+                  <input
+                    id="nurse-dash-pwd-current"
+                    type="password"
+                    className="form-control form-control-sm dashboard-nurse-profile__input"
+                    autoComplete="current-password"
+                    value={pwdForm.current}
+                    onChange={(e) => setPwdField('current', e.target.value)}
+                  />
+                </div>
+                <div className="col-md-4">
+                  <label className="dashboard-nurse-profile__label" htmlFor="nurse-dash-pwd-new">
+                    New password
+                  </label>
+                  <input
+                    id="nurse-dash-pwd-new"
+                    type="password"
+                    className="form-control form-control-sm dashboard-nurse-profile__input"
+                    autoComplete="new-password"
+                    value={pwdForm.next}
+                    onChange={(e) => setPwdField('next', e.target.value)}
+                  />
+                </div>
+                <div className="col-md-4">
+                  <label className="dashboard-nurse-profile__label" htmlFor="nurse-dash-pwd-confirm">
+                    Confirm new
+                  </label>
+                  <input
+                    id="nurse-dash-pwd-confirm"
+                    type="password"
+                    className="form-control form-control-sm dashboard-nurse-profile__input"
+                    autoComplete="new-password"
+                    value={pwdForm.confirm}
+                    onChange={(e) => setPwdField('confirm', e.target.value)}
+                  />
+                </div>
+                <div className="col-12 mt-1">
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-primary"
+                    disabled={pwdLoading}
+                    onClick={handleNurseChangePassword}
+                  >
+                    {pwdLoading ? 'Updating…' : 'Update password'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
 
         {workspaceTab === 'overview' && (
           <>

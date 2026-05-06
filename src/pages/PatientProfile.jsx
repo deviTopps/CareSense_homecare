@@ -1,15 +1,22 @@
 import { useParams, useNavigate } from 'react-router-dom';
-import { Fragment, useState, useRef, useEffect, useCallback } from 'react';
+import { Fragment, useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { motion } from 'motion/react';
 import {
   FiArrowLeft, FiPhone, FiMail, FiMapPin, FiCalendar,
   FiUser, FiHeart, FiActivity, FiShield, FiFileText, FiEdit2,
   FiAlertTriangle, FiAlertCircle, FiCheckCircle, FiThermometer, FiClipboard,
-  FiMoreHorizontal, FiClock, FiPlus, FiX, FiSend, FiRefreshCw,
+  FiClock, FiPlus, FiX, FiSend, FiRefreshCw,
   FiSearch, FiBell, FiChevronDown, FiChevronRight, FiBarChart2,
   FiTrash2, FiGrid,
 } from '../icons/hugeicons-feather';
 import compressImage from '../utils/compressImage';
+import {
+  coerceVitalsToNumbers,
+  getVitalFieldRisksFromRow,
+  riskColor,
+  vitalMetricsCheck,
+  VITAL_RISK_COLORS,
+} from '../utils/vitalMetricsCheck';
 import { API_BASE, apiFetch, getToken, getUser } from '../api';
 
 const DEFAULT_PROFILE_PLACEHOLDER = '/images/default-profile-avatar.svg';
@@ -153,15 +160,27 @@ function formatStatusLabel(value) {
   return normalized.charAt(0).toUpperCase() + normalized.slice(1);
 }
 
-const VitalTile = ({ label, value, flag = false, showFlagBorder = true }) => {
+const TILE_RISK_STYLE = {
+  'high-risk': { background: '#fef2f2', borderLeft: VITAL_RISK_COLORS['high-risk'] },
+  'medium-risk': { background: '#fffbeb', borderLeft: VITAL_RISK_COLORS['medium-risk'] },
+  'low-risk': { background: '#f0fdf4', borderLeft: VITAL_RISK_COLORS['low-risk'] },
+};
+
+/** @param {{ label: string, value?: string|null, risk?: string, showFlagBorder?: boolean }} props */
+const VitalTile = ({ label, value, risk = 'low-risk', showFlagBorder = true }) => {
   const hasValue = value !== null && value !== undefined && String(value).trim().length > 0;
+  const tier = hasValue ? risk : 'neutral';
+  const surface = hasValue ? (TILE_RISK_STYLE[risk] || TILE_RISK_STYLE['low-risk']) : { background: '#fafbfc', borderLeft: '#e5e7eb' };
+  const valueColor = !hasValue
+    ? 'var(--kh-text-muted)'
+    : (risk === 'low-risk' ? '#166534' : riskColor(risk));
   return (
     <div style={{
       padding: '12px 14px',
       border: '1px solid #e5e7eb',
       borderRadius: 6,
-      background: flag ? '#fef2f2' : '#fafbfc',
-      borderLeft: flag && showFlagBorder ? '3px solid #ef4444' : '3px solid #e5e7eb',
+      background: surface.background,
+      borderLeft: showFlagBorder ? `3px solid ${surface.borderLeft}` : '3px solid #e5e7eb',
     }}>
       <div style={{
         fontSize: 10,
@@ -170,11 +189,22 @@ const VitalTile = ({ label, value, flag = false, showFlagBorder = true }) => {
         letterSpacing: '0.5px',
         color: 'var(--kh-text-muted)',
         marginBottom: 4,
-      }}>{label}</div>
+      }}>{label}{tier !== 'neutral' ? (
+        <span style={{
+          marginLeft: 6,
+          fontSize: 9,
+          fontWeight: 800,
+          textTransform: 'uppercase',
+          color: tier === 'low-risk' ? VITAL_RISK_COLORS['low-risk'] : riskColor(tier),
+        }}
+        >
+          {tier === 'high-risk' ? 'High' : tier === 'medium-risk' ? 'Watch' : 'OK'}
+        </span>
+      ) : null}</div>
       <div style={{
         fontSize: 18,
         fontWeight: 800,
-        color: flag ? '#ef4444' : 'var(--kh-text)',
+        color: valueColor,
         fontVariantNumeric: 'tabular-nums',
       }}>{hasValue ? value : '—'}</div>
     </div>
@@ -1130,6 +1160,47 @@ function medicationBelongsToPatient(medication, patientId) {
   return String(directPatientId || nestedPatientId || '').trim() === String(patientId || '').trim();
 }
 
+/** Structured meds sometimes arrive on GET /patients/:id (no separate /medications list route). */
+function extractMedicationRowsFromPatientPayload(raw) {
+  if (!raw || typeof raw !== 'object') return [];
+  const nests = [raw, raw.data, raw.patient].filter((o) => o && typeof o === 'object');
+  const arrayKeys = [
+    'medicationRecords',
+    'medicationList',
+    'medicationsList',
+    'activeMedications',
+    'patientMedications',
+    'prescriptions',
+    'medicineRecords',
+    'medicines',
+  ];
+  for (const obj of nests) {
+    for (const k of arrayKeys) {
+      const v = obj[k];
+      if (Array.isArray(v) && v.length > 0 && typeof v[0] === 'object') return v;
+    }
+    const m = obj.medications;
+    if (Array.isArray(m) && m.length > 0 && typeof m[0] === 'object') return m;
+  }
+  return [];
+}
+
+/** Care plan rows on patient envelope */
+function extractCarePlanRowsFromPatientPayload(raw) {
+  if (!raw || typeof raw !== 'object') return [];
+  const nests = [raw, raw.data, raw.patient].filter((o) => o && typeof o === 'object');
+  const arrayKeys = ['carePlans', 'carePlanItems', 'patientCarePlans', 'careplans'];
+  for (const obj of nests) {
+    for (const k of arrayKeys) {
+      const v = obj[k];
+      if (Array.isArray(v) && v.length > 0) return v;
+    }
+    const single = obj.carePlan;
+    if (single && typeof single === 'object' && !Array.isArray(single)) return [single];
+  }
+  return [];
+}
+
 function buildMedicationSignature(medication) {
   return [
     String(medication?.drug || '').trim().toLowerCase(),
@@ -1875,6 +1946,10 @@ export default function PatientProfile() {
   const [tab, setTab] = useState('chart');
   const [photo, setPhoto] = useState(null);
   const fileRef = useRef(null);
+  /** Raw `/patients/:id` JSON (or equivalent) for nested meds / care plans — avoids extra 404s when list routes are absent. */
+  const rawPatientApiRef = useRef(null);
+  /** Incremented after each profile fetch attempt so meds/care-plan loads run after patient payload exists. */
+  const [patientApiSyncVersion, setPatientApiSyncVersion] = useState(0);
   const [remotePatient, setRemotePatient] = useState(null);
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileError, setProfileError] = useState('');
@@ -1929,6 +2004,7 @@ export default function PatientProfile() {
   const loadPatientProfile = useCallback(async () => {
     setProfileLoading(true);
     setProfileError('');
+    rawPatientApiRef.current = null;
     try {
       const response = await apiFetch(`/patients/${effectivePatientId}`, { method: 'GET' });
       let data = {};
@@ -1943,12 +2019,15 @@ export default function PatientProfile() {
       }
 
       const rawPatient = data?.patient || data?.data || data;
+      rawPatientApiRef.current = rawPatient && typeof rawPatient === 'object' ? rawPatient : null;
       const hydratedProfile = await hydratePatientProfile(rawPatient, effectivePatientId);
       setRemotePatient(hydratedProfile);
     } catch (error) {
       setProfileError(error?.message || 'Unable to load patient profile.');
+      rawPatientApiRef.current = null;
     } finally {
       setProfileLoading(false);
+      setPatientApiSyncVersion((n) => n + 1);
     }
   }, [effectivePatientId]);
 
@@ -1968,16 +2047,50 @@ export default function PatientProfile() {
     );
 
     try {
-      const patientMedicationResponse = await apiFetch(`/medications/detail/${encodeURIComponent(patientIdValue)}`, { method: 'GET' });
-
-      let patientMedicationPayload = {};
-      try {
-        patientMedicationPayload = await patientMedicationResponse.json();
-      } catch {
-        patientMedicationPayload = {};
+      const embedded = extractMedicationRowsFromPatientPayload(rawPatientApiRef.current);
+      if (embedded.length > 0) {
+        const patientMedicationItems = embedded
+          .map(item => normalizeMedicationRecord(item, { patientId: patientIdValue }))
+          .filter(item => item.drug);
+        const mergedItems = mergeMedicationRecords([...patientMedicationItems, ...cachedItems]);
+        setAddedMeds(mergedItems);
+        setCachedPatientMedications(patientIdValue, mergedItems);
+        return;
       }
 
-      if (patientMedicationResponse.ok) {
+      const q = encodeURIComponent(patientIdValue);
+      /* Try common backend shapes — many deployments omit GET /medications/:patientId */
+      const medicationListPaths = [
+        `/patients/${q}/medications`,
+        `/medications?patientId=${q}`,
+        `/medications/patient/${q}`,
+        `/medications/${q}`,
+      ];
+
+      let patientMedicationResponse = null;
+      let patientMedicationPayload = {};
+
+      for (const path of medicationListPaths) {
+        const res = await apiFetch(path, { method: 'GET', quiet: true });
+        let payload = {};
+        try {
+          payload = await res.json();
+        } catch {
+          payload = {};
+        }
+        if (res.ok) {
+          patientMedicationResponse = res;
+          patientMedicationPayload = payload;
+          break;
+        }
+        if (res.status !== 404) {
+          patientMedicationResponse = res;
+          patientMedicationPayload = payload;
+          break;
+        }
+      }
+
+      if (patientMedicationResponse?.ok) {
         const patientMedicationItems = extractMedicationList(patientMedicationPayload)
           .map(item => normalizeMedicationRecord(item, { patientId: patientIdValue }))
           .filter(item => item.drug);
@@ -1994,8 +2107,9 @@ export default function PatientProfile() {
   }, [effectivePatientId]);
 
   useEffect(() => {
+    if (patientApiSyncVersion === 0) return;
     loadMedicationRecords();
-  }, [loadMedicationRecords]);
+  }, [patientApiSyncVersion, loadMedicationRecords]);
 
   const loadLatestVitalRecord = useCallback(async () => {
     const patientIdValue = String(effectivePatientId || '').trim();
@@ -2149,6 +2263,19 @@ export default function PatientProfile() {
   const [showIncidentsMegaModal, setShowIncidentsMegaModal] = useState(false);
   const [showMedicationsMegaModal, setShowMedicationsMegaModal] = useState(false);
   const [showGenerateReportModal, setShowGenerateReportModal] = useState(false);
+  const [showReportDeathModal, setShowReportDeathModal] = useState(false);
+  const [reportDeathSubmitting, setReportDeathSubmitting] = useState(false);
+  const [reportDeathError, setReportDeathError] = useState('');
+  const [reportDeathDone, setReportDeathDone] = useState(false);
+  const [reportDeathForm, setReportDeathForm] = useState({
+    dateOfDeath: '',
+    timeOfDeath: '',
+    placeOfDeath: '',
+    causeOrCircumstances: '',
+    notes: '',
+    nextOfKinNotified: false,
+    confirmedProcedure: false,
+  });
   const [showVitalForm, setShowVitalForm] = useState(false);
   const [vitalForm, setVitalForm] = useState(() => createVitalForm(currentUserName));
   const [expandedVital, setExpandedVital] = useState(null);
@@ -2668,19 +2795,42 @@ export default function PatientProfile() {
     return latest ? latest[field] : p.vitals[field];
   };
 
-  /* Check if vital is flagged */
-  const isVitalFlagged = (field, value) => {
-    if (!value) return false;
-    if (field === 'bp') return parseInt(value) >= 140;
-    if (field === 'sugar') return parseFloat(value) > 7;
-    if (field === 'spo2') return parseInt(value) < 95;
-    if (field === 'urinalysis') return value !== 'Normal' && value !== '';
-    if (field === 'temp') return parseFloat(value) > 37.5;
-    if (field === 'pulse') return parseInt(value) > 100 || parseInt(value) < 60;
-    return false;
+  /* Urinalysis not in vitalMetricsCheck — flag non-normal manually */
+  const isUrinalysisFlagged = (value) => {
+    const normalized = String(value || '').trim();
+    return normalized !== '' && normalized.toLowerCase() !== 'normal';
   };
 
-  /* Nurse Notes handlers */
+  const vitalFormFieldRisk = useMemo(
+    () => getVitalFieldRisksFromRow(vitalForm),
+    [vitalForm.bp, vitalForm.sugar, vitalForm.spo2, vitalForm.pulse, vitalForm.temp],
+  );
+  const vitalFormOverallCheck = useMemo(
+    () => vitalMetricsCheck(coerceVitalsToNumbers(vitalForm)),
+    [vitalForm.bp, vitalForm.sugar, vitalForm.spo2, vitalForm.pulse, vitalForm.temp],
+  );
+  const vitalFormHasMetricInput = ['bp', 'sugar', 'spo2', 'pulse', 'temp'].some(
+    (k) => String(vitalForm[k] || '').trim().length > 0,
+  );
+
+  const formatFlaggedMetricLabel = (key) => ({
+    'blood-pressure': 'blood pressure',
+    'blood-sugar': 'blood sugar',
+    'blood-oxygen': 'SpO₂',
+    'pulse-rate': 'pulse',
+    temperature: 'temperature',
+  }[key] || String(key || '').replace(/-/g, ' '));
+
+  const vitalRiskInputStyle = (rowKey) => {
+    const tier = vitalFormFieldRisk[rowKey] || 'low-risk';
+    if (!String(vitalForm[rowKey] || '').trim()) return undefined;
+    const c = riskColor(tier);
+    return {
+      borderWidth: 2,
+      borderColor: c,
+      boxShadow: `0 0 0 1px ${c}22`,
+    };
+  };
   const NOTE_CATEGORIES = ['Assessment', 'Medication', 'Care Update', 'Communication', 'Shift Handover', 'Incident', 'Observation', 'Other'];
 
   const resetNoteForm = () => {
@@ -3443,26 +3593,59 @@ export default function PatientProfile() {
     setCarePlanLoading(true);
     setCarePlanLoadError('');
     try {
-      let response = await apiFetch(`/care-plan/patient/${encodeURIComponent(patientIdValue)}`, { method: 'GET' });
-      if (!response.ok && response.status === 404) {
-        response = await apiFetch(`/care-plans/patient/${encodeURIComponent(patientIdValue)}`, { method: 'GET' });
+      const embedded = extractCarePlanRowsFromPatientPayload(rawPatientApiRef.current);
+      if (embedded.length > 0) {
+        const items = embedded
+          .map((row) => normalizeCarePlanRecord(row, { patientId: patientIdValue }))
+          .filter((item) => item.task);
+        setCarePlanItems(sortCarePlanItems(items));
+        return;
       }
-      const responseText = await response.text().catch(() => '');
+
+      const q = encodeURIComponent(patientIdValue);
+      const paths = [
+        `/patients/${q}/care-plans`,
+        `/patients/${q}/care-plan`,
+        `/patient/${q}/care-plans`,
+        `/patient/${q}/care-plan`,
+        `/care-plan/patient/${q}`,
+        `/care-plans/patient/${q}`,
+      ];
+
+      let response = null;
       let payload = {};
-      if (responseText) {
-        try {
-          payload = JSON.parse(responseText);
-        } catch {
-          payload = { message: responseText };
+
+      for (const path of paths) {
+        const res = await apiFetch(path, { method: 'GET', quiet: true });
+        const responseText = await res.text().catch(() => '');
+        let parsed = {};
+        if (responseText) {
+          try {
+            parsed = JSON.parse(responseText);
+          } catch {
+            parsed = { message: responseText };
+          }
+        }
+        if (res.ok) {
+          response = res;
+          payload = parsed;
+          break;
+        }
+        if (res.status !== 404) {
+          response = res;
+          payload = parsed;
+          break;
         }
       }
-      if (!response.ok) {
+
+      if (!response || !response.ok) {
         setCarePlanItems([]);
-        if (response.status !== 404) {
+        if (response && response.status !== 404) {
           setCarePlanLoadError(payload?.message || payload?.error || 'Unable to load care plan.');
         }
         return;
       }
+
       const items = extractCarePlanList(payload)
         .map((row) => normalizeCarePlanRecord(row, { patientId: patientIdValue }))
         .filter((item) => item.task);
@@ -3476,8 +3659,9 @@ export default function PatientProfile() {
   }, [effectivePatientId]);
 
   useEffect(() => {
+    if (patientApiSyncVersion === 0) return;
     loadCarePlans();
-  }, [loadCarePlans]);
+  }, [patientApiSyncVersion, loadCarePlans]);
 
   const [checklistStatusDate, setChecklistStatusDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [dailyChecklistByDate, setDailyChecklistByDate] = useState({});
@@ -4271,6 +4455,84 @@ export default function PatientProfile() {
     }
   };
 
+  const submitReportDeath = async () => {
+    setReportDeathError('');
+    const pid = String(effectivePatientId || '').trim();
+    if (!pid) {
+      setReportDeathError('Patient ID is missing.');
+      return;
+    }
+    if (!String(reportDeathForm.dateOfDeath || '').trim()) {
+      setReportDeathError('Date of death is required.');
+      return;
+    }
+    if (!reportDeathForm.confirmedProcedure) {
+      setReportDeathError('Please confirm that this report complies with your organisation’s procedures.');
+      return;
+    }
+
+    const trim = (value) => {
+      const normalized = String(value ?? '').trim();
+      return normalized || undefined;
+    };
+
+    const payload = {
+      patientId: pid,
+      dateOfDeath: reportDeathForm.dateOfDeath,
+      timeOfDeath: trim(reportDeathForm.timeOfDeath),
+      placeOfDeath: trim(reportDeathForm.placeOfDeath),
+      causeOrCircumstances: trim(reportDeathForm.causeOrCircumstances),
+      notes: trim(reportDeathForm.notes),
+      nextOfKinNotified: Boolean(reportDeathForm.nextOfKinNotified),
+      reportedByName: trim(currentUserName),
+    };
+
+    const postDeathReport = async (path) => {
+      const response = await apiFetch(path, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+        quiet: true,
+      });
+      const responseText = await response.text().catch(() => '');
+      let data = {};
+      if (responseText) {
+        try {
+          data = JSON.parse(responseText);
+        } catch {
+          data = { message: responseText };
+        }
+      }
+      if (!response.ok) {
+        const err = new Error(data?.message || data?.error || 'Unable to submit death report.');
+        err.status = response.status;
+        throw err;
+      }
+      return data;
+    };
+
+    setReportDeathSubmitting(true);
+    try {
+      try {
+        await postDeathReport('/patients/death-report');
+      } catch (first) {
+        if (first?.status === 404) {
+          await postDeathReport(`/patients/${encodeURIComponent(pid)}/death-report`);
+        } else {
+          throw first;
+        }
+      }
+      setReportDeathDone(true);
+      loadPatientProfile();
+    } catch (error) {
+      const hint = error?.status === 404
+        ? ' The server does not expose a death-report endpoint yet—ask your administrator to add POST /patients/death-report (or /patients/:id/death-report).'
+        : '';
+      setReportDeathError((error?.message || 'Unable to submit death report.') + hint);
+    } finally {
+      setReportDeathSubmitting(false);
+    }
+  };
+
   const localPatient = patientsData.find((pt) => {
     const candidateIds = [
       pt?.id,
@@ -4316,6 +4578,22 @@ export default function PatientProfile() {
 
     return () => window.clearTimeout(timer);
   }, [profileUpdateSuccess]);
+
+  useEffect(() => {
+    if (!showReportDeathModal) return;
+    setReportDeathError('');
+    setReportDeathDone(false);
+    setReportDeathSubmitting(false);
+    setReportDeathForm({
+      dateOfDeath: '',
+      timeOfDeath: '',
+      placeOfDeath: '',
+      causeOrCircumstances: '',
+      notes: '',
+      nextOfKinNotified: false,
+      confirmedProcedure: false,
+    });
+  }, [showReportDeathModal]);
 
   useEffect(() => {
     if (!medicationSaveSuccess) {
@@ -4467,6 +4745,8 @@ export default function PatientProfile() {
     weight: latestVitalRecord?.weight || p.vitals.weight,
     urinalysis: latestVitalRecord?.urinalysis || p.vitals.urinalysis,
   };
+  const latestRiskByField = getVitalFieldRisksFromRow(latestDisplayedVitals);
+  const admissionRiskByField = getVitalFieldRisksFromRow(p.vitals || {});
   const hasNextOfKinData = hasMeaningfulSectionData(p.sectionNextOfKin);
   const hasAdmissionChecklistData = hasMeaningfulSectionData(p.sectionAdmissionChecklist);
   const hasMedicalHistoryData = hasMeaningfulSectionData(p.sectionMedicalHistory) || Boolean(String(p.medicalHistory || '').trim());
@@ -4728,11 +5008,11 @@ export default function PatientProfile() {
             </button>
             <button
               type="button"
-              className="pp-pharm-btn-yellow pp-pharm-btn-yellow--icon"
-              title="More options"
-              onClick={() => setShowUpdateModal(true)}
+              className="pp-pharm-btn-yellow"
+              title="Report patient death"
+              onClick={() => setShowReportDeathModal(true)}
             >
-              <FiMoreHorizontal size={18} />
+              Report Death
             </button>
             <button type="button" className="pp-pharm-icon-quiet" title="Refresh" onClick={loadPatientProfile}>
               <FiRefreshCw size={16} />
@@ -5034,12 +5314,12 @@ export default function PatientProfile() {
                 </div>
               ) : (latestRecordedVital || hasInitialVitalsData) ? (
                 <div className="row g-2">
-                  <div className="col-6"><VitalTile label="Blood Pressure" value={latestDisplayedVitals.bp} flag={parseInt(latestDisplayedVitals.bp, 10) >= 140} /></div>
-                  <div className="col-6"><VitalTile label="Blood Sugar" value={latestDisplayedVitals.sugar} flag={parseFloat(latestDisplayedVitals.sugar) > 7} showFlagBorder={false} /></div>
-                  <div className="col-6"><VitalTile label="SPO2" value={latestDisplayedVitals.spo2} /></div>
-                  <div className="col-6"><VitalTile label="Pulse" value={latestDisplayedVitals.pulse ? `${latestDisplayedVitals.pulse} bpm` : ''} /></div>
-                  <div className="col-6"><VitalTile label="Temperature" value={latestDisplayedVitals.temp} /></div>
-                  <div className="col-6"><VitalTile label="Weight" value={latestDisplayedVitals.weight} /></div>
+                  <div className="col-6"><VitalTile label="Blood Pressure" value={latestDisplayedVitals.bp} risk={latestRiskByField.bp} /></div>
+                  <div className="col-6"><VitalTile label="Blood Sugar" value={latestDisplayedVitals.sugar} risk={latestRiskByField.sugar} /></div>
+                  <div className="col-6"><VitalTile label="SPO2" value={latestDisplayedVitals.spo2} risk={latestRiskByField.spo2} /></div>
+                  <div className="col-6"><VitalTile label="Pulse" value={latestDisplayedVitals.pulse ? `${latestDisplayedVitals.pulse} bpm` : ''} risk={latestRiskByField.pulse} /></div>
+                  <div className="col-6"><VitalTile label="Temperature" value={latestDisplayedVitals.temp} risk={latestRiskByField.temp} /></div>
+                  <div className="col-6"><VitalTile label="Weight" value={latestDisplayedVitals.weight} risk="low-risk" /></div>
                 </div>
               ) : <NoDataState text="No vitals data is available for this patient yet." />}
             </Panel>
@@ -5293,6 +5573,29 @@ export default function PatientProfile() {
                             <div className="patient-vital-modal__section-copy">Enter the latest readings captured for this patient.</div>
                           </div>
                         </div>
+                        {vitalFormHasMetricInput && (
+                          <div style={{ marginBottom: 14 }} role="status" aria-live="polite">
+                            <div style={{
+                              padding: '12px 16px',
+                              borderRadius: 14,
+                              borderLeft: `4px solid ${riskColor(vitalFormOverallCheck.status)}`,
+                              background: vitalFormOverallCheck.status === 'high-risk' ? '#fef2f2' : vitalFormOverallCheck.status === 'medium-risk' ? '#fffbeb' : '#f0fdf4',
+                              border: `1px solid ${riskColor(vitalFormOverallCheck.status)}33`,
+                            }}
+                            >
+                              <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#64748b', marginBottom: 4 }}>Vital risk summary</div>
+                              <div style={{ fontSize: 14, fontWeight: 800, color: riskColor(vitalFormOverallCheck.status) }}>
+                                {vitalFormOverallCheck.status === 'high-risk' ? 'High risk' : vitalFormOverallCheck.status === 'medium-risk' ? 'Medium risk — review' : 'Low risk (green band)'}
+                              </div>
+                              {vitalFormOverallCheck.flaggedVital && vitalFormOverallCheck.status !== 'low-risk' && (
+                                <div style={{ marginTop: 8, fontSize: 12.5, color: '#475569' }}>
+                                  Highest concern:&nbsp;
+                                  <strong style={{ color: riskColor(vitalFormOverallCheck.status) }}>{formatFlaggedMetricLabel(vitalFormOverallCheck.flaggedVital)}</strong>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
                         <div className="patient-vital-modal__grid">
                           {[
                             { key: 'bp', label: 'Blood Pressure', placeholder: 'e.g. 130/85' },
@@ -5308,6 +5611,7 @@ export default function PatientProfile() {
                               <label className="patient-vital-modal__label">{field.label}</label>
                               <input
                                 className="patient-vital-modal__input"
+                                style={['bp', 'sugar', 'spo2', 'pulse', 'temp'].includes(field.key) ? vitalRiskInputStyle(field.key) : undefined}
                                 value={vitalForm[field.key]}
                                 onChange={e => setVitalForm(f => ({ ...f, [field.key]: e.target.value }))}
                                 placeholder={field.placeholder}
@@ -5422,7 +5726,9 @@ export default function PatientProfile() {
                   </thead>
                   <tbody>
                     {/* Added vital records */}
-                    {vitalRecords.map((r, idx) => (
+                    {vitalRecords.map((r, idx) => {
+                      const rowRisks = getVitalFieldRisksFromRow(r);
+                      return (
                       <Fragment key={r.id}>
                         <tr
                           style={{ background: idx % 2 === 0 ? 'transparent' : '#fafbfc', borderBottom: '1px solid #f3f4f6', cursor: 'pointer', transition: 'background 0.15s' }}
@@ -5448,19 +5754,19 @@ export default function PatientProfile() {
                             </button>
                           </td>
                           <td style={{ padding: '10px 12px' }}>
-                            {r.bp ? <span style={{ fontSize: 12.5, fontWeight: 700, color: isVitalFlagged('bp', r.bp) ? '#ef4444' : 'var(--kh-text)' }}>{r.bp}</span> : <span style={{ color: '#d1d5db' }}>—</span>}
+                            {r.bp ? <span style={{ fontSize: 12.5, fontWeight: 700, color: rowRisks.bp === 'low-risk' ? 'var(--kh-text)' : riskColor(rowRisks.bp) }}>{r.bp}</span> : <span style={{ color: '#d1d5db' }}>—</span>}
                           </td>
                           <td style={{ padding: '10px 12px' }}>
-                            {r.sugar ? <span style={{ fontSize: 12.5, fontWeight: 700, color: isVitalFlagged('sugar', r.sugar) ? '#d97706' : 'var(--kh-text)' }}>{r.sugar}</span> : <span style={{ color: '#d1d5db' }}>—</span>}
+                            {r.sugar ? <span style={{ fontSize: 12.5, fontWeight: 700, color: rowRisks.sugar === 'low-risk' ? 'var(--kh-text)' : riskColor(rowRisks.sugar) }}>{r.sugar}</span> : <span style={{ color: '#d1d5db' }}>—</span>}
                           </td>
                           <td style={{ padding: '10px 12px' }}>
-                            {r.spo2 ? <span style={{ fontSize: 12.5, fontWeight: 700, color: isVitalFlagged('spo2', r.spo2) ? '#ef4444' : 'var(--kh-text)' }}>{r.spo2}</span> : <span style={{ color: '#d1d5db' }}>—</span>}
+                            {r.spo2 ? <span style={{ fontSize: 12.5, fontWeight: 700, color: rowRisks.spo2 === 'low-risk' ? 'var(--kh-text)' : riskColor(rowRisks.spo2) }}>{r.spo2}</span> : <span style={{ color: '#d1d5db' }}>—</span>}
                           </td>
                           <td style={{ padding: '10px 12px' }}>
-                            {r.pulse ? <span style={{ fontSize: 12.5, fontWeight: 700, color: isVitalFlagged('pulse', r.pulse) ? '#8b5cf6' : 'var(--kh-text)' }}>{r.pulse}</span> : <span style={{ color: '#d1d5db' }}>—</span>}
+                            {r.pulse ? <span style={{ fontSize: 12.5, fontWeight: 700, color: rowRisks.pulse === 'low-risk' ? 'var(--kh-text)' : riskColor(rowRisks.pulse) }}>{r.pulse}</span> : <span style={{ color: '#d1d5db' }}>—</span>}
                           </td>
                           <td style={{ padding: '10px 12px' }}>
-                            {r.temp ? <span style={{ fontSize: 12.5, fontWeight: 700, color: isVitalFlagged('temp', r.temp) ? '#ef4444' : 'var(--kh-text)' }}>{r.temp}</span> : <span style={{ color: '#d1d5db' }}>—</span>}
+                            {r.temp ? <span style={{ fontSize: 12.5, fontWeight: 700, color: rowRisks.temp === 'low-risk' ? 'var(--kh-text)' : riskColor(rowRisks.temp) }}>{r.temp}</span> : <span style={{ color: '#d1d5db' }}>—</span>}
                           </td>
                           <td style={{ padding: '10px 12px' }}>
                             {r.resp ? <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--kh-text)' }}>{r.resp}</span> : <span style={{ color: '#d1d5db' }}>—</span>}
@@ -5512,25 +5818,32 @@ export default function PatientProfile() {
                               <div style={{ padding: '12px 18px', borderBottom: '2px solid #e5e7eb' }}>
                                 <div className="d-flex flex-wrap gap-2 mb-2">
                                   {[
-                                    r.bp && { label: 'Blood Pressure', value: r.bp, flagged: isVitalFlagged('bp', r.bp), color: '#45B6FE' },
-                                    r.sugar && { label: 'Blood Sugar', value: r.sugar, flagged: isVitalFlagged('sugar', r.sugar), color: '#45B6FE' },
-                                    r.spo2 && { label: 'SPO₂', value: r.spo2, flagged: isVitalFlagged('spo2', r.spo2), color: '#2E7DB8' },
-                                    r.pulse && { label: 'Pulse', value: r.pulse, flagged: isVitalFlagged('pulse', r.pulse), color: '#45B6FE' },
-                                    r.temp && { label: 'Temperature', value: r.temp, flagged: isVitalFlagged('temp', r.temp), color: '#2E7DB8' },
-                                    r.resp && { label: 'Respiration', value: r.resp, flagged: false, color: '#45B6FE' },
-                                    r.weight && { label: 'Weight', value: r.weight, flagged: false, color: '#2E7DB8' },
-                                    r.urinalysis && { label: 'Urinalysis', value: r.urinalysis, flagged: isVitalFlagged('urinalysis', r.urinalysis), color: '#2E7DB8' },
-                                  ].filter(Boolean).map((v, vi) => (
+                                    r.bp && { label: 'Blood Pressure', value: r.bp, risk: rowRisks.bp, color: '#45B6FE' },
+                                    r.sugar && { label: 'Blood Sugar', value: r.sugar, risk: rowRisks.sugar, color: '#45B6FE' },
+                                    r.spo2 && { label: 'SPO₂', value: r.spo2, risk: rowRisks.spo2, color: '#2E7DB8' },
+                                    r.pulse && { label: 'Pulse', value: r.pulse, risk: rowRisks.pulse, color: '#45B6FE' },
+                                    r.temp && { label: 'Temperature', value: r.temp, risk: rowRisks.temp, color: '#2E7DB8' },
+                                    r.resp && { label: 'Respiration', value: r.resp, risk: 'low-risk', color: '#45B6FE' },
+                                    r.weight && { label: 'Weight', value: r.weight, risk: 'low-risk', color: '#2E7DB8' },
+                                    r.urinalysis && { label: 'Urinalysis', value: r.urinalysis, risk: isUrinalysisFlagged(r.urinalysis) ? 'high-risk' : 'low-risk', color: '#2E7DB8' },
+                                  ].filter(Boolean).map((v, vi) => {
+                                    const risk = v.risk || 'low-risk';
+                                    const bg = risk === 'high-risk' ? '#fef2f2' : risk === 'medium-risk' ? '#fffbeb' : '#f0fdf4';
+                                    const border = risk === 'high-risk' ? '#fecaca' : risk === 'medium-risk' ? '#fde68a' : '#bbf7d0';
+                                    const accent = riskColor(risk);
+                                    const valueColor = risk === 'low-risk' ? '#166534' : riskColor(risk);
+                                    return (
                                     <div key={vi} style={{
                                       padding: '8px 14px', borderRadius: 2, minWidth: 100,
-                                      background: v.flagged ? '#fef2f2' : '#fff',
-                                      border: `1px solid ${v.flagged ? '#fecaca' : '#e5e7eb'}`,
-                                      borderLeft: `3px solid ${v.flagged ? '#ef4444' : v.color}`,
+                                      background: bg,
+                                      border: `1px solid ${border}`,
+                                      borderLeft: `3px solid ${accent}`,
                                     }}>
                                       <div style={{ fontSize: 9.5, fontWeight: 700, textTransform: 'uppercase', color: 'var(--kh-text-muted)', marginBottom: 2 }}>{v.label}</div>
-                                      <div style={{ fontSize: 15, fontWeight: 800, color: v.flagged ? '#ef4444' : 'var(--kh-text)' }}>{v.value}</div>
+                                      <div style={{ fontSize: 15, fontWeight: 800, color: valueColor }}>{v.value}</div>
                                     </div>
-                                  ))}
+                                    );
+                                  })}
                                 </div>
                                 {r.notes && (
                                   <div style={{ fontSize: 12, color: 'var(--kh-text-muted)', marginTop: 4 }}>
@@ -5557,7 +5870,8 @@ export default function PatientProfile() {
                           </tr>
                         )}
                       </Fragment>
-                    ))}
+                      );
+                    })}
 
                     {/* Admission vitals row (always last) */}
                     <tr style={{
@@ -5569,19 +5883,19 @@ export default function PatientProfile() {
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 2, background: '#F0F7FE', color: '#45B6FE', border: '1px solid #A8D8FC', marginTop: 2 }}>ADMISSION</div>
                       </td>
                       <td style={{ padding: '10px 12px' }}>
-                        <span style={{ fontSize: 12.5, fontWeight: 700, color: isVitalFlagged('bp', p.vitals.bp) ? '#ef4444' : 'var(--kh-text)' }}>{p.vitals.bp}</span>
+                        <span style={{ fontSize: 12.5, fontWeight: 700, color: admissionRiskByField.bp === 'low-risk' ? 'var(--kh-text)' : riskColor(admissionRiskByField.bp) }}>{p.vitals.bp}</span>
                       </td>
                       <td style={{ padding: '10px 12px' }}>
-                        <span style={{ fontSize: 12.5, fontWeight: 700, color: isVitalFlagged('sugar', p.vitals.sugar) ? '#d97706' : 'var(--kh-text)' }}>{p.vitals.sugar}</span>
+                        <span style={{ fontSize: 12.5, fontWeight: 700, color: admissionRiskByField.sugar === 'low-risk' ? 'var(--kh-text)' : riskColor(admissionRiskByField.sugar) }}>{p.vitals.sugar}</span>
                       </td>
                       <td style={{ padding: '10px 12px' }}>
-                        <span style={{ fontSize: 12.5, fontWeight: 700, color: isVitalFlagged('spo2', p.vitals.spo2) ? '#ef4444' : 'var(--kh-text)' }}>{p.vitals.spo2}</span>
+                        <span style={{ fontSize: 12.5, fontWeight: 700, color: admissionRiskByField.spo2 === 'low-risk' ? 'var(--kh-text)' : riskColor(admissionRiskByField.spo2) }}>{p.vitals.spo2}</span>
                       </td>
                       <td style={{ padding: '10px 12px' }}>
-                        <span style={{ fontSize: 12.5, fontWeight: 700, color: isVitalFlagged('pulse', p.vitals.pulse) ? '#8b5cf6' : 'var(--kh-text)' }}>{p.vitals.pulse}</span>
+                        <span style={{ fontSize: 12.5, fontWeight: 700, color: admissionRiskByField.pulse === 'low-risk' ? 'var(--kh-text)' : riskColor(admissionRiskByField.pulse) }}>{p.vitals.pulse}</span>
                       </td>
                       <td style={{ padding: '10px 12px' }}>
-                        <span style={{ fontSize: 12.5, fontWeight: 700, color: isVitalFlagged('temp', p.vitals.temp) ? '#ef4444' : 'var(--kh-text)' }}>{p.vitals.temp}</span>
+                        <span style={{ fontSize: 12.5, fontWeight: 700, color: admissionRiskByField.temp === 'low-risk' ? 'var(--kh-text)' : riskColor(admissionRiskByField.temp) }}>{p.vitals.temp}</span>
                       </td>
                       <td style={{ padding: '10px 12px' }}>
                         <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--kh-text)' }}>{p.vitals.resp}</span>
@@ -7818,6 +8132,199 @@ export default function PatientProfile() {
               >
                 Close
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showReportDeathModal && (
+        <div
+          className="kh-modal-overlay app-modal-overlay"
+          style={{ zIndex: 10001, padding: 16 }}
+          onClick={() => { if (!reportDeathSubmitting) setShowReportDeathModal(false); }}
+          role="presentation"
+        >
+          <div
+            className="kh-modal-panel app-modal-panel"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="report-death-title"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: 'min(560px, 94vw)',
+              borderRadius: 16,
+              overflow: 'hidden',
+            }}
+          >
+            <div className="kh-modal-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #e5e7eb' }}>
+              <div className="d-flex align-items-center gap-2" style={{ fontSize: 15, fontWeight: 800, color: 'var(--kh-text)' }}>
+                <FiAlertTriangle size={18} style={{ color: '#b45309' }} aria-hidden />
+                <span id="report-death-title">Report death</span>
+              </div>
+              <button
+                type="button"
+                className="patient-update-modal__close-btn"
+                aria-label="Close"
+                disabled={reportDeathSubmitting}
+                onClick={() => { if (!reportDeathSubmitting) setShowReportDeathModal(false); }}
+              >
+                <FiX size={18} />
+              </button>
+            </div>
+            <div className="kh-modal-body" style={{ padding: '20px 22px', maxHeight: 'min(72vh, 640px)', overflowY: 'auto' }}>
+              {reportDeathDone ? (
+                <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+                  <FiCheckCircle size={24} style={{ color: '#16a34a', flexShrink: 0 }} aria-hidden />
+                  <div>
+                    <p style={{ margin: 0, fontSize: 15.5, fontWeight: 800, color: 'var(--kh-text)' }}>Report submitted</p>
+                    <p style={{ margin: '10px 0 0', fontSize: 13.5, color: 'var(--kh-text-muted)', lineHeight: 1.55 }}>
+                      The death report for <strong>{p?.name || 'this patient'}</strong> has been sent. Continue with statutory notifications, care handover, and records per your organisation’s policies.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <p style={{ margin: '0 0 14px', fontSize: 13.5, color: '#4b5563', lineHeight: 1.55 }}>
+                    Complete this record only after death has been verified appropriately. Fields marked <span aria-hidden>*</span> are required.
+                  </p>
+                  <div className="row g-3">
+                    <div className="col-12">
+                      <label className="form-label" style={{ fontSize: 12, fontWeight: 700 }} htmlFor="report-death-patient">Patient</label>
+                      <input id="report-death-patient" className="form-control form-control-kh" readOnly disabled value={p?.name ? `${p.name} (${String(effectivePatientId || '').trim()})` : String(effectivePatientId || '').trim() || '—'} />
+                    </div>
+                    <div className="col-md-6">
+                      <label className="form-label" style={{ fontSize: 12, fontWeight: 700 }} htmlFor="report-death-date">Date of death *</label>
+                      <input
+                        id="report-death-date"
+                        type="date"
+                        className="form-control form-control-kh"
+                        value={reportDeathForm.dateOfDeath}
+                        onChange={(e) => setReportDeathForm((prev) => ({ ...prev, dateOfDeath: e.target.value }))}
+                        required
+                      />
+                    </div>
+                    <div className="col-md-6">
+                      <label className="form-label" style={{ fontSize: 12, fontWeight: 700 }} htmlFor="report-death-time">Time of death</label>
+                      <input
+                        id="report-death-time"
+                        type="time"
+                        className="form-control form-control-kh"
+                        value={reportDeathForm.timeOfDeath}
+                        onChange={(e) => setReportDeathForm((prev) => ({ ...prev, timeOfDeath: e.target.value }))}
+                      />
+                    </div>
+                    <div className="col-12">
+                      <label className="form-label" style={{ fontSize: 12, fontWeight: 700 }} htmlFor="report-death-place">Place of death</label>
+                      <input
+                        id="report-death-place"
+                        className="form-control form-control-kh"
+                        placeholder="e.g. home, hospital name, hospice"
+                        value={reportDeathForm.placeOfDeath}
+                        onChange={(e) => setReportDeathForm((prev) => ({ ...prev, placeOfDeath: e.target.value }))}
+                      />
+                    </div>
+                    <div className="col-12">
+                      <label className="form-label" style={{ fontSize: 12, fontWeight: 700 }} htmlFor="report-death-cause">Cause or circumstances (if appropriate to record here)</label>
+                      <textarea
+                        id="report-death-cause"
+                        className="form-control form-control-kh"
+                        rows={3}
+                        placeholder="Brief factual summary as allowed by your policy…"
+                        value={reportDeathForm.causeOrCircumstances}
+                        onChange={(e) => setReportDeathForm((prev) => ({ ...prev, causeOrCircumstances: e.target.value }))}
+                      />
+                    </div>
+                    <div className="col-12">
+                      <label className="form-label" style={{ fontSize: 12, fontWeight: 700 }} htmlFor="report-death-notes">Additional notes</label>
+                      <textarea
+                        id="report-death-notes"
+                        className="form-control form-control-kh"
+                        rows={3}
+                        placeholder="Family present, GP notified, equipment returned, etc."
+                        value={reportDeathForm.notes}
+                        onChange={(e) => setReportDeathForm((prev) => ({ ...prev, notes: e.target.value }))}
+                      />
+                    </div>
+                    <div className="col-12">
+                      <div className="form-check" style={{ paddingLeft: 0 }}>
+                        <label className="d-flex gap-2 align-items-start" style={{ cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
+                          <input
+                            type="checkbox"
+                            className="form-check-input mt-1 flex-shrink-0"
+                            checked={reportDeathForm.nextOfKinNotified}
+                            onChange={(e) => setReportDeathForm((prev) => ({ ...prev, nextOfKinNotified: e.target.checked }))}
+                            style={{ width: '1.1rem', height: '1.1rem' }}
+                          />
+                          <span>Next of kin (or appropriate contact) has been notified, or notification is in progress per procedure.</span>
+                        </label>
+                      </div>
+                    </div>
+                    <div className="col-12">
+                      <div className="form-check" style={{ paddingLeft: 0 }}>
+                        <label className="d-flex gap-2 align-items-start" style={{ cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
+                          <input
+                            type="checkbox"
+                            className="form-check-input mt-1 flex-shrink-0"
+                            checked={reportDeathForm.confirmedProcedure}
+                            onChange={(e) => setReportDeathForm((prev) => ({ ...prev, confirmedProcedure: e.target.checked }))}
+                            style={{ width: '1.1rem', height: '1.1rem' }}
+                          />
+                          <span>I confirm this report is accurate and complies with my organisation’s procedures. *</span>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                  {reportDeathError && (
+                    <div
+                      style={{
+                        marginTop: 14,
+                        borderRadius: 8,
+                        border: '1px solid #fecaca',
+                        background: '#fef2f2',
+                        color: '#b91c1c',
+                        padding: '10px 12px',
+                        fontSize: 13,
+                        fontWeight: 600,
+                        lineHeight: 1.45,
+                      }}
+                      role="alert"
+                    >
+                      {reportDeathError}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+            <div className="kh-modal-footer" style={{ padding: '14px 18px', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end', gap: 10, flexWrap: 'wrap' }}>
+              {reportDeathDone ? (
+                <button
+                  type="button"
+                  className="btn btn-kh-primary"
+                  style={{ borderRadius: 10, fontWeight: 700, padding: '10px 18px' }}
+                  onClick={() => setShowReportDeathModal(false)}
+                >
+                  Close
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className="destructive-confirm-dialog__btn-cancel"
+                    disabled={reportDeathSubmitting}
+                    onClick={() => { if (!reportDeathSubmitting) setShowReportDeathModal(false); }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="destructive-confirm-dialog__btn-danger"
+                    disabled={reportDeathSubmitting}
+                    onClick={submitReportDeath}
+                  >
+                    {reportDeathSubmitting ? 'Submitting…' : 'Submit report'}
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>

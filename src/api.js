@@ -48,26 +48,30 @@ export function clearAuth() {
  * Authenticated fetch wrapper.
  * Automatically attaches the Bearer token and handles 401 responses.
  * @param {string} path — API path (e.g. '/nurses')
- * @param {RequestInit} options — fetch options
+ * @param {RequestInit & { quiet?: boolean }} options — fetch options; set `quiet: true` to omit verbose console logging
  * @param {Function} onUnauthorized — callback when token is invalid/expired
  */
 export async function apiFetch(path, options = {}, onUnauthorized) {
+  const quiet = Boolean(options.quiet);
+  const { quiet: _quiet, ...restOptions } = options || {};
   const token = getToken();
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
   // Don't set Content-Type for FormData — browser sets it with the correct boundary
-  const isFormData = options.body instanceof FormData;
+  const isFormData = restOptions.body instanceof FormData;
   const headers = {
     ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
-    ...(options.headers || {}),
+    ...(restOptions.headers || {}),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 
   const requestUrl = `${API_BASE}${normalizedPath}`;
-  const requestOptions = { ...options, headers };
+  const requestOptions = { ...restOptions, headers };
 
-  console.log('[apiFetch] →', requestOptions.method || 'GET', requestUrl);
-  console.log('[apiFetch] headers:', JSON.stringify(headers));
-  if (options.body) console.log('[apiFetch] body:', options.body);
+  if (!quiet) {
+    console.log('[apiFetch] →', requestOptions.method || 'GET', requestUrl);
+    console.log('[apiFetch] headers:', JSON.stringify(headers));
+    if (restOptions.body) console.log('[apiFetch] body:', restOptions.body);
+  }
 
   let res;
   const delays = [2000, 5000, 8000]; // Render free tier can take 10-30s to wake
@@ -79,7 +83,7 @@ export async function apiFetch(path, options = {}, onUnauthorized) {
     } catch (error) {
       lastError = error;
       if (attempt < delays.length) {
-        console.warn(`[apiFetch] attempt ${attempt + 1} failed (${error.message}), retrying in ${delays[attempt]}ms…`);
+        if (!quiet) console.warn(`[apiFetch] attempt ${attempt + 1} failed (${error.message}), retrying in ${delays[attempt]}ms…`);
         await new Promise(resolve => setTimeout(resolve, delays[attempt]));
       }
     }

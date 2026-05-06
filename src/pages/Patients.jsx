@@ -647,12 +647,14 @@ export default function Patients() {
   const activeCount = patients.filter((patient) => patient.status === 'active').length;
   const dischargedCount = patients.filter((patient) => patient.status === 'discharged').length;
   const assignedCount = patients.filter((patient) => Array.isArray(patient.nurses) && patient.nurses.length > 0).length;
-  const filterCounts = { All: patients.length, Active: activeCount, Discharged: dischargedCount };
+  const filterCounts = { All: patients.length, Active: activeCount, 'Death Records': dischargedCount };
 
   const filtered = patients.filter(p => {
     const sl = search.toLowerCase();
     const sm = !search || p.name.toLowerCase().includes(sl) || p.id.toLowerCase().includes(sl) || p.nurses.some(n => n.toLowerCase().includes(sl));
-    const fm = filter === 'All' || p.status === filter.toLowerCase();
+    const fm = filter === 'All'
+      || (filter === 'Active' && p.status === 'active')
+      || (filter === 'Death Records' && p.status === 'discharged');
     return sm && fm;
   });
 
@@ -882,7 +884,7 @@ export default function Patients() {
       patient.region,
       patient.nurses.join('; '),
       patient.enrolled,
-      patient.status,
+      patient.status === 'active' ? 'Active' : 'Death Records',
     ]);
 
     const csv = [headers, ...rows]
@@ -1205,7 +1207,7 @@ export default function Patients() {
         <motion.div className="kh-card patients-board-card" initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.28, ease: 'easeOut' }}>
           <div className="patients-topbar">
             <div className="patients-segmented-control">
-              {['All', 'Active', 'Discharged'].map((item) => (
+              {['All', 'Active', 'Death Records'].map((item) => (
                 <button
                   key={item}
                   type="button"
@@ -1332,7 +1334,7 @@ export default function Patients() {
                     </div>
                   </td>
                   <td className="patients-table-date">{p.enrolled}</td>
-                  <td><span className={`patients-status-pill ${p.status === 'active' ? 'is-active' : 'is-discharged'}`}>{p.status}</span></td>
+                  <td><span className={`patients-status-pill ${p.status === 'active' ? 'is-active' : 'is-discharged'}`}>{p.status === 'active' ? 'Active' : 'Death Records'}</span></td>
                   <td style={{ textAlign: 'right' }}>
                     <button className="patients-row-action" onClick={(e) => { e.stopPropagation(); navigate(`/patients/${p.profileRouteId || p.id}`); }}>
                       <FiMoreHorizontal size={16} />

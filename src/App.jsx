@@ -19,6 +19,7 @@ import Account from './pages/Account';
 import Billing from './pages/Billing';
 import Auth from './pages/Auth';
 import LandingPage from './pages/LandingPage';
+import Privacy from './pages/Privacy';
 
 /* ── Protected Route wrapper ── */
 function ProtectedRoute({ isAuthenticated, children }) {
@@ -170,6 +171,8 @@ function App() {
       } />
 
       <Route path="/" element={<motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25 }}><LandingPage /></motion.div>} />
+
+      <Route path="/privacy" element={<motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25 }}><Privacy /></motion.div>} />
 
       {/* Protected routes */}
       <Route path="/dashboard" element={

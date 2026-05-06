@@ -73,6 +73,24 @@ export default function Sidebar({
     };
   }, [onSidebarResize]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const mq = window.matchMedia('(max-width: 991px)');
+    const syncBodyScroll = () => {
+      if (isOpen && mq.matches) {
+        document.body.classList.add('kh-sidebar-drawer-open');
+      } else {
+        document.body.classList.remove('kh-sidebar-drawer-open');
+      }
+    };
+    syncBodyScroll();
+    mq.addEventListener('change', syncBodyScroll);
+    return () => {
+      mq.removeEventListener('change', syncBodyScroll);
+      document.body.classList.remove('kh-sidebar-drawer-open');
+    };
+  }, [isOpen]);
+
   const handleResizePointerDown = (e) => {
     if (isCollapsed || typeof onSidebarResize !== 'function') return;
     e.preventDefault();

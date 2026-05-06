@@ -145,3 +145,15 @@ export async function patchEnquiry(id, body, onUnauthorized) {
   }
   return json;
 }
+
+/** DELETE `/enquiries/:id` — removes the enquiry when supported by the backend */
+export async function deleteEnquiry(id, onUnauthorized) {
+  const enc = encodeURIComponent(String(id ?? '').trim());
+  if (!enc) throw new Error('Enquiry id is required.');
+  const res = await apiFetch(`/enquiries/${enc}`, {
+    method: 'DELETE',
+  }, onUnauthorized);
+  if (res.ok) return true;
+  const json = await res.json().catch(() => ({}));
+  throw new Error(readMessage(res, json, `Could not delete enquiry (${res.status})`));
+}

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
+import { FiMenu, FiX } from '../icons/hugeicons-feather';
 import { HugeiconsIcon } from '@hugeicons/react';
 import {
   Calendar03Icon,
@@ -16,9 +17,44 @@ const fadeUp = { hidden: { opacity: 0, y: 30 }, show: { opacity: 1, y: 0 } };
 const stagger = { show: { transition: { staggerChildren: 0.1 } } };
 const COOKIE_CONSENT_KEY = 'kulobalCookieConsent';
 
+const LANDING_FAQ = [
+  {
+    question: 'How much does CareSense cost?',
+    answer:
+      'We keep it simple: GHS 50 per patient on your roster, plus a one-time GHS 5,000 initial setup fee. The setup covers onboarding and staff training so your team can use scheduling, records, and reporting confidently.',
+  },
+  {
+    question: 'What is included in the GHS 5,000 setup fee?',
+    answer:
+      'The setup investment covers platform configuration, onboarding support, and dedicated training for your staff — administrators and care teams — so you are not left to figure everything out alone.',
+  },
+  {
+    question: 'Do you charge per nurse or per agency seat?',
+    answer:
+      'Our published model is per patient (GHS 50 each) together with the one-time setup. If you need a custom arrangement for a large or multi-site organisation, we can discuss options after you get in touch.',
+  },
+  {
+    question: 'Is there a mobile app for nurses?',
+    answer:
+      'Yes. Field staff can use the nurse app (e.g. via Google Play) for visit-related workflows alongside the web dashboard your office team uses.',
+  },
+  {
+    question: 'How is client and health information protected?',
+    answer:
+      'The platform is designed with role-based access, secure sign-in, and practices suitable for sensitive care data. Your agency should still follow local privacy rules and internal policies.',
+  },
+  {
+    question: 'How long does it take to get started?',
+    answer:
+      'You can sign in and begin configuration quickly. Full rollout depends on your team size and training schedule; setup and training are part of the GHS 5,000 onboarding package.',
+  },
+];
+
 export default function LandingPage() {
+  const [navOpen, setNavOpen] = useState(false);
   const [showCookieBanner, setShowCookieBanner] = useState(false);
   const [showCookiePrefs, setShowCookiePrefs] = useState(false);
+  const [openFaqIndex, setOpenFaqIndex] = useState(null);
   const [cookiePrefs, setCookiePrefs] = useState({
     analytics: true,
     marketing: false,
@@ -32,6 +68,22 @@ export default function LandingPage() {
     };
     window.addEventListener('scroll', onScroll);
     return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  useEffect(() => {
+    if (!navOpen) return undefined;
+    document.body.classList.add('lp-nav-open');
+    return () => document.body.classList.remove('lp-nav-open');
+  }, [navOpen]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const mq = window.matchMedia('(min-width: 901px)');
+    const onWide = () => {
+      if (mq.matches) setNavOpen(false);
+    };
+    mq.addEventListener('change', onWide);
+    return () => mq.removeEventListener('change', onWide);
   }, []);
 
   useEffect(() => {
@@ -109,61 +161,42 @@ export default function LandingPage() {
     { name: 'Linda Papadopoulos', role: 'Agency Founder', initials: 'LP', color: 'rgba(251,146,60,0.12)', textColor: '#e87e22', quote: 'From onboarding to reporting, everything is simpler. It gave us confidence to scale our homecare service safely.' },
   ];
 
-  const pricing = [
-    {
-      name: 'Starter', price: '$149', period: '/mo',
-      desc: 'Essential tools for small homecare agencies getting started.',
-      featured: false,
-      items: [
-        { text: 'Up to 15 nurses', on: true },
-        { text: 'Basic scheduling', on: true },
-        { text: 'Patient records', on: true },
-        { text: 'Advanced analytics', on: false },
-        { text: 'Priority support', on: false },
-      ],
-    },
-    {
-      name: 'Professional', price: '$349', period: '/mo',
-      desc: 'Complete platform for growing agencies with more control and visibility.',
-      featured: true,
-      items: [
-        { text: 'Up to 50 nurses', on: true },
-        { text: 'Advanced scheduling', on: true },
-        { text: 'Clinical documentation', on: true },
-        { text: 'Billing & payroll', on: true },
-        { text: 'Priority support', on: true },
-      ],
-    },
-    {
-      name: 'Enterprise', price: 'Custom', period: '',
-      desc: 'Tailored plans for large agencies with multi-location needs.',
-      featured: false,
-      items: [
-        { text: 'Unlimited nurses', on: true },
-        { text: 'Everything in Pro', on: true },
-        { text: 'API access', on: true },
-        { text: 'Custom integrations', on: true },
-        { text: 'Dedicated account manager', on: true },
-      ],
-    },
-  ];
-
   return (
     <div className="lp">
       {/* ── NAV ── */}
-      <nav className="cf-nav">
-        <a href="/" className="nav-brand">
-          <img src="/Blue_Logo.png" alt="Kulobal Homecare" className="nav-logo" />
+      <nav className={`cf-nav${navOpen ? ' cf-nav--open' : ''}`}>
+        <a
+          href="/"
+          className="nav-brand"
+          onClick={() => setNavOpen(false)}
+        >
+          <img src="/Blue_Logo.png" alt="CareSense" className="nav-logo" />
         </a>
-        <ul className="nav-links">
+        <ul
+          className="nav-links"
+          onClick={(e) => {
+            if (e.target && e.target.closest && e.target.closest('a')) setNavOpen(false);
+          }}
+        >
           <li><a href="#features">Features</a></li>
           <li><a href="#how-it-works">About</a></li>
           <li><a href="#pricing">Pricing</a></li>
           <li><a href="#faq">FAQ</a></li>
         </ul>
-        <div className="nav-actions">
-          <a href="/login" className="nav-signin">Sign in</a>
-          <motion.a href="/login" className="btn btn-primary" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }}>Get Started</motion.a>
+        <div className="cf-nav__end">
+          <div className="nav-actions">
+            <a href="/login" className="nav-signin">Sign in</a>
+            <motion.a href="/login" className="btn btn-primary" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }}>Get Started</motion.a>
+          </div>
+          <button
+            type="button"
+            className="cf-nav__toggle"
+            aria-expanded={navOpen}
+            aria-label={navOpen ? 'Close menu' : 'Open menu'}
+            onClick={() => setNavOpen((o) => !o)}
+          >
+            {navOpen ? <FiX size={22} strokeWidth={2} /> : <FiMenu size={22} strokeWidth={2} />}
+          </button>
         </div>
       </nav>
 
@@ -363,39 +396,115 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── PRICING ── */}
+      {/* ── PRICING (Ghana Cedis) ── */}
       <section id="pricing" className="section-pricing">
         <div className="container">
           <motion.div className="sec-center" initial="hidden" whileInView="show" viewport={{ once: true, amount: 0.3 }} variants={stagger}>
             <motion.span className="section-label" variants={fadeUp}>Pricing</motion.span>
-            <motion.h2 className="section-title" variants={fadeUp}>Simple and transparent pricing</motion.h2>
-            <motion.p className="section-sub" variants={fadeUp}>No hidden fees, no surprises. Pick the plan that fits your agency and scale when you&rsquo;re ready.</motion.p>
+            <motion.h2 className="section-title" variants={fadeUp}>Straightforward pricing for your agency</motion.h2>
+            <motion.p className="section-sub" variants={fadeUp}>
+              All figures in <strong>Ghana Cedis (GHS)</strong>. One simple per-patient fee plus a single setup investment that gets your team trained and ready.
+            </motion.p>
           </motion.div>
-          <motion.div className="pricing-grid" initial="hidden" whileInView="show" viewport={{ once: true, amount: 0.1 }} variants={stagger}>
-            {pricing.map((p) => (
-              <motion.div className={`price-card${p.featured ? ' featured' : ''}`} key={p.name} variants={fadeUp} transition={{ duration: 0.5 }} whileHover={{ y: -4 }}>
-                {p.featured && <div className="price-badge">MOST POPULAR</div>}
-                <div className="price-tier">{p.name}</div>
-                <div className="price-amount">{p.price}{p.period && <sub>{p.period}</sub>}</div>
-                <div className="price-note">{p.desc}</div>
-                <div className="price-divider" />
-                <ul className="price-features">
-                  {p.items.map((item) => (
-                    <li key={item.text} className={item.on ? '' : 'off'}>
-                      <span className="check">✓</span> {item.text}
-                    </li>
-                  ))}
-                </ul>
-                <motion.a
-                  href="/login"
-                  className={`btn btn-block ${p.featured ? 'btn-primary' : 'btn-ghost'}`}
-                  whileHover={{ scale: 1.04 }}
-                  whileTap={{ scale: 0.97 }}
-                >
-                  {p.name === 'Enterprise' ? 'Contact sales' : 'Get started'}
-                </motion.a>
-              </motion.div>
-            ))}
+          <motion.div
+            className="pricing-gh-layout"
+            initial="hidden"
+            whileInView="show"
+            viewport={{ once: true, amount: 0.15 }}
+            variants={stagger}
+          >
+            <motion.article className="pricing-gh-card" variants={fadeUp} transition={{ duration: 0.5 }}>
+              <p className="pricing-gh-eyebrow">Ongoing</p>
+              <h3 className="pricing-gh-title">Per patient</h3>
+              <div className="pricing-gh-figure" aria-label="50 Ghana Cedis per patient">
+                <span className="pricing-gh-currency">GHS</span>
+                <span className="pricing-gh-amount">50</span>
+              </div>
+              <p className="pricing-gh-copy">
+                We charge <strong>GHS&nbsp;50</strong> for each patient you manage on Kulobal. Scale admissions up or down &mdash; you only pay for the patients on your roster.
+              </p>
+              <ul className="pricing-gh-bullets">
+                <li><span className="pricing-gh-tick">✓</span> Predictable cost per enrolment</li>
+                <li><span className="pricing-gh-tick">✓</span> Aligns with how your census grows</li>
+              </ul>
+            </motion.article>
+
+            <motion.article className="pricing-gh-card pricing-gh-card--setup" variants={fadeUp} transition={{ duration: 0.5, delay: 0.06 }}>
+              <div className="pricing-gh-ribbon">One-time</div>
+              <p className="pricing-gh-eyebrow">Getting started</p>
+              <h3 className="pricing-gh-title">Initial setup</h3>
+              <div className="pricing-gh-figure" aria-label="5000 Ghana Cedis setup">
+                <span className="pricing-gh-currency">GHS</span>
+                <span className="pricing-gh-amount">5,000</span>
+              </div>
+              <p className="pricing-gh-copy">
+                <strong>GHS&nbsp;5,000</strong> covers your <strong>initial setup</strong>, including <strong>training for your staff</strong> so administrators and care teams know how to use scheduling, documentation, and reporting with confidence.
+              </p>
+              <ul className="pricing-gh-bullets">
+                <li><span className="pricing-gh-tick">✓</span> Onboarding &amp; platform configuration support</li>
+                <li><span className="pricing-gh-tick">✓</span> Staff training sessions bundled in setup</li>
+                <li><span className="pricing-gh-tick">✓</span> Pay once &mdash; not a recurring subscription tier</li>
+              </ul>
+            </motion.article>
+          </motion.div>
+          <motion.p className="pricing-gh-note" variants={fadeUp} initial="hidden" whileInView="show" viewport={{ once: true }} transition={{ duration: 0.4 }}>
+            Pricing may be reviewed for bespoke enterprise arrangements. Questions? Reach out after you sign in or contact our team through your preferred channel.
+          </motion.p>
+          <motion.div className="pricing-gh-cta" initial="hidden" whileInView="show" viewport={{ once: true }} variants={fadeUp}>
+            <motion.a href="/login" className="btn btn-primary btn-lg" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }}>
+              Get started →
+            </motion.a>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* ── FAQ ── */}
+      <section id="faq" className="section-faq">
+        <div className="container">
+          <motion.div className="sec-center" initial="hidden" whileInView="show" viewport={{ once: true, amount: 0.3 }} variants={stagger}>
+            <motion.span className="section-label" variants={fadeUp}>FAQ</motion.span>
+            <motion.h2 className="section-title" variants={fadeUp}>Questions, answered</motion.h2>
+            <motion.p className="section-sub" variants={fadeUp}>
+              Quick answers about pricing, onboarding, and how CareSense fits your agency. Still unsure? Jump in and explore, or speak to our team after you sign in.
+            </motion.p>
+          </motion.div>
+          <motion.div
+            className="faq-list"
+            initial="hidden"
+            whileInView="show"
+            viewport={{ once: true, amount: 0.08 }}
+            variants={stagger}
+          >
+            {LANDING_FAQ.map((item, index) => {
+              const isOpen = openFaqIndex === index;
+              const panelId = `faq-panel-${index}`;
+              return (
+                <motion.div variants={fadeUp} key={item.question} className={`faq-item${isOpen ? ' is-open' : ''}`}>
+                  <button
+                    type="button"
+                    id={`faq-trigger-${index}`}
+                    className="faq-trigger"
+                    aria-expanded={isOpen}
+                    aria-controls={panelId}
+                    onClick={() => setOpenFaqIndex(isOpen ? null : index)}
+                  >
+                    <span className="faq-question">{item.question}</span>
+                    <span className="faq-chevron" aria-hidden>+</span>
+                  </button>
+                  <div
+                    id={panelId}
+                    role="region"
+                    aria-labelledby={`faq-trigger-${index}`}
+                    className="faq-panel"
+                    aria-hidden={!isOpen}
+                  >
+                    <div className="faq-panel-inner">
+                      <p className="faq-answer">{item.answer}</p>
+                    </div>
+                  </div>
+                </motion.div>
+              );
+            })}
           </motion.div>
         </div>
       </section>
@@ -422,6 +531,7 @@ export default function LandingPage() {
             <h4>Product</h4>
             <a href="#features">Features</a>
             <a href="#pricing">Pricing</a>
+            <a href="#faq">FAQ</a>
             <a href="#">Security</a>
             <a href="#">Changelog</a>
           </div>
@@ -434,15 +544,15 @@ export default function LandingPage() {
           </div>
           <div className="footer-col">
             <h4>Legal</h4>
-            <a href="#">Privacy</a>
+            <a href="/privacy">Privacy</a>
             <a href="#">Terms</a>
             <a href="#">Cookies</a>
             <a href="#">Security</a>
           </div>
         </div>
         <div className="footer-bottom">
-          <p>© {new Date().getFullYear()} Data Leap Technologies Inc. All rights reserved.</p>
-         
+          <p className="footer-bottom-copy">© {new Date().getFullYear()} Data Leap Technologies Inc. All rights reserved.</p>
+          <a href="/privacy" className="footer-bottom-privacy">Privacy</a>
         </div>
       </footer>
 

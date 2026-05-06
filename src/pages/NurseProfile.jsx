@@ -10,6 +10,7 @@ import {
 } from '../icons/hugeicons-feather';
 import { apiFetch, API_BASE } from '../api';
 import { fetchAllPatients } from '../utils/patients';
+import { extractUrlFromPayload, resolveStoredMediaUrl } from '../utils/resolveStoredMediaUrl';
 import compressImage, { createThumbnailURL } from '../utils/compressImage';
 
 const ROLE_LABELS = {
@@ -21,35 +22,32 @@ const ROLE_LABELS = {
 
 /* ── Tiny shared components ── */
 const DataRow = ({ label, children, missing }) => (
-  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid #f3f4f6', fontSize: 12.5 }}>
-    <span style={{ flexShrink: 0, color: 'var(--kh-text-muted)', fontWeight: 500 }}>{label}</span>
-    <span style={{ color: missing ? '#d97706' : 'var(--kh-text)', fontWeight: 500, textAlign: 'right', fontStyle: missing ? 'italic' : 'normal' }}>
-      {children || (missing ? 'Not provided' : '—')}
-    </span>
+  <div className={`nurse-profile-data-row${missing ? ' nurse-profile-data-row--missing' : ''}`}>
+    <span className="nurse-profile-data-row__label">{label}</span>
+    <span className="nurse-profile-data-row__value">{children || (missing ? 'Not provided' : '—')}</span>
   </div>
 );
 
-const Panel = ({ title, icon, accent, children, action, style }) => (
-  <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 2, overflow: 'hidden', marginBottom: 12, ...style }}>
-    <div style={{
-      padding: '10px 16px', borderBottom: '1px solid #f3f4f6',
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      borderLeft: accent ? `3px solid ${accent}` : 'none',
-    }}>
+const Panel = ({ title, icon, accent, children, action, style, variant }) => (
+  <div
+    className={`nurse-profile-panel${variant === 'warm' ? ' nurse-profile-panel--warm' : ''}`}
+    style={{ '--nurse-panel-accent': accent || '#45B6FE', ...style }}
+  >
+    <div className="nurse-profile-panel__head">
       <div className="d-flex align-items-center gap-2">
-        {icon && <span style={{ color: accent || '#45B6FE', display: 'flex' }}>{icon}</span>}
-        <span style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text)' }}>{title}</span>
+        {icon && <span className="nurse-profile-panel__icon">{icon}</span>}
+        <span className="nurse-profile-panel__title">{title}</span>
       </div>
       {action && action}
     </div>
-    <div style={{ padding: '12px 16px' }}>{children}</div>
+    <div className="nurse-profile-panel__body">{children}</div>
   </div>
 );
 
 const Spinner = () => (
-  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '80px 0', gap: 12 }}>
-    <div className="spinner-border spinner-border-sm" role="status" style={{ color: '#45B6FE' }} />
-    <span style={{ fontSize: 14, color: 'var(--kh-text-muted)' }}>Loading nurse profile…</span>
+  <div className="nurse-profile-spinner">
+    <div className="spinner-border spinner-border-sm" role="status" />
+    <span>Loading nurse profile…</span>
   </div>
 );
 
@@ -87,25 +85,6 @@ const MIME_TYPES_BY_EXTENSION = {
   webp: 'image/webp',
   pdf: 'application/pdf',
 };
-
-function extractUrlFromPayload(payload) {
-  if (!payload) return null;
-
-  const url =
-    payload?.url
-    || payload?.link?.url
-    || payload?.data?.url
-    || payload?.data?.link?.url
-    || payload?.media?.link?.url
-    || payload?.media?.url
-    || payload?.upload?.url
-    || payload?.downloadUrl
-    || payload?.signedUrl
-    || payload?.presignedUrl
-    || null;
-
-  return typeof url === 'string' && url.trim() ? url.trim() : null;
-}
 
 function inferMimeType(value) {
   const normalizedValue = String(value || '').trim();
@@ -404,64 +383,6 @@ export default function NurseProfile() {
     </div>
   );
   const avatarInputRef = useRef(null);
-  const resolveStoredMediaUrl = useCallback(async ({ mediaId, objectKey }) => {
-    const normalizedMediaId = String(mediaId || '').trim();
-    const normalizedObjectKey = String(objectKey || '').trim();
-
-    if (!normalizedMediaId && !normalizedObjectKey) return null;
-
-    const requestCandidates = [
-      {
-        path: '/media/b2/view-url',
-        method: 'POST',
-        body: {
-          ...(normalizedMediaId ? { mediaId: normalizedMediaId } : {}),
-          ...(normalizedObjectKey ? { objectKey: normalizedObjectKey } : {}),
-        },
-      },
-      {
-        path: '/media/b2/download-url',
-        method: 'POST',
-        body: {
-          ...(normalizedMediaId ? { mediaId: normalizedMediaId } : {}),
-          ...(normalizedObjectKey ? { objectKey: normalizedObjectKey } : {}),
-        },
-      },
-      ...(normalizedMediaId
-        ? [
-            { path: `/media/${normalizedMediaId}`, method: 'GET' },
-            { path: `/media/${normalizedMediaId}/link`, method: 'GET' },
-          ]
-        : []),
-    ];
-
-    for (const candidate of requestCandidates) {
-      try {
-        const response = await apiFetch(candidate.path, {
-          method: candidate.method,
-          ...(candidate.body ? { body: JSON.stringify(candidate.body) } : {}),
-        });
-
-        const responseText = await response.text().catch(() => '');
-        let payload = {};
-        if (responseText) {
-          try {
-            payload = JSON.parse(responseText);
-          } catch {
-            payload = { url: responseText };
-          }
-        }
-
-        if (!response.ok) continue;
-
-        const resolvedUrl = extractUrlFromPayload(payload);
-        if (resolvedUrl) return resolvedUrl;
-      } catch {
-      }
-    }
-
-    return null;
-  }, []);
 
   const uploadNurseDocument = useCallback(async (file, key, { registerEndpoint } = {}) => {
     const resolvedNurseId = nurse?._id || nurse?.id || nurseId;
@@ -668,12 +589,17 @@ export default function NurseProfile() {
     setLoading(true);
     setError('');
     try {
-      const res = await apiFetch(`/nurses/${nurseId}`);
-      if (!res.ok) {
-        if (res.status === 404) { setError('not_found'); setLoading(false); return; }
-        throw new Error(`HTTP ${res.status}`);
+      const [nurseRes, assignmentsRes, patientsList] = await Promise.all([
+        apiFetch(`/nurses/${nurseId}`),
+        apiFetch('/assignments', { method: 'GET' }).catch(() => null),
+        fetchAllPatients().catch(() => []),
+      ]);
+
+      if (!nurseRes.ok) {
+        if (nurseRes.status === 404) { setError('not_found'); setLoading(false); return; }
+        throw new Error(`HTTP ${nurseRes.status}`);
       }
-      const data = await res.json();
+      const data = await nurseRes.json();
       const personalData = data.personal || data.nurse || data;
       // API returns { personal, diversity, education, supportingInfo, documents }
       setNurse(personalData);
@@ -682,11 +608,6 @@ export default function NurseProfile() {
       setSupporting(data.supportingInfo || null);
 
       try {
-        const [assignmentsRes, patientsRes] = await Promise.all([
-          apiFetch('/assignments', { method: 'GET' }).catch(() => null),
-          fetchAllPatients().catch(() => []),
-        ]);
-
         let assignmentsPayload = {};
         if (assignmentsRes) {
           try {
@@ -696,7 +617,7 @@ export default function NurseProfile() {
           }
         }
 
-        const patientList = Array.isArray(patientsRes) ? patientsRes : [];
+        const patientList = Array.isArray(patientsList) ? patientsList : [];
 
         if (patientList.length > 0) {
 
@@ -743,10 +664,30 @@ export default function NurseProfile() {
       };
 
       const persistedProfilePhoto = extractNurseProfileImage({ ...data, personal: personalData });
-      const resolvedProfilePhotoUrl = persistedProfilePhoto.url || await resolveStoredMediaUrl({
-        mediaId: persistedProfilePhoto.mediaId,
-        objectKey: persistedProfilePhoto.objectKey,
-      });
+      const persistedDocuments = Array.isArray(data.documents) ? data.documents : [];
+
+      const profilePhotoUrlPromise = persistedProfilePhoto.url
+        ? Promise.resolve(persistedProfilePhoto.url)
+        : resolveStoredMediaUrl({
+          mediaId: persistedProfilePhoto.mediaId,
+          objectKey: persistedProfilePhoto.objectKey,
+        });
+
+      const [resolvedProfilePhotoUrl, docsWithUrls] = await Promise.all([
+        profilePhotoUrlPromise,
+        Promise.all(
+          persistedDocuments.map(async (doc) => ({
+            doc,
+            resolvedUrl:
+              doc.link?.url
+              || doc.url
+              || await resolveStoredMediaUrl({
+                mediaId: doc.mediaId || doc.media?.id,
+                objectKey: doc.objectKey,
+              }),
+          })),
+        ),
+      ]);
 
       if (resolvedProfilePhotoUrl) {
         newKyc.profilePhoto = {
@@ -766,17 +707,12 @@ export default function NurseProfile() {
         setAvatarUrl(null);
       }
 
-      const persistedDocuments = Array.isArray(data.documents) ? data.documents : [];
-      for (const doc of persistedDocuments) {
+      for (const { doc, resolvedUrl } of docsWithUrls) {
         const possibleSlots = DOC_TYPE_TO_SLOTS[doc.documentType] || [];
         const targetSlot = possibleSlots.find(s => !filled[s]);
         if (!targetSlot) continue;
         filled[targetSlot] = true;
 
-        const resolvedUrl = doc.link?.url || doc.url || await resolveStoredMediaUrl({
-          mediaId: doc.mediaId || doc.media?.id,
-          objectKey: doc.objectKey,
-        });
         const hydratedFileType =
           inferMimeType(doc.mimeType)
           || inferMimeType(doc.contentType)
@@ -810,7 +746,7 @@ export default function NurseProfile() {
     } finally {
       setLoading(false);
     }
-  }, [nurseId, resolveStoredMediaUrl]);
+  }, [nurseId]);
 
   useEffect(() => { fetchProfile(); }, [fetchProfile]);
 
@@ -1116,11 +1052,11 @@ export default function NurseProfile() {
             <div className="row g-3">
               {!hasDiversity ? (
                 <div className="col-12">
-                  <div style={{ textAlign: 'center', padding: '60px 24px', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 2 }}>
-                    <FiAlertCircle size={36} style={{ color: '#d97706', marginBottom: 12 }} />
-                    <div style={{ fontSize: 15, fontWeight: 700, color: '#92400e', marginBottom: 6 }}>Diversity & Health information not yet submitted</div>
-                    <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 20 }}>Step 2 of the nurse registration has not been completed.</div>
-                    <button onClick={() => navigate('/workforce')} style={{ background: '#f59e0b', border: 'none', borderRadius: 6, padding: '9px 24px', fontSize: 13, fontWeight: 700, color: '#fff', cursor: 'pointer' }}>
+                  <div className="nurse-profile-empty-state">
+                    <FiAlertCircle size={36} className="nurse-profile-empty-state__icon" />
+                    <div className="nurse-profile-empty-state__title">Diversity & Health information not yet submitted</div>
+                    <div className="nurse-profile-empty-state__text">Step 2 of the nurse registration has not been completed.</div>
+                    <button type="button" onClick={() => navigate('/workforce')} className="nurse-profile-empty-state__btn">
                       Complete Registration
                     </button>
                   </div>
@@ -1180,11 +1116,11 @@ export default function NurseProfile() {
           {tab === 'education' && (
               <div className="row g-3">
                 {!hasEducation ? (
-                <div style={{ textAlign: 'center', padding: '60px 24px', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 2 }}>
-                  <FiAlertCircle size={36} style={{ color: '#d97706', marginBottom: 12 }} />
-                  <div style={{ fontSize: 15, fontWeight: 700, color: '#92400e', marginBottom: 6 }}>Education & Employment not yet submitted</div>
-                  <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 20 }}>Step 3 of the nurse registration has not been completed.</div>
-                  <button onClick={() => navigate('/workforce')} style={{ background: '#f59e0b', border: 'none', borderRadius: 6, padding: '9px 24px', fontSize: 13, fontWeight: 700, color: '#fff', cursor: 'pointer' }}>
+                <div className="nurse-profile-empty-state">
+                  <FiAlertCircle size={36} className="nurse-profile-empty-state__icon" />
+                  <div className="nurse-profile-empty-state__title">Education & Employment not yet submitted</div>
+                  <div className="nurse-profile-empty-state__text">Step 3 of the nurse registration has not been completed.</div>
+                  <button type="button" onClick={() => navigate('/workforce')} className="nurse-profile-empty-state__btn">
                     Complete Registration
                   </button>
                 </div>
@@ -1285,7 +1221,7 @@ export default function NurseProfile() {
 
                   {/* ── Employment History ── */}
                   <div className="col-12">
-                    <Panel title="Employment History" icon={<FiClipboard size={14} />} accent="#f59e0b" style={{ background: '#fffbeb', border: '1px solid #e5e7eb' }}
+                    <Panel title="Employment History" icon={<FiClipboard size={14} />} accent="#f59e0b" variant="warm"
                       action={
                         editingSection === 'employment'
                           ? <span style={{ fontSize: 11, fontWeight: 700, color: '#f59e0b' }}>Editing…</span>
@@ -1416,11 +1352,11 @@ export default function NurseProfile() {
             <div className="row g-3">
               {!hasSupporting ? (
                 <div className="col-12">
-                  <div style={{ textAlign: 'center', padding: '60px 24px', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 2 }}>
-                    <FiAlertCircle size={36} style={{ color: '#d97706', marginBottom: 12 }} />
-                    <div style={{ fontSize: 15, fontWeight: 700, color: '#92400e', marginBottom: 6 }}>Supporting Information not yet submitted</div>
-                    <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 20 }}>Step 4 of the nurse registration has not been completed.</div>
-                    <button onClick={() => navigate('/workforce')} style={{ background: '#f59e0b', border: 'none', borderRadius: 6, padding: '9px 24px', fontSize: 13, fontWeight: 700, color: '#fff', cursor: 'pointer' }}>
+                  <div className="nurse-profile-empty-state">
+                    <FiAlertCircle size={36} className="nurse-profile-empty-state__icon" />
+                    <div className="nurse-profile-empty-state__title">Supporting Information not yet submitted</div>
+                    <div className="nurse-profile-empty-state__text">Step 4 of the nurse registration has not been completed.</div>
+                    <button type="button" onClick={() => navigate('/workforce')} className="nurse-profile-empty-state__btn">
                       Complete Registration
                     </button>
                   </div>

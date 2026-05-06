@@ -132,6 +132,36 @@
 }
 .nav-signin:hover { color: var(--text); border-color: rgba(0,0,0,0.2); }
 
+.cf-nav__end {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.cf-nav__toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.cf-nav__toggle:hover {
+  background: rgba(0, 0, 0, 0.03);
+  border-color: rgba(0, 0, 0, 0.15);
+}
+
+body.lp-nav-open {
+  overflow: hidden;
+}
+
 /* ═══════════════════════════════════════
    HERO
    ═══════════════════════════════════════ */
@@ -584,87 +614,260 @@
 .test-author span { font-size: 0.78rem; color: var(--muted); }
 
 /* ═══════════════════════════════════════
-   PRICING
+   PRICING — Ghana Cedis (landing)
    ═══════════════════════════════════════ */
 .section-pricing { background: var(--bg2); }
-.pricing-grid {
+
+.pricing-gh-layout {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 24px;
-  margin-top: 60px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 28px;
+  margin-top: 48px;
+  max-width: 960px;
+  margin-left: auto;
+  margin-right: auto;
 }
-.price-card {
+
+.pricing-gh-card {
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: 20px;
-  padding: 36px;
+  padding: 32px 28px 28px;
   position: relative;
-  transition: all 0.3s;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
 }
-.price-card:hover { transform: translateY(-4px); }
-.price-card.featured {
-  border-color: rgba(69,182,254,0.4);
-  background: linear-gradient(135deg, #f0f9ff 0%, #ffffff 100%);
-  box-shadow: 0 0 0 1px rgba(69,182,254,0.2), 0 30px 60px rgba(0,0,0,0.08);
+
+.pricing-gh-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 20px 44px rgba(0, 0, 0, 0.07);
 }
-.price-badge {
+
+.pricing-gh-card--setup {
+  border-color: rgba(69, 182, 254, 0.42);
+  background: linear-gradient(155deg, rgba(240, 249, 255, 0.95) 0%, #fff 55%);
+  box-shadow: 0 0 0 1px rgba(69, 182, 254, 0.12);
+}
+
+.pricing-gh-ribbon {
   position: absolute;
-  top: -12px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: var(--accent);
-  color: #fff;
+  top: 16px;
+  right: 18px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: rgba(69, 182, 254, 0.12);
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-family: 'Sora', sans-serif;
+}
+
+.pricing-gh-eyebrow {
   font-size: 0.72rem;
   font-weight: 700;
-  padding: 4px 14px;
-  border-radius: 50px;
-  letter-spacing: 0.5px;
-  font-family: 'Sora', sans-serif;
-  white-space: nowrap;
-}
-.price-tier {
-  font-size: 0.85rem;
-  color: var(--muted);
-  font-weight: 500;
-  margin-bottom: 12px;
   text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  margin: 0 0 8px;
   font-family: 'Sora', sans-serif;
 }
-.price-amount {
-  font-family: 'Sora', sans-serif;
-  font-size: 2.8rem;
+
+.pricing-gh-title {
+  font-size: 1.35rem;
   font-weight: 800;
-  margin-bottom: 4px;
+  margin: 0 0 16px;
+  color: var(--text);
+  font-family: 'Sora', sans-serif;
 }
-.price-amount sub {
-  font-size: 1rem;
-  font-weight: 400;
+
+.pricing-gh-figure {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.pricing-gh-currency {
+  font-size: 1.25rem;
+  font-weight: 700;
   color: var(--muted);
+  font-family: 'Sora', sans-serif;
 }
-.price-note {
-  font-size: 0.875rem;
+
+.pricing-gh-amount {
+  font-family: 'Sora', sans-serif;
+  font-size: clamp(2.5rem, 5vw, 3.25rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  color: var(--accent);
+}
+
+.pricing-gh-card--setup .pricing-gh-amount {
+  color: #0f172a;
+}
+
+.pricing-gh-copy {
+  font-size: 0.93rem;
+  line-height: 1.65;
   color: var(--muted);
-  margin-bottom: 28px;
-  line-height: 1.6;
+  margin: 0 0 20px;
 }
-.price-divider { height: 1px; background: var(--border); margin-bottom: 24px; }
-.price-features {
+
+.pricing-gh-copy strong {
+  color: var(--text);
+}
+
+.pricing-gh-bullets {
   list-style: none;
+  padding: 0;
+  margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  margin-bottom: 32px;
+  gap: 10px;
 }
-.price-features li {
+
+.pricing-gh-bullets li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 0.88rem;
+  color: var(--text);
+  line-height: 1.45;
+}
+
+.pricing-gh-tick {
+  color: var(--green);
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.pricing-gh-note {
+  max-width: 720px;
+  margin: 36px auto 0;
+  text-align: center;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.pricing-gh-cta {
+  display: flex;
+  justify-content: center;
+  margin-top: 28px;
+}
+
+/* ═══════════════════════════════════════
+   FAQ
+   ═══════════════════════════════════════ */
+.section-faq {
+  background: var(--bg);
+}
+
+.faq-list {
+  max-width: 760px;
+  margin: 48px auto 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.faq-item {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+  margin-bottom: 14px;
+  overflow: hidden;
+  transition: border-color 0.22s ease, box-shadow 0.22s ease;
+}
+
+.faq-item:last-child {
+  margin-bottom: 0;
+}
+
+.faq-item:hover {
+  border-color: rgba(69, 182, 254, 0.2);
+}
+
+.faq-item.is-open {
+  border-color: rgba(69, 182, 254, 0.32);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.06);
+}
+
+.faq-trigger {
+  width: 100%;
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 0.875rem;
+  justify-content: space-between;
+  gap: 18px;
+  text-align: left;
+  padding: 18px 20px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-family: 'Sora', sans-serif;
+  font-size: 0.98rem;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.35;
 }
-.price-features .check { color: var(--green); font-size: 1rem; }
-.price-features li.off { color: var(--muted); }
-.price-features li.off .check { color: var(--muted); opacity: 0.4; }
+
+.faq-trigger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.faq-question {
+  flex: 1;
+  min-width: 0;
+}
+
+.faq-chevron {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: var(--card2);
+  color: var(--accent);
+  font-size: 1.15rem;
+  font-weight: 700;
+  line-height: 1;
+  transition: transform 0.28s ease, background 0.2s ease;
+}
+
+.faq-item.is-open .faq-chevron {
+  transform: rotate(45deg);
+  background: rgba(69, 182, 254, 0.14);
+}
+
+.faq-panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.32s ease;
+}
+
+.faq-item.is-open .faq-panel {
+  grid-template-rows: 1fr;
+}
+
+.faq-panel-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+
+.faq-answer {
+  margin: 0;
+  padding: 0 20px 20px;
+  font-size: 0.93rem;
+  line-height: 1.68;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
 
 /* ═══════════════════════════════════════
    CTA
@@ -735,10 +938,27 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 12px 24px;
   padding-top: 24px;
   border-top: 1px solid var(--border);
 }
-.footer-bottom p, .footer-bottom span {
+.footer-bottom-copy {
+  margin: 0;
+}
+.footer-bottom-privacy {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  transition: color 0.2s;
+}
+.footer-bottom-privacy:hover {
+  color: var(--accent);
+}
+.footer-bottom p,
+.footer-bottom .footer-bottom-copy,
+.footer-bottom span {
   color: var(--muted);
   font-size: 0.8rem;
 }
@@ -924,10 +1144,44 @@
    ═══════════════════════════════════════ */
 @media (max-width: 900px) {
   .cf-nav { padding: 16px 24px; }
-  .nav-links { display: none; }
+  .cf-nav.scrolled { padding: 12px 24px; }
+  .cf-nav__toggle {
+    display: inline-flex;
+  }
+  .nav-links {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    margin: 0;
+    padding: 12px 24px 16px;
+    flex-direction: column;
+    gap: 0;
+    align-items: stretch;
+    background: rgba(255, 255, 255, 0.98);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+    z-index: 101;
+  }
+  .cf-nav--open .nav-links {
+    display: flex;
+  }
+  .nav-links li {
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  }
+  .nav-links li:last-child {
+    border-bottom: none;
+  }
+  .nav-links a {
+    display: block;
+    padding: 14px 4px;
+  }
   .features-grid,
   .testimonials-grid,
-  .pricing-grid { grid-template-columns: 1fr; }
+  .pricing-gh-layout { grid-template-columns: 1fr; }
   .stats-grid { grid-template-columns: 1fr 1fr; }
   .split { grid-template-columns: 1fr; gap: 40px; }
   .split.reverse { direction: ltr; }
@@ -935,7 +1189,21 @@
   .dash-cards { grid-template-columns: 1fr; }
   .hero h1 { font-size: 2.4rem; letter-spacing: -1px; }
   .hero { padding: 120px 20px 60px; }
-  .footer-bottom { flex-direction: column; gap: 12px; text-align: center; }
+  .footer-bottom {
+    flex-direction: column;
+    gap: 12px;
+    align-items: stretch;
+    text-align: center;
+  }
+  .footer-bottom-privacy {
+    margin-left: 0;
+    align-self: flex-end;
+    text-align: right;
+  }
+  .footer-bottom-copy {
+    text-align: center;
+    width: 100%;
+  }
   .portfolio-grid { grid-template-columns: 1fr; }
 
   .cookie-banner {
@@ -952,6 +1220,17 @@
   .cta-btns { flex-direction: column; align-items: center; }
   .cta-btns .btn { width: 100%; justify-content: center; }
   .footer-grid { grid-template-columns: 1fr; gap: 28px; }
+  .stats-grid { grid-template-columns: 1fr; }
+  .cf-nav__end { gap: 8px; }
+  .nav-actions { gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+  .nav-signin {
+    padding: 8px 14px;
+    font-size: 0.8rem;
+  }
+  .nav-actions .btn {
+    padding: 8px 16px;
+    font-size: 0.8125rem;
+  }
 
   .cookie-banner {
     right: 0.75rem;

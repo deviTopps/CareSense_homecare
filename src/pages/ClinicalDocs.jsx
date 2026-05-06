@@ -1058,7 +1058,7 @@ export default function ClinicalDocs() {
                     value={resolvedPatientId}
                     onChange={(e) => setResolvedPatientId(e.target.value)}
                     placeholder="Patient UUID…"
-                    title="Paste patient id, then Load resolved. Optional: open /clinical?patientId=&lt;uuid&gt; to load automatically."
+                    title="Paste the patient id, then choose Load resolved. You can also open this page with ?patientId= in the URL to load automatically."
                   />
                   <button
                     type="button"
@@ -1073,7 +1073,7 @@ export default function ClinicalDocs() {
                     className="emergency-clear-filters"
                     disabled={alertsLoading}
                     onClick={loadAllResolvedAcrossPendingPatients}
-                    title="GET /alerts/resolved?page=1&limit=100 — full resolved list"
+                    title="Reload the full resolved list from the server"
                   >
                     Reload all resolved
                   </button>
@@ -1142,7 +1142,9 @@ export default function ClinicalDocs() {
         <div className="emergency-cases-main">
           {alertsLoading && cases.length === 0 ? (
             <div className="emergency-cases-empty">
-              <FiRefreshCw size={36} style={{ opacity: 0.45 }} className="emergency-cases-loading-icon" aria-hidden />
+              <div className="emergency-cases-empty__graphic">
+                <FiRefreshCw size={36} style={{ opacity: 0.45 }} className="emergency-cases-loading-icon" aria-hidden />
+              </div>
               <p className="emergency-cases-empty__title">
                 {caseQueue === 'resolved' ? 'Loading resolved alerts…' : 'Loading pending alerts…'}
               </p>
@@ -1150,7 +1152,9 @@ export default function ClinicalDocs() {
             </div>
           ) : alertsError ? (
             <div className="emergency-cases-empty">
-              <FiAlertCircle size={36} style={{ opacity: 0.5, color: '#b91c1c' }} aria-hidden />
+              <div className="emergency-cases-empty__graphic">
+                <FiAlertCircle size={36} style={{ opacity: 0.5, color: '#b91c1c' }} aria-hidden />
+              </div>
               <p className="emergency-cases-empty__title">Could not load alerts</p>
               <p className="emergency-cases-empty__hint">{alertsError}</p>
               <button type="button" className="emergency-clear-filters" style={{ marginTop: 12 }} onClick={handleRefreshAlerts}>
@@ -1159,7 +1163,9 @@ export default function ClinicalDocs() {
             </div>
           ) : filtered.length === 0 ? (
             <div className="emergency-cases-empty">
-              <FiSearch size={36} style={{ opacity: 0.35 }} aria-hidden />
+              <div className="emergency-cases-empty__graphic">
+                <FiSearch size={36} style={{ opacity: 0.35 }} aria-hidden />
+              </div>
               <p className="emergency-cases-empty__title">
                 {cases.length === 0
                   ? (caseQueue === 'resolved' ? 'No resolved cases loaded' : 'No pending alerts')
@@ -1169,7 +1175,7 @@ export default function ClinicalDocs() {
                 {cases.length === 0
                   ? (
                     caseQueue === 'resolved'
-                      ? 'Resolved uses GET /alerts/resolved. Enter a patient UUID and Load resolved to filter, or Reload all resolved / Refresh. Open /clinical?patientId=… for a direct patient filter.'
+                      ? 'Enter a patient id and tap Load resolved, or use Reload all resolved / Refresh. You can also open Emergency Cases with ?patientId= in the address bar to filter by patient.'
                       : 'There are no items in the pending queue right now.'
                   )
                   : 'Try widening your filters or search terms.'}

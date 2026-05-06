@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FiPlus, FiSearch, FiChevronRight, FiChevronLeft, FiChevronsLeft, FiChevronsRight, FiArrowUp, FiArrowDown, FiUpload, FiX, FiCheck, FiSave, FiArrowRight, FiAlertCircle, FiClock, FiEdit, FiTrash2, FiUsers } from '../icons/hugeicons-feather';
 import { apiFetch, isTokenValid } from '../api';
+import { resolveStoredMediaUrl } from '../utils/resolveStoredMediaUrl';
 
 const ROLE_LABELS = { head_nurse: 'Head Nurse', supervising_nurse: 'Supervising Nurse', office_nurse: 'Office Nurse', field_nurse: 'Field Nurse' };
 
@@ -50,24 +51,6 @@ const DOCUMENT_TYPE_MAP = {
 const emptyQualification = { name: '', institution: '', result: '', year: '' };
 const emptyEmployment = { employerName: '', address: '', businessType: '', jobTitle: '', startDate: '', grade: '', reportingOfficer: '', reasonForLeaving: '', descriptionOfDuties: '', contactPerson: '' };
 const emptyReferee = { name: '', address: '', telephone: '' };
-
-const extractUrlFromPayload = (payload) => {
-  if (!payload) return null;
-
-  const url =
-    payload?.url
-    || payload?.link?.url
-    || payload?.data?.url
-    || payload?.data?.link?.url
-    || payload?.media?.link?.url
-    || payload?.media?.url
-    || payload?.downloadUrl
-    || payload?.signedUrl
-    || payload?.presignedUrl
-    || null;
-
-  return typeof url === 'string' && url.trim() ? url.trim() : null;
-};
 
 const extractNurseProfileImage = (nurse) => {
   const profileImage = nurse?.profileImage || nurse?.profilePicture || nurse?.image || nurse?.photo || {};
@@ -135,97 +118,17 @@ export default function Workforce() {
   const [loading, setLoading] = useState(true);
   const [avatarLoadErrors, setAvatarLoadErrors] = useState({});
 
-  const resolveStoredMediaUrl = useCallback(async ({ mediaId, objectKey }) => {
-    const normalizedMediaId = String(mediaId || '').trim();
-    const normalizedObjectKey = String(objectKey || '').trim();
-
-    if (!normalizedMediaId && !normalizedObjectKey) return null;
-
-    const requestCandidates = [
-      {
-        path: '/media/b2/view-url',
-        method: 'POST',
-        body: {
-          ...(normalizedMediaId ? { mediaId: normalizedMediaId } : {}),
-          ...(normalizedObjectKey ? { objectKey: normalizedObjectKey } : {}),
-        },
-      },
-      {
-        path: '/media/b2/download-url',
-        method: 'POST',
-        body: {
-          ...(normalizedMediaId ? { mediaId: normalizedMediaId } : {}),
-          ...(normalizedObjectKey ? { objectKey: normalizedObjectKey } : {}),
-        },
-      },
-      ...(normalizedMediaId
-        ? [
-            { path: `/media/${normalizedMediaId}`, method: 'GET' },
-            { path: `/media/${normalizedMediaId}/link`, method: 'GET' },
-          ]
-        : []),
-    ];
-
-    for (const candidate of requestCandidates) {
-      try {
-        const response = await apiFetch(candidate.path, {
-          method: candidate.method,
-          ...(candidate.body ? { body: JSON.stringify(candidate.body) } : {}),
-        });
-
-        const responseText = await response.text().catch(() => '');
-        let payload = {};
-        if (responseText) {
-          try {
-            payload = JSON.parse(responseText);
-          } catch {
-            payload = { url: responseText };
-          }
-        }
-
-        if (!response.ok) continue;
-
-        const resolvedUrl = extractUrlFromPayload(payload);
-        if (resolvedUrl) return resolvedUrl;
-      } catch {
-      }
-    }
-
-    return null;
-  }, []);
-
   const resolveNurseProfilePhotoUrl = useCallback(async (nurseSummary) => {
     const directProfileImage = extractNurseProfileImage(nurseSummary);
-    const directUrl = directProfileImage.url || await resolveStoredMediaUrl({
-      mediaId: directProfileImage.mediaId,
-      objectKey: directProfileImage.objectKey,
-    });
-
-    if (directUrl) return directUrl;
-
-    const nurseId = nurseSummary?._id || nurseSummary?.id;
-    if (!nurseId) return null;
-
-    try {
-      const detailResponse = await apiFetch(`/nurses/${nurseId}`);
-      if (!detailResponse.ok) return null;
-
-      const detailPayload = await detailResponse.json().catch(() => null);
-      const detailedNurse = detailPayload?.personal || detailPayload?.nurse || detailPayload;
-      const detailedProfileImage = extractNurseProfileImage({
-        ...detailPayload,
-        ...(detailedNurse ? { personal: detailedNurse } : {}),
-        documents: detailPayload?.documents || detailedNurse?.documents || [],
+    const directUrl =
+      directProfileImage.url
+      || await resolveStoredMediaUrl({
+        mediaId: directProfileImage.mediaId,
+        objectKey: directProfileImage.objectKey,
       });
 
-      return detailedProfileImage.url || await resolveStoredMediaUrl({
-        mediaId: detailedProfileImage.mediaId,
-        objectKey: detailedProfileImage.objectKey,
-      });
-    } catch {
-      return null;
-    }
-  }, [resolveStoredMediaUrl]);
+    return directUrl || null;
+  }, []);
 
   // ── Fetch nurses from API ──
   const fetchNurses = useCallback(async () => {

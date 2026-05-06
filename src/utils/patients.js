@@ -112,6 +112,20 @@ export async function fetchAllPatients() {
   let hasMore = firstPage.meta.hasMore;
   let shouldProbeAdditionalPages = !totalPages && !nextPage && hasMore == null && firstPage.items.length === FALLBACK_PAGE_SIZE;
 
+  const totalPagesNum = Number(totalPages);
+  if (Number.isFinite(totalPagesNum) && totalPagesNum > 1) {
+    const maxPage = Math.min(Math.floor(totalPagesNum), MAX_PATIENT_PAGES);
+    if (maxPage > 1) {
+      const extraPageNums = [];
+      for (let p = 2; p <= maxPage; p += 1) {
+        extraPageNums.push(p);
+      }
+      const pageResults = await Promise.all(extraPageNums.map((pnum) => fetchPatientsPage(pnum)));
+      pageResults.forEach((pageResult) => appendPatients(pageResult.items));
+    }
+    return allPatients;
+  }
+
   for (let attempts = 0; attempts < MAX_PATIENT_PAGES; attempts += 1) {
     let targetPage = null;
 
