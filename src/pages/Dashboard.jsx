@@ -402,7 +402,7 @@ export default function Dashboard() {
         <motion.div className="dashboard-welcome-banner dashboard-welcome-banner--compact" initial={{ y: 8, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.22 }}>
           <div className="dashboard-welcome-banner__lead">
             <span className="dashboard-welcome-banner__eyebrow">Dashboard</span>
-            Welcome back — patient activity, workforce, and escalations.
+            Welcome back.
           </div>
           <div className="dashboard-welcome-banner__date">{todayLabel}</div>
         </motion.div>

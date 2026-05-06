@@ -169,7 +169,7 @@ export default function Sidebar({
             </div>
             <div className="sidebar-upgrade-card__content">
               <span className="sidebar-upgrade-card__eyebrow">Current plan :</span>
-              <strong>Free trial</strong>
+              <strong>Standard Plan</strong>
               <p>Collaborate on your finances. Upgrade to Shared Budget.</p>
             </div>
             <NavLink to="/billing" className="sidebar-upgrade-card__action" title="Upgrade plan">

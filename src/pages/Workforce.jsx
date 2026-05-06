@@ -126,7 +126,6 @@ const initialFormState = {
 export default function Workforce() {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState('All');
   const [showModal, setShowModal] = useState(false);
   const [sortField, setSortField] = useState(null);
   const [sortDir, setSortDir] = useState('asc');
@@ -288,11 +287,14 @@ export default function Workforce() {
   const [deleting, setDeleting] = useState(false);
 
   // ── Table logic ──
-  const incompleteNurses = nurses.filter(n => !n.isComplete);
   const filtered = nurses.filter(n => {
-    const sm = !search || n.name.toLowerCase().includes(search.toLowerCase()) || n.license.toLowerCase().includes(search.toLowerCase()) || n.email.toLowerCase().includes(search.toLowerCase());
-    const fm = filter === 'All' || (filter === 'Incomplete' ? !n.isComplete : true);
-    return sm && fm;
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (
+      n.name.toLowerCase().includes(q)
+      || n.license.toLowerCase().includes(q)
+      || n.email.toLowerCase().includes(q)
+    );
   });
   const handleSort = col => { if (sortField === col) { setSortDir(d => d === 'asc' ? 'desc' : 'asc'); } else { setSortField(col); setSortDir('asc'); } };
   const SortIcon = ({ col }) => { if (sortField !== col) return null; return sortDir === 'asc' ? <FiArrowUp size={11} /> : <FiArrowDown size={11} />; };
@@ -1017,7 +1019,7 @@ export default function Workforce() {
           <div>
             <div className="workforce-eyebrow">Workforce Management</div>
             <h2 className="workforce-title">Nurse Directory</h2>
-            <p className="workforce-subtitle">Manage nurse registrations, continue incomplete applications, and review staffing records in one clean workspace.</p>
+            <p className="workforce-subtitle">Manage nurse registrations.</p>
           </div>
           <div className="workforce-header-badge">
             <span className="workforce-header-badge__icon"><FiUsers size={16} /></span>
@@ -1027,22 +1029,6 @@ export default function Workforce() {
 
         <div className="workforce-board kh-card">
           <div className="workforce-board__topbar">
-            <div className="workforce-tabs" role="tablist" aria-label="Nurse views">
-              {['All', 'Incomplete'].map((f) => (
-                <button
-                  key={f}
-                  type="button"
-                  className={`workforce-tab${filter === f ? ' active' : ''}`}
-                  onClick={() => { setFilter(f); setPage(1); }}
-                >
-                  <span>{f === 'All' ? 'All Nurses' : 'Incomplete'}</span>
-                  {f === 'Incomplete' && incompleteNurses.length > 0 && (
-                    <span className="workforce-tab__count">{incompleteNurses.length}</span>
-                  )}
-                </button>
-              ))}
-            </div>
-
             <div className="workforce-top-actions">
               <button type="button" className="workforce-action-chip workforce-action-chip--ghost">
                 <FiClock size={14} /> This Month
@@ -1058,26 +1044,19 @@ export default function Workforce() {
           </div>
 
           <div className="workforce-board__toolbar">
-            <div className="workforce-summary-pills">
-              <div className="workforce-summary-pill">
-                <span className="workforce-summary-pill__label">Total Nurses</span>
-                <strong>{nurses.length}</strong>
-              </div>
-              <div className="workforce-summary-pill workforce-summary-pill--highlight">
-                <span className="workforce-summary-pill__label">Pending Review</span>
-                <strong>{incompleteNurses.length}</strong>
-              </div>
-            </div>
-
-            <label className="workforce-searchbar">
-              <FiSearch size={16} />
+            <div className="patients-searchbox">
+              <FiSearch className="patients-searchbox__icon" size={16} />
               <input
-                className="form-control form-control-kh"
+                id="workforce-nurse-search"
+                type="search"
+                className="form-control form-control-kh patients-searchbox__input"
                 placeholder="Search nurse, email or license"
                 value={search}
                 onChange={e => { setSearch(e.target.value); setPage(1); }}
+                autoComplete="off"
+                aria-label="Search nurses"
               />
-            </label>
+            </div>
           </div>
 
           <div className="workforce-table-wrap table-responsive">

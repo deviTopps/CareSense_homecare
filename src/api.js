@@ -101,3 +101,33 @@ export async function apiFetch(path, options = {}, onUnauthorized) {
 
   return res;
 }
+
+/**
+ * Change password for the signed-in user (requires Bearer token).
+ * Body: { currentPassword, newPassword }
+ */
+export async function changePassword({ currentPassword, newPassword }, onUnauthorized) {
+  return apiFetch(
+    '/auth/change-password',
+    {
+      method: 'POST',
+      body: JSON.stringify({ currentPassword, newPassword }),
+    },
+    onUnauthorized,
+  );
+}
+
+/**
+ * Create / invite a workspace user (platform roles: Administrator, Manager, Accountant, HR).
+ * Backend: POST /users — adjust path if your API differs.
+ */
+export async function createPlatformUser(payload, onUnauthorized) {
+  return apiFetch(
+    '/users',
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    },
+    onUnauthorized,
+  );
+}

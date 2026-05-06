@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useLocation, NavLink } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { FiSearch, FiBell, FiMenu, FiLogOut, FiShield, FiHelpCircle, FiSettings } from '../icons/hugeicons-feather';
+import { FiSearch, FiBell, FiMenu, FiLogOut, FiShield, FiHelpCircle, FiSettings, FiMessageCircle } from '../icons/hugeicons-feather';
 
 function displayNameFromUser(user) {
   if (!user) return 'Account';
@@ -90,10 +90,25 @@ export default function Topbar({ onToggleSidebar, onLogout, user }) {
           <span className="badge-dot"></span>
         </motion.button>
 
-        <div className="badge badge-neutral badge-outline" style={{ fontSize: 11.5, fontWeight: 600, padding: '0 10px', height: 28 }}>
-          {today}
-        </div>
-
+        <NavLink
+          to="/enquiries"
+          className={({ isActive }) =>
+            `badge badge-neutral badge-outline topbar-enquiry-cta${isActive ? ' topbar-enquiry-cta--active' : ''}`
+          }
+          style={{
+            fontSize: 11.5,
+            fontWeight: 600,
+            padding: '0 12px',
+            height: 28,
+            gap: 6,
+            textDecoration: 'none',
+            display: 'inline-flex',
+            alignItems: 'center',
+          }}
+        >
+          <FiMessageCircle size={13} aria-hidden />
+          <span>Create an Enquiry</span>
+        </NavLink>
         <div style={{ width: 1, height: 24, background: '#e5e7eb', margin: '0 4px' }} />
 
         <button className="topbar-text-btn">
