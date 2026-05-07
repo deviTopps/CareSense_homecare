@@ -437,9 +437,14 @@ function mapFlatResolvedVitalToCase(raw, index) {
 
   const diagParts = [vitalLabel, raw.value != null ? String(raw.value) : ''].filter(Boolean);
   const diagnosis = diagParts.join(': ') || '';
+  const code =
+    coerceNonEmptyStr(raw.code)
+    || coerceNonEmptyStr(raw.caseCode)
+    || coerceNonEmptyStr(raw.case_code);
 
   return {
     id,
+    code: code || undefined,
     patientId,
     patient: patientDisplayName(raw),
     age: undefined,
@@ -502,6 +507,9 @@ function mapAlertToCase(raw, index) {
     ?? (dataObj ? pickFirst(dataObj, ['activities', 'timeline', 'history']) : undefined);
   const resNested = a.resolution && typeof a.resolution === 'object' ? a.resolution : null;
 
+  const code =
+    coerceNonEmptyStr(pickFirst(a, ['code', 'caseCode', 'case_code', 'alertCode', 'alert_code']));
+
   let resolution;
   if (caseStatus === 'resolved') {
     const rbRaw = pickFirst(a, ['resolvedBy', 'resolved_by'])
@@ -528,6 +536,7 @@ function mapAlertToCase(raw, index) {
 
   return {
     id,
+    code: code || undefined,
     patientId,
     patient,
     age: Number.isFinite(ageNum) ? ageNum : undefined,
@@ -839,6 +848,7 @@ export default function ClinicalDocs() {
         return (
           c.patient.toLowerCase().includes(q)
           || c.id.toLowerCase().includes(q)
+          || (c.code && String(c.code).toLowerCase().includes(q))
           || (c.patientId && String(c.patientId).toLowerCase().includes(q))
           || (c.nurse && c.nurse.toLowerCase().includes(q))
           || (c.region && c.region.toLowerCase().includes(q))
@@ -1107,7 +1117,7 @@ export default function ClinicalDocs() {
                   className="emergency-search-input"
                   value={searchTerm}
                   onChange={e => { setSearchTerm(e.target.value); setPage(1); }}
-                  placeholder="Patient, case ID, nurse, region…"
+                  placeholder="Patient, code, nurse, region…"
                 />
               </div>
             </div>
@@ -1186,7 +1196,7 @@ export default function ClinicalDocs() {
               <div className="table-responsive emergency-cases-table-wrap">
                 <table className="emergency-cases-table">
                   <colgroup>
-                    <col className="emergency-cases-table__col emergency-cases-table__col--id" />
+                    <col className="emergency-cases-table__col emergency-cases-table__col--code" />
                     <col className="emergency-cases-table__col emergency-cases-table__col--patient" />
                     <col className="emergency-cases-table__col emergency-cases-table__col--type" />
                     <col className="emergency-cases-table__col emergency-cases-table__col--severity" />
@@ -1197,7 +1207,7 @@ export default function ClinicalDocs() {
                   </colgroup>
                   <thead>
                     <tr>
-                      {['Case ID', 'Patient', 'Type', 'Severity', 'Status', 'Assigned / Flagged', 'Flagged date', 'Summary'].map((h) => (
+                      {['Code', 'Patient', 'Type', 'Severity', 'Status', 'Assigned / Flagged', 'Flagged date', 'Summary'].map((h) => (
                         <th key={h}>{h}</th>
                       ))}
                     </tr>
@@ -1226,12 +1236,12 @@ export default function ClinicalDocs() {
                           }}
                           aria-current={selected?.id === c.id ? 'true' : undefined}
                         >
-                          <td className="emergency-cases-table__mono">{c.id}</td>
+                          <td className="emergency-cases-table__mono">{c.code ?? c.id}</td>
                           <td className="emergency-cases-table__break">
                             <div className="emergency-cases-table__patient">{c.patient}</div>
-                            <div className="emergency-cases-table__sub">
-                              {[c.patientId && `ID ${c.patientId}`, c.phone].filter(Boolean).join(' · ') || '—'}
-                            </div>
+                            {c.phone?.trim() ? (
+                              <div className="emergency-cases-table__sub">{c.phone.trim()}</div>
+                            ) : null}
                           </td>
                           <td className="emergency-cases-table__break"><span className="emergency-cases-table__type-chip" title={c.type}>{typeDisplay}</span></td>
                           <td className="emergency-cases-table__pill-cell">
@@ -1330,7 +1340,7 @@ export default function ClinicalDocs() {
               <Modal.Title as="div" className="w-100 mb-0 pe-1">
                 <div>
                   <div className="d-flex align-items-center gap-2 mb-1 flex-wrap">
-                    <span style={{ fontSize: 13, fontWeight: 800, color: '#b91c1c' }}>{selected.id}</span>
+                    <span style={{ fontSize: 13, fontWeight: 800, color: '#b91c1c' }}>{selected.code ?? selected.id}</span>
                     {(() => {
                       const cs = caseStatusStyle[selected.caseStatus] || caseStatusStyle.open;
                       return (
@@ -1357,9 +1367,14 @@ export default function ClinicalDocs() {
                     })()}
                   </div>
                   <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--kh-text)', letterSpacing: '-0.02em' }}>{selected.patient}</div>
-                  <div style={{ fontSize: 11.5, color: 'var(--kh-text-muted)', fontWeight: 600 }}>
-                    {[selected.age != null && `${selected.age}y`, selected.gender, selected.patientId].filter(Boolean).join(' · ')}
-                  </div>
+                  {(selected.age != null || String(selected.gender ?? '').trim()) ? (
+                    <div style={{ fontSize: 11.5, color: 'var(--kh-text-muted)', fontWeight: 600 }}>
+                      {[
+                        selected.age != null ? `${selected.age}y` : null,
+                        String(selected.gender ?? '').trim() || null,
+                      ].filter(Boolean).join(' · ')}
+                    </div>
+                  ) : null}
                 </div>
             </Modal.Title>
             </Modal.Header>

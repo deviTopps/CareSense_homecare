@@ -67,11 +67,33 @@ export function extractEnquiriesList(json) {
 }
 
 /**
+ * Server id for API routes (`GET/PATCH/DELETE /enquiries/:id`).
+ * Example: DELETE `/enquiries/4a9e102b-2ad1-4104-8bf3-6b4b8c68b8ce`
+ */
+export function getEnquiryRecordId(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const id =
+    raw.id ??
+    raw._id ??
+    raw.uuid ??
+    raw.UUID ??
+    raw.guid ??
+    raw.GUID ??
+    raw.enquiryId ??
+    raw.enquiry_id ??
+    raw.enquiryUuid ??
+    raw.enquiry_uuid;
+  if (id == null) return null;
+  const s = String(id).trim();
+  return s || null;
+}
+
+/**
  * Map API snake_case / alternate keys onto the camelCase shape the UI expects.
  */
 export function normalizeEnquiryRecord(raw) {
   if (!raw || typeof raw !== 'object') return null;
-  const id = raw.id ?? raw._id ?? raw.uuid;
+  const id = getEnquiryRecordId(raw);
   return {
     ...raw,
     id: id != null ? id : raw.id,
@@ -146,7 +168,7 @@ export async function patchEnquiry(id, body, onUnauthorized) {
   return json;
 }
 
-/** DELETE `/enquiries/:id` — removes the enquiry when supported by the backend */
+/** DELETE `/enquiries/:id` (UUID or opaque id); full URL is `API_BASE + /enquiries/` + id */
 export async function deleteEnquiry(id, onUnauthorized) {
   const enc = encodeURIComponent(String(id ?? '').trim());
   if (!enc) throw new Error('Enquiry id is required.');

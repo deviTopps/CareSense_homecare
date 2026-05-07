@@ -7,6 +7,7 @@ import {
   patchEnquiry,
   deleteEnquiry,
   extractEnquiriesList,
+  getEnquiryRecordId,
   normalizeEnquiryRecord,
 } from '../utils/enquiries';
 import {
@@ -186,7 +187,7 @@ export default function Enquiries() {
           r.location,
           r.relationToPatient,
           r.notes,
-          r.id,
+          getEnquiryRecordId(r),
           recordedByLabel(r),
         ]
           .filter(Boolean)
@@ -240,7 +241,7 @@ export default function Enquiries() {
       const created = await createEnquiry(body, on401);
       const createdRow = created && typeof created === 'object' ? normalizeEnquiryRecord(created) : null;
       if (createdRow) {
-        setRows((prev) => [createdRow, ...prev.filter((x) => x && x.id !== createdRow.id)]);
+        setRows((prev) => [createdRow, ...prev.filter((x) => getEnquiryRecordId(x) !== getEnquiryRecordId(createdRow))]);
       } else {
         await loadEnquiries();
       }
@@ -262,7 +263,8 @@ export default function Enquiries() {
   };
 
   const submitFollowUp = async () => {
-    if (!selected?.id || !followUpNote.trim()) {
+    const selId = getEnquiryRecordId(selected);
+    if (!selId || !followUpNote.trim()) {
       setFollowUpError('Add a follow-up note.');
       return;
     }
@@ -273,15 +275,15 @@ export default function Enquiries() {
     const combined = existing ? `${existing}\n\n[${stamp}] ${followUpNote.trim()}` : `[${stamp}] ${followUpNote.trim()}`;
     try {
       const updated = await patchEnquiry(
-        selected.id,
+        selId,
         { notes: combined, status: coerceApiStatus(followUpStatus) },
         on401,
       );
       const nextStatus = coerceApiStatus(followUpStatus);
       const rawMerged = updated && typeof updated === 'object' ? updated : { ...selected, notes: combined, status: nextStatus };
       const merged = normalizeEnquiryRecord(rawMerged) || rawMerged;
-      setRows((prev) => prev.map((r) => (r.id === selected.id ? { ...r, ...merged } : r)));
-      setSelected((s) => (s && s.id === selected.id ? { ...s, ...merged } : s));
+      setRows((prev) => prev.map((r) => (getEnquiryRecordId(r) === selId ? { ...r, ...merged } : r)));
+      setSelected((s) => (getEnquiryRecordId(s) === selId ? { ...s, ...merged } : s));
       setShowFollowUp(false);
       setFollowUpNote('');
     } catch (e) {
@@ -298,8 +300,8 @@ export default function Enquiries() {
   };
 
   const handleDeleteRow = async (row) => {
-    const id = row?.id ?? row?._id;
-    if (id == null || String(id).trim() === '') {
+    const id = getEnquiryRecordId(row);
+    if (!id) {
       setDeleteError('This enquiry has no server id — refresh the list and try again.');
       return;
     }
@@ -310,8 +312,8 @@ export default function Enquiries() {
     setDeletingId(String(id));
     try {
       await deleteEnquiry(id, on401);
-      setRows((prev) => prev.filter((r) => String(r?.id ?? r?._id ?? '') !== String(id)));
-      if (selected && String(selected.id ?? selected._id ?? '') === String(id)) {
+      setRows((prev) => prev.filter((r) => getEnquiryRecordId(r) !== id));
+      if (selected && getEnquiryRecordId(selected) === id) {
         setShowFollowUp(false);
         setSelected(null);
       }
@@ -474,12 +476,13 @@ export default function Enquiries() {
                     {paged.map((r, idx) => {
                       const api = coerceApiStatus(r.status);
                       const st = apiStatusPillStyle[api] || apiStatusPillStyle.pending;
-                      const rowKey = r.id ?? `idx-${idx}`;
-                      const rowId = r.id ?? r._id;
-                      const canDelete = rowId != null && String(rowId).trim() !== '';
-                      const isDeleting = canDelete && deletingId === String(rowId);
+                      const rowId = getEnquiryRecordId(r);
+                      const rowKey = rowId ?? `idx-${idx}`;
+                      const canDelete = Boolean(rowId);
+                      const isDeleting = Boolean(rowId && deletingId === rowId);
+                      const selId = getEnquiryRecordId(selected);
                       return (
-                        <tr key={rowKey} className={selected?.id === r.id ? 'table-primary' : ''}>
+                        <tr key={rowKey} className={selId && rowId && selId === rowId ? 'table-primary' : ''}>
                           <td>
                             <div className="fw-semibold" style={{ color: '#0f172a' }}>{r.nameOfClient || '—'}</div>
                             <div className="text-muted small d-lg-none">{formatShortDate(r.dateOfContact)}</div>

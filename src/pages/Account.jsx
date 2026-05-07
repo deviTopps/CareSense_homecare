@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
   FiUser,
   FiLock,
@@ -7,8 +7,12 @@ import {
   FiAlertTriangle,
   FiX,
   FiUserPlus,
+  FiRefreshCw,
+  FiUsers,
+  FiCheckCircle,
+  FiSettings,
 } from '../icons/hugeicons-feather';
-import { getUser, changePassword, createPlatformUser } from '../api';
+import { getUser, changePassword, createPlatformUser, fetchAuthUsers } from '../api';
 
 const fontStack = "'Poppins', -apple-system, BlinkMacSystemFont, sans-serif'";
 
@@ -19,6 +23,60 @@ async function parseJsonResponse(res) {
     return JSON.parse(text);
   } catch {
     throw new Error('Unable to read server response. Please try again.');
+  }
+}
+
+/** Normalize common list shapes: `{ data: [] }`, `{ users: [] }`, etc. */
+function extractAuthUsersList(json) {
+  if (json == null) return [];
+  if (Array.isArray(json)) return json;
+  if (typeof json !== 'object') return [];
+  const keys = ['data', 'users', 'items', 'results', 'records'];
+  for (const k of keys) {
+    const v = json[k];
+    if (Array.isArray(v)) return v;
+    if (v && typeof v === 'object') {
+      for (const inner of keys) {
+        const nested = v[inner];
+        if (Array.isArray(nested)) return nested;
+      }
+    }
+  }
+  return [];
+}
+
+function normalizeWorkspaceUser(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const email = raw.email ?? raw.emailAddress ?? '';
+  const id = raw.id ?? raw._id ?? raw.uuid;
+  if (id == null && !email) return null;
+  const firstName = raw.firstName ?? raw.first_name ?? '';
+  const lastName = raw.lastName ?? raw.last_name ?? '';
+  const name = [firstName, lastName].filter(Boolean).join(' ').trim()
+    || (typeof raw.name === 'string' ? raw.name.trim() : '')
+    || (typeof raw.fullName === 'string' ? raw.fullName.trim() : '')
+    || '—';
+  const phone = raw.phone ?? raw.phoneNumber ?? raw.phone_number ?? '';
+  const role = raw.role ?? raw.userRole ?? raw.user_role ?? '';
+  const createdRaw = raw.createdAt ?? raw.created_at;
+  return {
+    id: String(id ?? email ?? name),
+    name,
+    email: email ? String(email) : '—',
+    phone: phone ? String(phone) : '—',
+    role: role ? String(role) : '—',
+    createdAt: createdRaw,
+  };
+}
+
+function formatUserTableDate(raw) {
+  if (raw == null || raw === '') return '—';
+  try {
+    const d = new Date(raw);
+    if (Number.isNaN(d.getTime())) return '—';
+    return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  } catch {
+    return '—';
   }
 }
 
@@ -79,7 +137,13 @@ function Field({
   );
 }
 
-const PLATFORM_ROLES = ['Administrator', 'Manager', 'Accountant', 'HR'];
+const AUTH_USER_ROLE_OPTIONS = [
+  { value: 'staff', label: 'Staff' },
+  { value: 'manager', label: 'Manager' },
+  { value: 'administrator', label: 'Administrator' },
+  { value: 'accountant', label: 'Accountant' },
+  { value: 'hr', label: 'HR' },
+];
 
 function SelectField({ label, id, value, onChange, children }) {
   return (
@@ -119,16 +183,57 @@ export default function Account() {
     firstName: '',
     lastName: '',
     email: '',
-    role: 'Manager',
+    phone: '',
+    role: 'staff',
+    password: '',
+    confirmPassword: '',
   });
   const [inviteLoading, setInviteLoading] = useState(false);
   const [inviteError, setInviteError] = useState('');
-  const [inviteSuccess, setInviteSuccess] = useState('');
-  const [invitedUsers, setInvitedUsers] = useState([]);
+  const [userCreatedModal, setUserCreatedModal] = useState(null);
+  const [workspaceUsers, setWorkspaceUsers] = useState([]);
+  const [workspaceUsersLoading, setWorkspaceUsersLoading] = useState(false);
+  const [workspaceUsersError, setWorkspaceUsersError] = useState('');
+  const [settingsTab, setSettingsTab] = useState('forms');
 
   const onAuthUnauthorized = useCallback(() => {
     window.location.replace('/login');
   }, []);
+
+  const loadWorkspaceUsers = useCallback(async () => {
+    setWorkspaceUsersError('');
+    setWorkspaceUsersLoading(true);
+    try {
+      const res = await fetchAuthUsers({ page: 1, limit: 200 }, onAuthUnauthorized);
+      const json = await parseJsonResponse(res);
+      if (!res.ok) {
+        throw new Error(json?.error || json?.message || `Could not load users (${res.status})`);
+      }
+      const rows = extractAuthUsersList(json)
+        .map(normalizeWorkspaceUser)
+        .filter(Boolean);
+      const seen = new Set();
+      const deduped = [];
+      for (const r of rows) {
+        if (seen.has(r.id)) continue;
+        seen.add(r.id);
+        deduped.push(r);
+      }
+      setWorkspaceUsers(deduped);
+    } catch (e) {
+      if (e.message !== 'Session expired. Please log in again.') {
+        setWorkspaceUsersError(e.message || 'Could not load users.');
+      }
+      setWorkspaceUsers([]);
+    } finally {
+      setWorkspaceUsersLoading(false);
+    }
+  }, [onAuthUnauthorized]);
+
+  useEffect(() => {
+    if (settingsTab !== 'users') return;
+    loadWorkspaceUsers();
+  }, [settingsTab, loadWorkspaceUsers]);
 
   const setPwd = (key, v) => {
     setPasswordForm((prev) => ({ ...prev, [key]: v }));
@@ -178,11 +283,14 @@ export default function Account() {
 
   const handleInviteUser = async () => {
     setInviteError('');
-    setInviteSuccess('');
-    const { firstName, lastName, email, role } = inviteForm;
+    setUserCreatedModal(null);
+    const {
+      firstName, lastName, email, phone, role, password, confirmPassword,
+    } = inviteForm;
     const fn = firstName.trim();
     const ln = lastName.trim();
     const em = email.trim();
+    const phoneTrim = phone.trim();
     const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em);
     if (!fn || !ln) {
       setInviteError('Please enter first and last name.');
@@ -192,25 +300,50 @@ export default function Account() {
       setInviteError('Please enter a valid email address.');
       return;
     }
+    if (!phoneTrim) {
+      setInviteError('Please enter a phone number for the new user.');
+      return;
+    }
+    if (!password.trim()) {
+      setInviteError('Please set an initial password for the new user.');
+      return;
+    }
+    if (password.length < 8) {
+      setInviteError('Password must be at least 8 characters.');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setInviteError('Password and confirmation do not match.');
+      return;
+    }
     setInviteLoading(true);
     try {
       const res = await createPlatformUser(
-        { firstName: fn, lastName: ln, email: em, role },
+        {
+          firstName: fn,
+          lastName: ln,
+          email: em,
+          phone: phoneTrim,
+          role,
+          password,
+        },
         onAuthUnauthorized,
       );
       const data = await parseJsonResponse(res);
       if (!res.ok) {
         throw new Error(data.error || data.message || 'Could not add this user.');
       }
-      const newId = data.user?._id || data.user?.id || data.id || `local-${Date.now()}`;
-      setInvitedUsers((prev) => [
-        { id: String(newId), name: `${fn} ${ln}`.trim(), email: em, role },
-        ...prev,
-      ]);
-      setInviteForm((prev) => ({ firstName: '', lastName: '', email: '', role: prev.role }));
-      setInviteSuccess(
-        `${fn} ${ln} was added. They can sign in with role: ${role}.`,
-      );
+      await loadWorkspaceUsers();
+      setInviteForm((prev) => ({
+        firstName: '',
+        lastName: '',
+        email: '',
+        phone: '',
+        role: prev.role,
+        password: '',
+        confirmPassword: '',
+      }));
+      setUserCreatedModal({ name: `${fn} ${ln}`.trim() });
     } catch (err) {
       if (err.message !== 'Session expired. Please log in again.') {
         setInviteError(err.message || 'Could not add user.');
@@ -231,7 +364,8 @@ export default function Account() {
             <p className="account-settings-eyebrow">Your account</p>
             <h1 className="account-settings-title">Account settings</h1>
             <p className="account-settings-lead">
-              Manage your profile, password, and who can access the platform.
+              Account &amp; team covers your profile, password, and creating users. Workspace users lists everyone
+              from the server.
             </p>
           </div>
         </div>
@@ -243,7 +377,43 @@ export default function Account() {
         </div>
       </header>
 
-      <div className="account-settings-stack">
+      <div className="account-settings-tabs-shell">
+        <div className="account-settings-tablist" role="tablist" aria-label="Settings sections">
+          <button
+            type="button"
+            className={`account-settings-tab${settingsTab === 'forms' ? ' account-settings-tab--active' : ''}`}
+            role="tab"
+            id="account-tab-forms"
+            aria-selected={settingsTab === 'forms'}
+            aria-controls="account-panel-forms"
+            tabIndex={settingsTab === 'forms' ? 0 : -1}
+            onClick={() => setSettingsTab('forms')}
+          >
+            <FiSettings size={16} strokeWidth={2} aria-hidden />
+            Account &amp; team
+          </button>
+          <button
+            type="button"
+            className={`account-settings-tab${settingsTab === 'users' ? ' account-settings-tab--active' : ''}`}
+            role="tab"
+            id="account-tab-users"
+            aria-selected={settingsTab === 'users'}
+            aria-controls="account-panel-users"
+            tabIndex={settingsTab === 'users' ? 0 : -1}
+            onClick={() => setSettingsTab('users')}
+          >
+            <FiUsers size={16} strokeWidth={2} aria-hidden />
+            Workspace users
+          </button>
+        </div>
+
+        <div
+          id="account-panel-forms"
+          role="tabpanel"
+          aria-labelledby="account-tab-forms"
+          hidden={settingsTab !== 'forms'}
+          className="account-settings-stack"
+        >
         <AccountCard
           title="Profile"
           icon={<FiUser size={18} strokeWidth={2} />}
@@ -370,22 +540,15 @@ export default function Account() {
           }
         >
           <p className="account-team-intro">
-            Invite colleagues and assign a role: <strong>Administrator</strong>, <strong>Manager</strong>,{' '}
-            <strong>Accountant</strong>, or <strong>HR</strong>. They will use the same workspace sign-in flow once
-            their account is created.
+            Create staff and other users via the workspace API. New users receive the <strong>email</strong>,{' '}
+            <strong>initial password</strong>, and <strong>role</strong> you define here (they can change their password
+            after sign-in).
           </p>
           <div className="row g-3">
             {inviteError ? (
               <div className="col-12">
                 <div className="account-settings-alert account-settings-alert--error" role="alert">
                   {inviteError}
-                </div>
-              </div>
-            ) : null}
-            {inviteSuccess ? (
-              <div className="col-12">
-                <div className="account-settings-alert account-settings-alert--success" role="status">
-                  {inviteSuccess}
                 </div>
               </div>
             ) : null}
@@ -421,35 +584,130 @@ export default function Account() {
               />
             </div>
             <div className="col-sm-6">
+              <Field
+                id="invite-phone"
+                label="Phone"
+                type="tel"
+                value={inviteForm.phone}
+                onChange={(e) => setInviteField('phone', e.target.value)}
+                placeholder="0240000000"
+                autoComplete="tel"
+              />
+            </div>
+            <div className="col-sm-6">
               <SelectField
                 label="Role"
                 id="invite-role"
                 value={inviteForm.role}
                 onChange={(e) => setInviteField('role', e.target.value)}
               >
-                {PLATFORM_ROLES.map((r) => (
-                  <option key={r} value={r}>
-                    {r}
+                {AUTH_USER_ROLE_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
                   </option>
                 ))}
               </SelectField>
             </div>
+            <div className="col-sm-6">
+              <Field
+                id="invite-password"
+                label="Initial password"
+                type="password"
+                value={inviteForm.password}
+                onChange={(e) => setInviteField('password', e.target.value)}
+                placeholder="StrongPass123"
+                autoComplete="new-password"
+              />
+            </div>
+            <div className="col-sm-6">
+              <Field
+                id="invite-confirm-password"
+                label="Confirm password"
+                type="password"
+                value={inviteForm.confirmPassword}
+                onChange={(e) => setInviteField('confirmPassword', e.target.value)}
+                placeholder="Repeat password"
+                autoComplete="new-password"
+              />
+            </div>
           </div>
-          {invitedUsers.length > 0 ? (
-            <div className="account-team-added">
-              <p className="account-team-added__title">Added in this session</p>
-              <ul className="account-team-added__list">
-                {invitedUsers.map((row) => (
-                  <li key={row.id} className="account-team-added__row">
-                    <span className="account-team-added__name">{row.name}</span>
-                    <span className="account-team-added__email">{row.email}</span>
-                    <span className="account-team-added__role">{row.role}</span>
-                  </li>
-                ))}
-              </ul>
+        </AccountCard>
+        </div>
+
+        <div
+          id="account-panel-users"
+          role="tabpanel"
+          aria-labelledby="account-tab-users"
+          hidden={settingsTab !== 'users'}
+          className="account-settings-stack account-settings-stack--users-tab"
+        >
+        <AccountCard
+          className="account-card--span-full"
+          title="Workspace users"
+          icon={<FiUsers size={18} strokeWidth={2} />}
+        >
+          <div className="account-users-toolbar mb-3 d-flex flex-wrap align-items-center justify-content-between gap-2">
+            <p className="account-team-intro mb-0">
+              Everyone in your workspace from <strong>GET /auth/users</strong>. Use Refresh after adding users on the
+              Account &amp; team tab.
+            </p>
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
+              disabled={workspaceUsersLoading}
+              onClick={() => loadWorkspaceUsers()}
+            >
+              <FiRefreshCw
+                size={14}
+                className={workspaceUsersLoading ? 'account-users-refresh-icon--spin' : ''}
+                aria-hidden
+              />
+              {workspaceUsersLoading ? 'Loading…' : 'Refresh'}
+            </button>
+          </div>
+          {workspaceUsersError ? (
+            <div className="account-settings-alert account-settings-alert--error mb-3" role="alert">
+              {workspaceUsersError}
+            </div>
+          ) : null}
+          {workspaceUsersLoading && workspaceUsers.length === 0 ? (
+            <p className="text-muted small mb-0">Loading users…</p>
+          ) : null}
+          {!workspaceUsersLoading && workspaceUsers.length === 0 && !workspaceUsersError ? (
+            <p className="text-muted small mb-0">
+              No users returned yet. Tap Refresh or add someone under Account &amp; team.
+            </p>
+          ) : null}
+          {workspaceUsers.length > 0 ? (
+            <div className="table-responsive account-users-table-wrap">
+              <table className="table table-bordered table-hover align-middle mb-0 account-users-table">
+                <thead className="table-light">
+                  <tr>
+                    <th scope="col">Name</th>
+                    <th scope="col">Email</th>
+                    <th scope="col" className="d-none d-md-table-cell">Phone</th>
+                    <th scope="col">Role</th>
+                    <th scope="col" className="d-none d-lg-table-cell">Added</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {workspaceUsers.map((row) => (
+                    <tr key={row.id}>
+                      <td className="fw-semibold">{row.name}</td>
+                      <td className="text-break">{row.email}</td>
+                      <td className="d-none d-md-table-cell">{row.phone}</td>
+                      <td>
+                        <span className="account-users-table__role">{row.role}</span>
+                      </td>
+                      <td className="d-none d-lg-table-cell text-muted small">{formatUserTableDate(row.createdAt)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           ) : null}
         </AccountCard>
+        </div>
       </div>
 
       <section className="account-danger-card">
@@ -479,6 +737,51 @@ export default function Account() {
           </button>
         </div>
       </section>
+
+      {userCreatedModal ? (
+        <div
+          className="app-modal-overlay"
+          role="presentation"
+          onClick={() => setUserCreatedModal(null)}
+        >
+          <div
+            className="account-user-created-dialog"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="account-user-created-title"
+            aria-describedby="account-user-created-desc"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="account-user-created-dialog__icon-wrap" aria-hidden>
+              <FiCheckCircle size={40} strokeWidth={1.85} />
+            </div>
+            <h2 id="account-user-created-title" className="account-user-created-dialog__title">
+              User created successfully
+            </h2>
+            <p id="account-user-created-desc" className="account-user-created-dialog__lead">
+              <strong>{userCreatedModal.name}</strong> can sign in with the email and initial password you set.
+              Remind them to change their password after first login if your policy requires it.
+            </p>
+            <div className="account-user-created-dialog__footer">
+              <button
+                type="button"
+                className="btn btn-sm btn-primary account-settings-btn-primary"
+                onClick={() => setUserCreatedModal(null)}
+              >
+                OK
+              </button>
+            </div>
+            <button
+              type="button"
+              className="account-user-created-dialog__close"
+              aria-label="Dismiss"
+              onClick={() => setUserCreatedModal(null)}
+            >
+              <FiX size={20} strokeWidth={1.75} />
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {showDeleteModal && (
         <div

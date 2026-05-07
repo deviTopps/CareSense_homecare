@@ -122,16 +122,57 @@ export async function changePassword({ currentPassword, newPassword }, onUnautho
 }
 
 /**
- * Create / invite a workspace user (platform roles: Administrator, Manager, Accountant, HR).
- * Backend: POST /users — adjust path if your API differs.
+ * Create a user for the authenticated agency/workspace.
+ * Backend: POST /auth/users — body: { firstName, lastName, email, phone, role, password }
  */
 export async function createPlatformUser(payload, onUnauthorized) {
   return apiFetch(
-    '/users',
+    '/auth/users',
     {
       method: 'POST',
       body: JSON.stringify(payload),
     },
     onUnauthorized,
   );
+}
+
+/** GET `/auth/users` — workspace user list (page/limit if supported by backend). */
+export async function fetchAuthUsers(params = {}, onUnauthorized) {
+  const page = params.page != null ? Number(params.page) : 1;
+  const limit = params.limit != null ? Number(params.limit) : 200;
+  const qs = new URLSearchParams({ page: String(page), limit: String(limit) });
+  return apiFetch(`/auth/users?${qs}`, { method: 'GET', quiet: true }, onUnauthorized);
+}
+
+/**
+ * Create a care visit.
+ * POST /care-visits — body: { patientId, visitingNurse, lastVisit, nextVisit, frequency }
+ */
+export async function createCareVisit(payload, onUnauthorized) {
+  return apiFetch(
+    '/care-visits',
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    },
+    onUnauthorized,
+  );
+}
+
+/** GET `/care-visits/upcoming` — upcoming visits list. */
+export async function fetchUpcomingCareVisits(params = {}, onUnauthorized) {
+  const qs = new URLSearchParams();
+  if (params.page != null) qs.set('page', String(params.page));
+  if (params.limit != null) qs.set('limit', String(params.limit));
+  const q = qs.toString();
+  return apiFetch(`/care-visits/upcoming${q ? `?${q}` : ''}`, { method: 'GET', quiet: true }, onUnauthorized);
+}
+
+/** GET `/care-visits/other` — all/other visits list (backend-defined). */
+export async function fetchOtherCareVisits(params = {}, onUnauthorized) {
+  const qs = new URLSearchParams();
+  if (params.page != null) qs.set('page', String(params.page));
+  if (params.limit != null) qs.set('limit', String(params.limit));
+  const q = qs.toString();
+  return apiFetch(`/care-visits/other${q ? `?${q}` : ''}`, { method: 'GET', quiet: true }, onUnauthorized);
 }

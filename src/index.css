@@ -1061,6 +1061,122 @@ body.sidebar-resizing {
   border-right: 1px solid #e2e8f0;
 }
 
+/* Care visits (Scheduling): column widths, alignment, patient text overflow */
+.care-visits-schedule-wrap.table-responsive {
+  border-top: none;
+}
+
+.care-visits-schedule-wrap .care-visits-schedule-table.kh-table {
+  min-width: 960px;
+  table-layout: fixed;
+}
+
+.care-visits-schedule-wrap .care-visits-schedule-table thead th {
+  vertical-align: middle;
+  line-height: 1.25;
+}
+
+.care-visits-schedule-wrap .care-visits-schedule-table .cv-th-patient {
+  width: 28%;
+}
+.care-visits-schedule-wrap .care-visits-schedule-table .cv-th-prev,
+.care-visits-schedule-wrap .care-visits-schedule-table .cv-th-next {
+  width: 11%;
+}
+.care-visits-schedule-wrap .care-visits-schedule-table .cv-th-time {
+  width: 8%;
+}
+.care-visits-schedule-wrap .care-visits-schedule-table .cv-th-duration {
+  width: 8%;
+}
+.care-visits-schedule-wrap .care-visits-schedule-table .cv-th-frequency {
+  width: 11%;
+}
+.care-visits-schedule-wrap .care-visits-schedule-table .cv-th-nurse {
+  width: 13%;
+}
+.care-visits-schedule-wrap .care-visits-schedule-table .cv-th-status {
+  width: 10%;
+}
+.care-visits-schedule-wrap .care-visits-schedule-table .cv-th-actions {
+  width: 120px;
+  text-align: right;
+}
+
+.care-visits-schedule-wrap .care-visits-schedule-table tbody td.cv-cell-patient {
+  min-width: 0;
+}
+.care-visits-schedule-wrap .care-visits-schedule-table .cv-patient-stack {
+  min-width: 0;
+  flex: 1;
+}
+.care-visits-schedule-wrap .care-visits-schedule-table .cv-patient-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.care-visits-schedule-wrap .care-visits-schedule-table .cv-patient-addr {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.care-visits-schedule-wrap .care-visits-schedule-table .cv-cell-date {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.care-visits-schedule-wrap .care-visits-schedule-table .cv-cell-time,
+.care-visits-schedule-wrap .care-visits-schedule-table .cv-cell-duration {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.care-visits-schedule-wrap .care-visits-schedule-table .cv-cell-nurse {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.care-visits-schedule-wrap .care-visits-schedule-table .cv-cell-status .badge-kh {
+  max-width: 100%;
+  display: inline-block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.care-visits-schedule-wrap .care-visits-schedule-table .cv-cell-actions {
+  text-align: right;
+  vertical-align: middle;
+  width: 120px;
+}
+.care-visits-schedule-wrap .care-visits-schedule-table .cv-actions-inner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-wrap: nowrap;
+}
+
+.care-visits-schedule-wrap .care-visits-schedule-table .cv-btn-cancel {
+  background: #fef2f2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  line-height: 1.2;
+}
+.care-visits-schedule-wrap .care-visits-schedule-table .cv-btn-cancel:hover {
+  background: #fee2e2;
+}
+
 /* ── Badges ───────────────────────────────────────────── */
 .badge-kh {
   font-size: 11px; font-weight: 600;
@@ -9835,6 +9951,70 @@ body.sidebar-resizing {
   color: #64748b;
 }
 
+.account-settings-tabs-shell {
+  margin-top: 4px;
+  width: 100%;
+}
+
+.account-settings-tablist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px;
+  margin-bottom: 20px;
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+  border-radius: 14px;
+  border: 1px solid #e2e8f0;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.account-settings-tab {
+  flex: 1 1 auto;
+  min-width: min(240px, 100%);
+  padding: 11px 16px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  color: #64748b;
+  cursor: pointer;
+  transition:
+    background 0.18s ease,
+    color 0.18s ease,
+    box-shadow 0.18s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  letter-spacing: -0.01em;
+}
+
+.account-settings-tab:hover:not(.account-settings-tab--active) {
+  background: rgba(255, 255, 255, 0.6);
+  color: #475569;
+}
+
+.account-settings-tab--active {
+  background: #fff;
+  color: #0f172a;
+  box-shadow:
+    0 2px 12px rgba(15, 23, 42, 0.08),
+    0 0 0 1px rgba(226, 232, 240, 0.9);
+}
+
+.account-settings-tab:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+@media (min-width: 992px) {
+  .account-settings-stack--users-tab {
+    grid-template-columns: 1fr;
+  }
+}
+
 .account-settings-stack {
   display: grid;
   grid-template-columns: 1fr;
@@ -9920,6 +10100,71 @@ body.sidebar-resizing {
   background: #fef2f2;
   color: #b91c1c;
   border: 1px solid #fecaca;
+}
+
+.account-user-created-dialog {
+  position: relative;
+  width: 100%;
+  max-width: 420px;
+  margin: 24px auto;
+  padding: 28px 24px 22px;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 22px 50px rgba(15, 23, 42, 0.18);
+  border: 1px solid #ecfdf5;
+}
+
+.account-user-created-dialog__close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.account-user-created-dialog__close:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.account-user-created-dialog__icon-wrap {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 14px;
+  color: #059669;
+}
+
+.account-user-created-dialog__title {
+  margin: 0 0 10px;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: #0f172a;
+  text-align: center;
+}
+
+.account-user-created-dialog__lead {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  font-weight: 500;
+  color: #475569;
+  text-align: center;
+}
+
+.account-user-created-dialog__footer {
+  margin-top: 20px;
+  display: flex;
+  justify-content: center;
 }
 
 .account-password-instructions {
@@ -10009,6 +10254,52 @@ body.sidebar-resizing {
   line-height: 1.55;
   color: #64748b;
   max-width: 72ch;
+}
+
+.account-users-toolbar .account-team-intro {
+  margin-bottom: 0;
+}
+
+.account-users-table-wrap {
+  margin-top: 4px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  overflow: hidden;
+  background: #fff;
+}
+
+.account-users-table {
+  font-size: 13px;
+}
+
+.account-users-table thead th {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #64748b;
+  white-space: nowrap;
+}
+
+.account-users-table__role {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: capitalize;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+@keyframes account-users-refresh-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.account-users-refresh-icon--spin {
+  animation: account-users-refresh-spin 0.85s linear infinite;
 }
 
 .account-team-added {
@@ -12591,7 +12882,7 @@ body.sidebar-resizing {
   table-layout: fixed;
 }
 
-.emergency-cases-table__col--id { width: 11%; min-width: 88px; }
+.emergency-cases-table__col--code { width: 11%; min-width: 88px; }
 .emergency-cases-table__col--patient { width: 18%; min-width: 120px; }
 .emergency-cases-table__col--type { width: 12%; min-width: 100px; }
 .emergency-cases-table__col--severity { width: 9%; min-width: 86px; }
