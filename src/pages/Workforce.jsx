@@ -1,7 +1,26 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiPlus, FiSearch, FiChevronRight, FiChevronLeft, FiChevronsLeft, FiChevronsRight, FiArrowUp, FiArrowDown, FiUpload, FiX, FiCheck, FiSave, FiArrowRight, FiAlertCircle, FiClock, FiEdit, FiTrash2, FiUsers } from '../icons/hugeicons-feather';
-import { apiFetch, isTokenValid } from '../api';
+import { motion } from 'motion/react';
+import {
+  FiPlus,
+  FiSearch,
+  FiChevronRight,
+  FiChevronLeft,
+  FiChevronsLeft,
+  FiChevronsRight,
+  FiUpload,
+  FiX,
+  FiCheck,
+  FiArrowRight,
+  FiAlertCircle,
+  FiEdit,
+  FiTrash2,
+  FiUser,
+  FiDownload,
+  FiSave,
+  FiUserPlus,
+} from '../icons/hugeicons-feather';
+import { apiFetch, isTokenValid, createPlatformUser } from '../api';
 import { resolveStoredMediaUrl } from '../utils/resolveStoredMediaUrl';
 
 const ROLE_LABELS = { head_nurse: 'Head Nurse', supervising_nurse: 'Supervising Nurse', office_nurse: 'Office Nurse', field_nurse: 'Field Nurse' };
@@ -47,6 +66,14 @@ const DOCUMENT_TYPE_MAP = {
   reference: 'Other',
   dbs: 'Certificate',
 };
+
+const PLATFORM_USER_ROLE_OPTIONS = [
+  { value: 'staff', label: 'Staff' },
+  { value: 'manager', label: 'Manager' },
+  { value: 'administrator', label: 'Administrator' },
+  { value: 'accountant', label: 'Accountant' },
+  { value: 'hr', label: 'HR' },
+];
 
 const emptyQualification = { name: '', institution: '', result: '', year: '' };
 const emptyEmployment = { employerName: '', address: '', businessType: '', jobTitle: '', startDate: '', grade: '', reportingOfficer: '', reasonForLeaving: '', descriptionOfDuties: '', contactPerson: '' };
@@ -109,6 +136,7 @@ const initialFormState = {
 export default function Workforce() {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState('All');
   const [showModal, setShowModal] = useState(false);
   const [sortField, setSortField] = useState(null);
   const [sortDir, setSortDir] = useState('asc');
@@ -117,6 +145,22 @@ export default function Workforce() {
   const [nurses, setNurses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [avatarLoadErrors, setAvatarLoadErrors] = useState({});
+
+  const [step, setStep] = useState(0);
+  const [form, setForm] = useState({ ...initialFormState, qualifications: [{ ...emptyQualification }], trainingCourses: [''], employmentHistory: [{ ...emptyEmployment }], referees: [{ ...emptyReferee }, { ...emptyReferee }] });
+  const [nurseId, setNurseId] = useState(null);
+  const [completedSteps, setCompletedSteps] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const [apiError, setApiError] = useState('');
+  const [debugInfo, setDebugInfo] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const [showAddUserModal, setShowAddUserModal] = useState(false);
+  const [addUserForm, setAddUserForm] = useState({ firstName: '', lastName: '', email: '', phone: '', role: 'staff', password: '', confirmPassword: '' });
+  const [addUserLoading, setAddUserLoading] = useState(false);
+  const [addUserError, setAddUserError] = useState('');
+  const [addUserSuccess, setAddUserSuccess] = useState(null);
 
   const resolveNurseProfilePhotoUrl = useCallback(async (nurseSummary) => {
     const directProfileImage = extractNurseProfileImage(nurseSummary);
@@ -178,19 +222,16 @@ export default function Workforce() {
 
   useEffect(() => { fetchNurses(); }, [fetchNurses]);
 
-  // ── Multi-step form state ──
-  const [step, setStep] = useState(0);
-  const [form, setForm] = useState({ ...initialFormState, qualifications: [{ ...emptyQualification }], trainingCourses: [''], employmentHistory: [{ ...emptyEmployment }], referees: [{ ...emptyReferee }, { ...emptyReferee }] });
-  const [nurseId, setNurseId] = useState(null);
-  const [completedSteps, setCompletedSteps] = useState([]);
-  const [saving, setSaving] = useState(false);
-  const [apiError, setApiError] = useState('');
-  const [debugInfo, setDebugInfo] = useState(null);
-  const [deleteTarget, setDeleteTarget] = useState(null); // nurse to delete
-  const [deleting, setDeleting] = useState(false);
+  const filterCounts = useMemo(() => ({
+    All: nurses.length,
+    Complete: nurses.filter((n) => n.isComplete).length,
+    'In progress': nurses.filter((n) => !n.isComplete).length,
+  }), [nurses]);
 
   // ── Table logic ──
-  const filtered = nurses.filter(n => {
+  const filtered = nurses.filter((n) => {
+    if (filter === 'Complete' && !n.isComplete) return false;
+    if (filter === 'In progress' && n.isComplete) return false;
     if (!search) return true;
     const q = search.toLowerCase();
     return (
@@ -199,14 +240,62 @@ export default function Workforce() {
       || n.email.toLowerCase().includes(q)
     );
   });
-  const handleSort = col => { if (sortField === col) { setSortDir(d => d === 'asc' ? 'desc' : 'asc'); } else { setSortField(col); setSortDir('asc'); } };
-  const SortIcon = ({ col }) => { if (sortField !== col) return null; return sortDir === 'asc' ? <FiArrowUp size={11} /> : <FiArrowDown size={11} />; };
-  const sorted = [...filtered].sort((a, b) => { if (!sortField) return 0; const av = a[sortField], bv = b[sortField]; const cmp = typeof av === 'string' ? av.localeCompare(bv) : av - bv; return sortDir === 'asc' ? cmp : -cmp; });
-  const totalPages = Math.max(1, Math.ceil(sorted.length / rowsPerPage));
+
+  const handleSort = (col) => {
+    if (sortField === col) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    else {
+      setSortField(col);
+      setSortDir('asc');
+    }
+  };
+
+  const SortIcon = ({ col }) => {
+    if (sortField !== col) return <span style={{ opacity: 0.3, marginLeft: 4 }}>↕</span>;
+    return <span style={{ marginLeft: 4 }}>{sortDir === 'asc' ? '↑' : '↓'}</span>;
+  };
+
+  const sorted = [...filtered].sort((a, b) => {
+    if (!sortField) return 0;
+    const av = a[sortField];
+    const bv = b[sortField];
+    const cmp = typeof av === 'string' ? av.localeCompare(bv) : av - bv;
+    return sortDir === 'asc' ? cmp : -cmp;
+  });
+
+  const totalPages = Math.ceil(sorted.length / rowsPerPage);
+
   const startRow = (page - 1) * rowsPerPage + 1;
   const endRow = Math.min(page * rowsPerPage, sorted.length);
   const paged = sorted.slice(startRow - 1, endRow);
-  const pgBtn = (onClick, disabled, children) => (<button onClick={onClick} disabled={disabled} style={{ minWidth: 36, height: 36, padding: '0 12px', border: '1px solid #e6ebf1', borderRadius: 999, background: disabled ? '#f5f7fa' : '#fff', cursor: disabled ? 'default' : 'pointer', color: disabled ? '#9aa5b1' : '#304353', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: disabled ? 'none' : '0 8px 16px rgba(15, 23, 42, 0.04)' }}>{children}</button>);
+
+  const handleExportNurses = () => {
+    const headers = ['Name', 'Email', 'Role', 'License', 'Joined', 'Phone', 'Registration'];
+    const rows = sorted.map((n) => [
+      n.name,
+      n.email,
+      n.role,
+      n.license,
+      n.joined,
+      n.phone,
+      n.isComplete ? 'Complete' : 'In progress',
+    ]);
+    const csv = [headers, ...rows]
+      .map((row) => row.map((value) => `"${String(value ?? '').replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `nurses-${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  };
+
+  const pgBtn = (onClick, disabled, children) => (
+    <button type="button" onClick={onClick} disabled={disabled} className="patients-page-btn">{children}</button>
+  );
 
   const removeEmptyValues = (value) => {
     if (Array.isArray(value)) {
@@ -316,6 +405,43 @@ export default function Workforce() {
       setDeleting(false);
     }
   };
+  const setAddUserField = (key, v) => setAddUserForm((prev) => ({ ...prev, [key]: v }));
+
+  const handleAddUser = async () => {
+    setAddUserError('');
+    const { firstName, lastName, email, phone, role, password, confirmPassword } = addUserForm;
+    const fn = firstName.trim();
+    const ln = lastName.trim();
+    const em = email.trim();
+    const ph = phone.trim();
+    if (!fn || !ln) { setAddUserError('Please enter first and last name.'); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) { setAddUserError('Please enter a valid email address.'); return; }
+    if (!ph) { setAddUserError('Please enter a phone number.'); return; }
+    if (!password.trim()) { setAddUserError('Please set an initial password.'); return; }
+    if (password.length < 8) { setAddUserError('Password must be at least 8 characters.'); return; }
+    if (password !== confirmPassword) { setAddUserError('Passwords do not match.'); return; }
+    setAddUserLoading(true);
+    try {
+      const res = await createPlatformUser({ firstName: fn, lastName: ln, email: em, phone: ph, role, password });
+      const text = await res.text();
+      const data = text ? JSON.parse(text) : {};
+      if (!res.ok) throw new Error(data.error || data.message || 'Could not add user.');
+      setAddUserForm({ firstName: '', lastName: '', email: '', phone: '', role: addUserForm.role, password: '', confirmPassword: '' });
+      setAddUserSuccess({ name: `${fn} ${ln}`.trim() });
+    } catch (err) {
+      setAddUserError(err.message || 'Could not add user.');
+    } finally {
+      setAddUserLoading(false);
+    }
+  };
+
+  const closeAddUserModal = () => {
+    setShowAddUserModal(false);
+    setAddUserError('');
+    setAddUserSuccess(null);
+    setAddUserForm({ firstName: '', lastName: '', email: '', phone: '', role: 'staff', password: '', confirmPassword: '' });
+  };
+
   const closeModal = () => { setShowModal(false); resetAll(); fetchNurses(); };
 
   const continueRegistration = (nurse, e) => {
@@ -916,145 +1042,210 @@ export default function Workforce() {
   const allCompleted = completedSteps.length === STEPS.length;
 
   return (
-    <div className="page-wrapper workforce-page">
-      <div className="workforce-shell">
-        <div className="workforce-page-header">
+    <motion.div className="page-wrapper workforce-page" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.24 }}>
+      <div className="patients-board-shell">
+        <div className="patients-hero">
           <div>
-            <div className="workforce-eyebrow">Workforce Management</div>
-            <h2 className="workforce-title">Nurse Directory</h2>
-            <p className="workforce-subtitle">Manage nurse registrations.</p>
+            <div className="patients-kicker">Nurse workspace</div>
+            <h2 className="patients-title">Manage nurse registrations and directory</h2>
+            <p className="patients-subtitle">Search staff, export the roster, register new hires, and open nurse records from one place.</p>
           </div>
-          <div className="workforce-header-badge">
-            <span className="workforce-header-badge__icon"><FiUsers size={16} /></span>
-            <span>{filtered.length} active records</span>
+          <div className="patients-hero-actions">
+            <button type="button" className="patients-toolbar-btn" onClick={handleExportNurses}>
+              <FiDownload size={15} />
+              <span>Export</span>
+            </button>
+            <button type="button" className="patients-toolbar-btn" onClick={() => setShowAddUserModal(true)}>
+              <FiUserPlus size={15} />
+              <span>Add New User</span>
+            </button>
+            <button type="button" className="patients-cta-btn" onClick={() => setShowModal(true)}>
+              <span className="patients-cta-btn__icon"><FiPlus size={16} /></span>
+              <span>Register Nurse</span>
+            </button>
           </div>
         </div>
 
-        <div className="workforce-board kh-card">
-          <div className="workforce-board__topbar">
-            <div className="workforce-top-actions">
-              <button type="button" className="workforce-action-chip workforce-action-chip--ghost">
-                <FiClock size={14} /> This Month
-              </button>
-              <button type="button" className="workforce-action-chip workforce-action-chip--ghost">
-                <FiSave size={14} /> Export
-              </button>
-              <button type="button" className="workforce-action-chip workforce-action-chip--primary" onClick={() => setShowModal(true)}>
-                <span className="workforce-action-chip__icon"><FiPlus size={16} /></span>
-                Register Nurse
-              </button>
+        <motion.div className="kh-card patients-board-card" initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.28, ease: 'easeOut' }}>
+          <div className="patients-topbar">
+            <div className="patients-segmented-control">
+              {['All', 'Complete', 'In progress'].map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => { setFilter(item); setPage(1); }}
+                  className={`patients-segmented-control__item${filter === item ? ' is-active' : ''}`}
+                >
+                  <span>{item === 'All' ? 'All Nurses' : item}</span>
+                  <span className="patients-segmented-control__count">{filterCounts[item]}</span>
+                </button>
+              ))}
+            </div>
+            <div className="patients-topbar-actions">
+              <div className="patients-meta-pill">
+                <span className="patients-meta-pill__label">Visible</span>
+                <strong>{filtered.length}</strong>
+              </div>
+              <div className="patients-meta-pill">
+                <span className="patients-meta-pill__label">Complete</span>
+                <strong>{filterCounts.Complete}</strong>
+              </div>
             </div>
           </div>
 
-          <div className="workforce-board__toolbar">
+          <div className="patients-subtoolbar">
             <div className="patients-searchbox">
               <FiSearch className="patients-searchbox__icon" size={16} />
               <input
                 id="workforce-nurse-search"
                 type="search"
                 className="form-control form-control-kh patients-searchbox__input"
-                placeholder="Search nurse, email or license"
+                placeholder="Search nurses, email, or license"
                 value={search}
-                onChange={e => { setSearch(e.target.value); setPage(1); }}
+                onChange={(e) => { setSearch(e.target.value); setPage(1); }}
                 autoComplete="off"
                 aria-label="Search nurses"
               />
             </div>
+            <div className="patients-subtoolbar-actions">
+              <label className="patients-meta-pill patients-meta-pill--select">
+                <span className="patients-meta-pill__label">Rows</span>
+                <select
+                  value={rowsPerPage}
+                  onChange={(e) => { setRowsPerPage(Number(e.target.value)); setPage(1); }}
+                  className="patients-rows-select"
+                  aria-label="Rows per page"
+                >
+                  {ROWS_OPTIONS.map((r) => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </label>
+
+              <button type="button" className="patients-toolbar-btn" onClick={handleExportNurses}>
+                <FiDownload size={15} />
+                <span>Export</span>
+              </button>
+
+              <button type="button" className="patients-cta-btn patients-cta-btn--compact" onClick={() => setShowModal(true)}>
+                <span className="patients-cta-btn__icon"><FiPlus size={15} /></span>
+                <span>Register Nurse</span>
+              </button>
+            </div>
           </div>
 
-          <div className="workforce-table-wrap table-responsive">
-            <table className="table kh-table workforce-table" style={{ marginBottom: 0 }}>
-            <thead><tr>
-              <th className="col-num">#</th>
-              <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('name')}>Nurse <SortIcon col="name" /></th>
-              <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('role')}>Role <SortIcon col="role" /></th>
-              <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('license')}>License <SortIcon col="license" /></th>
-              <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('joined')}>Joined <SortIcon col="joined" /></th>
-              <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('phone')}>Phone <SortIcon col="phone" /></th>
-              <th style={{ width: 180, textAlign: 'center' }}>Actions</th>
-            </tr></thead>
-            <tbody>
-              {loading ? (
-                <tr><td colSpan={7} className="text-center py-5">
-                  <div className="d-flex align-items-center justify-content-center gap-2" style={{ color: 'var(--kh-text-muted)', fontSize: 13 }}>
-                    <div className="spinner-border spinner-border-sm" role="status" style={{ color: '#45B6FE' }} />
-                    <span>Loading nurses…</span>
-                  </div>
-                </td></tr>
-              ) : paged.length === 0 ? (
-                <tr><td colSpan={7} className="text-center py-4" style={{ color: 'var(--kh-text-muted)', fontSize: 13 }}>
-                  {nurses.length === 0 ? 'No nurses registered yet. Click "Register Nurse" to add one.' : 'No nurses match your search.'}
-                </td></tr>
-              ) : paged.map((n, i) => (
-                <tr key={n.id} onClick={() => navigate(`/workforce/${n.id}`)} style={{ cursor: 'pointer' }}>
-                  <td className="col-num" data-label="#">{startRow + i}</td>
-                  <td data-label="Nurse">
-                    <div className="d-flex align-items-center gap-2 workforce-person-cell">
-                    <div className="workforce-avatar">
-                      {n.profilePhotoUrl && !avatarLoadErrors[n.id] ? (
-                        <img
-                          src={n.profilePhotoUrl}
-                          alt={n.name}
-                          loading="lazy"
-                          onError={() => setAvatarLoadErrors(prev => ({ ...prev, [n.id]: true }))}
-                        />
-                      ) : (
-                        n.initials
-                      )}
-                    </div>
-                    <div>
-                      <div className="workforce-person-name">{n.name}</div>
-                      <div className="workforce-person-email">{n.email}</div>
-                    </div>
-                  </div></td>
-                  <td data-label="Role"><span className="workforce-role-chip">{n.role}</span></td>
-                  <td data-label="License" style={{ fontSize: 13, fontWeight: 600, fontFamily: 'monospace', color: '#2E7DB8' }}>{n.license}</td>
-                  <td data-label="Joined" className="workforce-date-cell">{n.joined}</td>
-                  <td data-label="Phone" style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>{n.phone}</td>
-                  <td data-label="Actions" style={{ textAlign: 'center' }}>
-                    <div className="workforce-row-actions">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); navigate(`/workforce/${n.id}`); }}
-                        title="Edit nurse"
-                        className="workforce-row-btn workforce-row-btn--edit"
-                      >
-                        <FiEdit size={11} /> Edit
-                      </button>
-                      <button
-                        onClick={(e) => handleDeleteNurse(n, e)}
-                        title="Delete nurse"
-                        className="workforce-row-btn workforce-row-btn--delete"
-                      >
-                        <FiTrash2 size={11} /> Delete
-                      </button>
-                    </div>
-                  </td>
+          <div className="table-responsive patients-table-wrap">
+            <table className="table kh-table patients-table" style={{ marginBottom: 0 }}>
+              <thead>
+                <tr>
+                  <th className="col-num">#</th>
+                  <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('name')}>Nurse <SortIcon col="name" /></th>
+                  <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('role')}>Role <SortIcon col="role" /></th>
+                  <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('license')}>License <SortIcon col="license" /></th>
+                  <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('joined')}>Joined <SortIcon col="joined" /></th>
+                  <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('phone')}>Phone <SortIcon col="phone" /></th>
+                  <th style={{ width: 104, textAlign: 'right' }}>Action</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {loading && (
+                  <tr>
+                    <td colSpan={7} className="text-center py-4" style={{ color: 'var(--kh-text-muted)', fontSize: 13 }}>Loading nurses...</td>
+                  </tr>
+                )}
+                {!loading && paged.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="text-center py-4" style={{ color: 'var(--kh-text-muted)', fontSize: 13 }}>
+                      {nurses.length === 0
+                        ? 'No nurses registered yet. Use Register Nurse to add one.'
+                        : 'No nurses match your filters or search.'}
+                    </td>
+                  </tr>
+                )}
+                {!loading && paged.map((n, i) => (
+                  <tr key={n.id} className="patients-row-card" onClick={() => navigate(`/workforce/${n.id}`)} style={{ cursor: 'pointer' }}>
+                    <td className="col-num" data-label="#">{startRow + i}</td>
+                    <td data-label="Nurse">
+                      <div className="d-flex align-items-center gap-2 patients-name-cell">
+                        <div
+                          className="avatar sm patients-avatar"
+                          style={{
+                            background: n.profilePhotoUrl && !avatarLoadErrors[n.id] ? '#fff' : ((startRow + i - 1) % 2 === 0 ? '#45B6FE' : '#2E7DB8'),
+                            overflow: 'hidden',
+                            borderRadius: '50%',
+                          }}
+                        >
+                          {n.profilePhotoUrl && !avatarLoadErrors[n.id] ? (
+                            <img
+                              src={n.profilePhotoUrl}
+                              alt={n.name}
+                              loading="lazy"
+                              onError={() => setAvatarLoadErrors((prev) => ({ ...prev, [n.id]: true }))}
+                              style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }}
+                            />
+                          ) : (
+                            <FiUser size={16} aria-hidden />
+                          )}
+                        </div>
+                        <div>
+                          <div className="patients-name-primary">{n.name}</div>
+                          <div className="patients-name-secondary">{n.email}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td data-label="Role"><span className="patient-nurse-chip">{n.role}</span></td>
+                    <td data-label="License" className="patients-table-value"><span className="patients-license-code">{n.license}</span></td>
+                    <td data-label="Joined" className="patients-table-date">{n.joined}</td>
+                    <td data-label="Phone" className="patients-table-value" style={{ fontVariantNumeric: 'tabular-nums' }}>{n.phone}</td>
+                    <td data-label="Action" style={{ textAlign: 'right' }}>
+                      <div className="d-inline-flex gap-2 align-items-center justify-content-end">
+                        <button
+                          type="button"
+                          className="patients-row-action"
+                          title="Edit nurse"
+                          onClick={(e) => { e.stopPropagation(); navigate(`/workforce/${n.id}`); }}
+                        >
+                          <FiEdit size={16} aria-hidden />
+                        </button>
+                        <button
+                          type="button"
+                          className="patients-row-action patients-row-action--danger"
+                          title="Delete nurse"
+                          onClick={(e) => handleDeleteNurse(n, e)}
+                        >
+                          <FiTrash2 size={15} aria-hidden />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
-          <div className="workforce-pagination-bar">
-          <div className="d-flex align-items-center gap-2" style={{ fontSize: 12.5, color: 'var(--kh-text-muted)' }}>
-            <span>Rows per page:</span>
-            <select value={rowsPerPage} onChange={e => { setRowsPerPage(Number(e.target.value)); setPage(1); }} className="workforce-pagination-select">
-              {ROWS_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
-            </select>
-            <span style={{ marginLeft: 8, fontWeight: 600, color: '#1c5b51' }}>Showing {startRow}–{endRow} of {sorted.length}</span>
+          <div className="patients-pagination-footer">
+            <div className="patients-pagination-summary">
+              <span>Showing</span>
+              <strong>{startRow}–{endRow}</strong>
+              <span>of</span>
+              <strong>{sorted.length}</strong>
+            </div>
+            <div className="d-flex gap-1 patients-pagination-actions">
+              {pgBtn(() => setPage(1), page === 1, <FiChevronsLeft size={14} />)}
+              {pgBtn(() => setPage((p) => p - 1), page === 1, <FiChevronLeft size={14} />)}
+              {Array.from({ length: totalPages }, (_, idx) => idx + 1).filter((p) => p === 1 || p === totalPages || Math.abs(p - page) <= 1).map((pNum, idx, arr) => {
+                const prev = arr[idx - 1];
+                const showEllipsis = prev && pNum - prev > 1;
+                return (
+                  <span key={pNum}>
+                    {showEllipsis && <span className="patients-pagination-ellipsis">…</span>}
+                    <button type="button" onClick={() => setPage(pNum)} className={`patients-page-number${page === pNum ? ' active' : ''}`}>{pNum}</button>
+                  </span>
+                );
+              })}
+              {pgBtn(() => setPage((p) => p + 1), page === totalPages, <FiChevronRight size={14} />)}
+              {pgBtn(() => setPage(totalPages), page === totalPages, <FiChevronsRight size={14} />)}
+            </div>
           </div>
-          <div className="d-flex gap-1 workforce-pagination-actions">
-            {pgBtn(() => setPage(1), page === 1, <FiChevronsLeft size={14} />)}
-            {pgBtn(() => setPage(p => p - 1), page === 1, <FiChevronLeft size={14} />)}
-            {Array.from({ length: totalPages }, (_, i) => i + 1).filter(p => p === 1 || p === totalPages || Math.abs(p - page) <= 1).map((p, idx, arr) => {
-              const prev = arr[idx - 1]; const showEllipsis = prev && p - prev > 1;
-              return (<span key={p}>{showEllipsis && <span style={{ padding: '6px 4px', fontSize: 12, color: 'var(--kh-text-muted)' }}>…</span>}<button onClick={() => setPage(p)} style={{ minWidth: 38, height: 38, padding: '0 14px', border: '1px solid #e6ebf1', borderRadius: 999, background: page === p ? '#145d52' : '#fff', color: page === p ? '#fff' : '#304353', cursor: 'pointer', fontSize: 12.5, fontWeight: page === p ? 700 : 500, boxShadow: page === p ? '0 12px 24px rgba(20, 93, 82, 0.18)' : '0 8px 16px rgba(15, 23, 42, 0.04)' }}>{p}</button></span>);
-            })}
-            {pgBtn(() => setPage(p => p + 1), page === totalPages, <FiChevronRight size={14} />)}
-            {pgBtn(() => setPage(totalPages), page === totalPages, <FiChevronsRight size={14} />)}
-          </div>
-        </div>
-      </div>
+        </motion.div>
       </div>
 
       {/* ── Delete Confirmation Modal ── */}
@@ -1111,6 +1302,87 @@ export default function Workforce() {
                 <FiTrash2 size={13} /> {deleting ? 'Deleting…' : 'Delete nurse'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Add New User Modal ── */}
+      {showAddUserModal && (
+        <div className="app-modal-overlay" role="presentation" onClick={closeAddUserModal}>
+          <div className="app-modal-dialog app-modal-dialog--md" role="dialog" aria-modal="true" aria-labelledby="add-user-title" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 520 }}>
+            <div className="app-modal-dialog__header">
+              <h2 id="add-user-title" className="app-modal-dialog__title">
+                {addUserSuccess ? 'User created' : 'Add new platform user'}
+              </h2>
+              <button type="button" className="app-modal-dialog__close" aria-label="Close" onClick={closeAddUserModal}>
+                <FiX size={20} strokeWidth={1.75} />
+              </button>
+            </div>
+            <div className="app-modal-dialog__body">
+              {addUserSuccess ? (
+                <div className="workforce-modal-success" style={{ padding: '24px 0' }}>
+                  <div className="workforce-modal-success__icon">
+                    <FiCheck size={28} style={{ color: '#fff', strokeWidth: 3 }} />
+                  </div>
+                  <div className="workforce-modal-success__title">User created successfully</div>
+                  <div className="workforce-modal-success__text">
+                    <strong>{addUserSuccess.name}</strong> can now sign in with the email and initial password you set.
+                  </div>
+                  <button type="button" className="btn btn-primary workforce-modal-primary-btn" onClick={closeAddUserModal}>Done</button>
+                </div>
+              ) : (
+                <>
+                  {addUserError && (
+                    <div className="workforce-modal-alert" style={{ marginBottom: 16 }}>
+                      <FiAlertCircle size={15} /> {addUserError}
+                    </div>
+                  )}
+                  <div className="row g-3">
+                    <div className="col-md-6">
+                      <label className="form-label" style={{ fontSize: 12, fontWeight: 700, color: '#415463', marginBottom: 7 }}>First name *</label>
+                      <input className="form-control form-control-kh workforce-form-input" value={addUserForm.firstName} onChange={(e) => setAddUserField('firstName', e.target.value)} placeholder="First name" autoComplete="given-name" />
+                    </div>
+                    <div className="col-md-6">
+                      <label className="form-label" style={{ fontSize: 12, fontWeight: 700, color: '#415463', marginBottom: 7 }}>Last name *</label>
+                      <input className="form-control form-control-kh workforce-form-input" value={addUserForm.lastName} onChange={(e) => setAddUserField('lastName', e.target.value)} placeholder="Last name" autoComplete="family-name" />
+                    </div>
+                    <div className="col-md-6">
+                      <label className="form-label" style={{ fontSize: 12, fontWeight: 700, color: '#415463', marginBottom: 7 }}>Email *</label>
+                      <input type="email" className="form-control form-control-kh workforce-form-input" value={addUserForm.email} onChange={(e) => setAddUserField('email', e.target.value)} placeholder="user@agency.com" autoComplete="email" />
+                    </div>
+                    <div className="col-md-6">
+                      <label className="form-label" style={{ fontSize: 12, fontWeight: 700, color: '#415463', marginBottom: 7 }}>Phone *</label>
+                      <input type="tel" className="form-control form-control-kh workforce-form-input" value={addUserForm.phone} onChange={(e) => setAddUserField('phone', e.target.value)} placeholder="0240000000" autoComplete="tel" />
+                    </div>
+                    <div className="col-12">
+                      <label className="form-label" style={{ fontSize: 12, fontWeight: 700, color: '#415463', marginBottom: 7 }}>Role *</label>
+                      <select className="form-select form-control-kh workforce-form-input" value={addUserForm.role} onChange={(e) => setAddUserField('role', e.target.value)}>
+                        {PLATFORM_USER_ROLE_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="col-md-6">
+                      <label className="form-label" style={{ fontSize: 12, fontWeight: 700, color: '#415463', marginBottom: 7 }}>Initial password *</label>
+                      <input type="password" className="form-control form-control-kh workforce-form-input" value={addUserForm.password} onChange={(e) => setAddUserField('password', e.target.value)} placeholder="Min 8 characters" autoComplete="new-password" />
+                    </div>
+                    <div className="col-md-6">
+                      <label className="form-label" style={{ fontSize: 12, fontWeight: 700, color: '#415463', marginBottom: 7 }}>Confirm password *</label>
+                      <input type="password" className="form-control form-control-kh workforce-form-input" value={addUserForm.confirmPassword} onChange={(e) => setAddUserField('confirmPassword', e.target.value)} placeholder="Repeat password" autoComplete="new-password" />
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+            {!addUserSuccess && (
+              <div className="app-modal-dialog__footer">
+                <button type="button" className="app-modal-dialog__btn-cancel" onClick={closeAddUserModal}>Cancel</button>
+                <button type="button" className="btn btn-primary workforce-modal-primary-btn" disabled={addUserLoading} onClick={handleAddUser} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <FiUserPlus size={14} />
+                  {addUserLoading ? 'Adding…' : 'Add user'}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1192,6 +1464,6 @@ export default function Workforce() {
           </div>
         </div>
       )}
-    </div>
+    </motion.div>
   );
 }

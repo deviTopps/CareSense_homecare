@@ -1,20 +1,30 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import {
-  FiUser,
   FiLock,
   FiSave,
   FiTrash2,
   FiAlertTriangle,
   FiX,
-  FiUserPlus,
   FiRefreshCw,
   FiUsers,
   FiCheckCircle,
   FiSettings,
+  FiChevronLeft,
+  FiChevronRight,
+  FiChevronsLeft,
+  FiChevronsRight,
+  FiSearch,
+  FiCreditCard,
+  FiEye,
+  FiBell,
+  FiGrid,
+  FiShield,
 } from '../icons/hugeicons-feather';
-import { getUser, changePassword, createPlatformUser, fetchAuthUsers } from '../api';
+import { getUser, changePassword, fetchAuthUsers } from '../api';
 
 const fontStack = "'Poppins', -apple-system, BlinkMacSystemFont, sans-serif'";
+
+const WORKSPACE_USERS_PER_PAGE = 10;
 
 async function parseJsonResponse(res) {
   const text = await res.text();
@@ -88,77 +98,67 @@ function getInitials(user) {
   return '?';
 }
 
-function AccountCard({ title, icon, children, footer, className = '' }) {
+const SETTINGS_NAV = [
+  { key: 'account', tabKey: 'forms', label: 'Account settings', Icon: FiSettings },
+  { key: 'billing', tabKey: 'billing', label: 'Billing & Subscription', Icon: FiCreditCard },
+  { key: 'appearance', tabKey: 'appearance', label: 'Appearance', Icon: FiEye },
+  { key: 'notifications', tabKey: 'notifications', label: 'Notifications', Icon: FiBell },
+  { key: 'integrations', tabKey: 'integrations', label: 'Integrations', Icon: FiGrid },
+  { key: 'privacy', tabKey: 'privacy', label: 'Privacy & Data', Icon: FiShield },
+  { key: 'workspace', tabKey: 'users', label: 'Workspace users', Icon: FiUsers },
+];
+
+function SettingsSection({ id, title, subtitle, children, className = '' }) {
   return (
-    <section className={['account-card', className].filter(Boolean).join(' ')}>
-      <header className="account-card__head">
-        <span className="account-card__icon" aria-hidden>
-          {icon}
-        </span>
-        <h2 className="account-card__title">{title}</h2>
-      </header>
-      <div className="account-card__body">{children}</div>
-      {footer ? <div className="account-card__footer">{footer}</div> : null}
+    <section id={id} className={['settings-section-v2', className].filter(Boolean).join(' ')}>
+      <div className="settings-section-v2__head">
+        <h2 className="settings-section-v2__title">{title}</h2>
+        {subtitle ? <p className="settings-section-v2__subtitle">{subtitle}</p> : null}
+      </div>
+      <div className="settings-section-v2__body">{children}</div>
     </section>
   );
 }
 
-function Field({
-  label,
-  type = 'text',
-  defaultValue,
-  value,
-  onChange,
-  placeholder,
-  disabled,
-  id,
-  name,
-  autoComplete,
+function SettingsFormRow({
+  label, htmlFor, children, description,
 }) {
-  const controlled = value !== undefined;
-  const resolvedAuto =
-    autoComplete ?? (type === 'password' ? 'current-password' : undefined);
   return (
-    <div className="account-field">
-      <label className="account-field__label" htmlFor={id}>
-        {label}
-      </label>
-      <input
-        id={id}
-        name={name}
-        type={type}
-        className="account-input"
-        {...(controlled ? { value, onChange } : { defaultValue })}
-        placeholder={placeholder}
-        disabled={disabled}
-        autoComplete={resolvedAuto || undefined}
-      />
+    <div className="settings-form-row-v2">
+      <div className="settings-form-row-v2__label-wrap">
+        {htmlFor ? (
+          <label className="settings-form-row-v2__label" htmlFor={htmlFor}>{label}</label>
+        ) : (
+          <span className="settings-form-row-v2__label">{label}</span>
+        )}
+        {description ? <p className="settings-form-row-v2__desc">{description}</p> : null}
+      </div>
+      <div className="settings-form-row-v2__control">{children}</div>
     </div>
   );
 }
 
-const AUTH_USER_ROLE_OPTIONS = [
-  { value: 'staff', label: 'Staff' },
-  { value: 'manager', label: 'Manager' },
-  { value: 'administrator', label: 'Administrator' },
-  { value: 'accountant', label: 'Accountant' },
-  { value: 'hr', label: 'HR' },
-];
-
-function SelectField({ label, id, value, onChange, children }) {
+function SettingsToggleRow({
+  label,
+  description,
+  checked,
+  onChange,
+  htmlId,
+}) {
   return (
-    <div className="account-field">
-      <label className="account-field__label" htmlFor={id}>
-        {label}
-      </label>
-      <select
-        id={id}
-        className="account-input account-select"
-        value={value}
-        onChange={onChange}
-      >
-        {children}
-      </select>
+    <div className="settings-form-row-v2 settings-form-row-v2--toggle">
+      <div className="settings-form-row-v2__label-wrap">
+        <span className="settings-form-row-v2__label" id={htmlId ? `${htmlId}-label` : undefined}>{label}</span>
+        {description ? <p className="settings-form-row-v2__desc">{description}</p> : null}
+      </div>
+      <button
+        type="button"
+        role="switch"
+        className={`settings-switch-v2${checked ? ' is-on' : ''}`}
+        aria-checked={checked}
+        aria-labelledby={htmlId ? `${htmlId}-label` : undefined}
+        onClick={() => onChange(!checked)}
+      />
     </div>
   );
 }
@@ -179,21 +179,14 @@ export default function Account() {
   const [passwordError, setPasswordError] = useState('');
   const [passwordSuccess, setPasswordSuccess] = useState('');
 
-  const [inviteForm, setInviteForm] = useState({
-    firstName: '',
-    lastName: '',
-    email: '',
-    phone: '',
-    role: 'staff',
-    password: '',
-    confirmPassword: '',
-  });
-  const [inviteLoading, setInviteLoading] = useState(false);
-  const [inviteError, setInviteError] = useState('');
   const [userCreatedModal, setUserCreatedModal] = useState(null);
   const [workspaceUsers, setWorkspaceUsers] = useState([]);
   const [workspaceUsersLoading, setWorkspaceUsersLoading] = useState(false);
   const [workspaceUsersError, setWorkspaceUsersError] = useState('');
+  const [workspaceUsersPage, setWorkspaceUsersPage] = useState(1);
+  const [workspaceUsersSearch, setWorkspaceUsersSearch] = useState('');
+  const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
+  const [loginAlertEnabled, setLoginAlertEnabled] = useState(true);
   const [settingsTab, setSettingsTab] = useState('forms');
 
   const onAuthUnauthorized = useCallback(() => {
@@ -220,6 +213,7 @@ export default function Account() {
         deduped.push(r);
       }
       setWorkspaceUsers(deduped);
+      setWorkspaceUsersPage(1);
     } catch (e) {
       if (e.message !== 'Session expired. Please log in again.') {
         setWorkspaceUsersError(e.message || 'Could not load users.');
@@ -234,6 +228,50 @@ export default function Account() {
     if (settingsTab !== 'users') return;
     loadWorkspaceUsers();
   }, [settingsTab, loadWorkspaceUsers]);
+
+  const filteredWorkspaceUsers = useMemo(() => {
+    const q = workspaceUsersSearch.trim().toLowerCase();
+    if (!q) return workspaceUsers;
+    return workspaceUsers.filter((row) => (
+      row.name.toLowerCase().includes(q)
+      || row.email.toLowerCase().includes(q)
+      || row.phone.toLowerCase().includes(q)
+      || String(row.role).toLowerCase().includes(q)
+      || String(row.id).toLowerCase().includes(q)
+    ));
+  }, [workspaceUsers, workspaceUsersSearch]);
+
+  useEffect(() => {
+    setWorkspaceUsersPage(1);
+  }, [workspaceUsersSearch]);
+
+  const workspaceUsersTotalPages = Math.max(1, Math.ceil(filteredWorkspaceUsers.length / WORKSPACE_USERS_PER_PAGE));
+  const workspaceUsersStartRow =
+    filteredWorkspaceUsers.length === 0 ? 0 : (workspaceUsersPage - 1) * WORKSPACE_USERS_PER_PAGE + 1;
+  const workspaceUsersEndRow = Math.min(
+    workspaceUsersPage * WORKSPACE_USERS_PER_PAGE,
+    filteredWorkspaceUsers.length,
+  );
+  const pagedWorkspaceUsers = useMemo(
+    () =>
+      filteredWorkspaceUsers.slice(
+        (workspaceUsersPage - 1) * WORKSPACE_USERS_PER_PAGE,
+        workspaceUsersPage * WORKSPACE_USERS_PER_PAGE,
+      ),
+    [filteredWorkspaceUsers, workspaceUsersPage],
+  );
+
+  const workspaceUsersPgBtn = (onClick, disabled, children) => (
+    <button type="button" onClick={onClick} disabled={disabled} className="patients-page-btn">
+      {children}
+    </button>
+  );
+
+  useEffect(() => {
+    if (workspaceUsersPage > workspaceUsersTotalPages) {
+      setWorkspaceUsersPage(workspaceUsersTotalPages);
+    }
+  }, [workspaceUsersPage, workspaceUsersTotalPages]);
 
   const setPwd = (key, v) => {
     setPasswordForm((prev) => ({ ...prev, [key]: v }));
@@ -279,378 +317,359 @@ export default function Account() {
     }
   };
 
-  const setInviteField = (key, v) => setInviteForm((prev) => ({ ...prev, [key]: v }));
+  const profileDisplayName = [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim() || '—';
 
-  const handleInviteUser = async () => {
-    setInviteError('');
-    setUserCreatedModal(null);
-    const {
-      firstName, lastName, email, phone, role, password, confirmPassword,
-    } = inviteForm;
-    const fn = firstName.trim();
-    const ln = lastName.trim();
-    const em = email.trim();
-    const phoneTrim = phone.trim();
-    const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em);
-    if (!fn || !ln) {
-      setInviteError('Please enter first and last name.');
-      return;
-    }
-    if (!emailOk) {
-      setInviteError('Please enter a valid email address.');
-      return;
-    }
-    if (!phoneTrim) {
-      setInviteError('Please enter a phone number for the new user.');
-      return;
-    }
-    if (!password.trim()) {
-      setInviteError('Please set an initial password for the new user.');
-      return;
-    }
-    if (password.length < 8) {
-      setInviteError('Password must be at least 8 characters.');
-      return;
-    }
-    if (password !== confirmPassword) {
-      setInviteError('Password and confirmation do not match.');
-      return;
-    }
-    setInviteLoading(true);
-    try {
-      const res = await createPlatformUser(
-        {
-          firstName: fn,
-          lastName: ln,
-          email: em,
-          phone: phoneTrim,
-          role,
-          password,
-        },
-        onAuthUnauthorized,
-      );
-      const data = await parseJsonResponse(res);
-      if (!res.ok) {
-        throw new Error(data.error || data.message || 'Could not add this user.');
-      }
-      await loadWorkspaceUsers();
-      setInviteForm((prev) => ({
-        firstName: '',
-        lastName: '',
-        email: '',
-        phone: '',
-        role: prev.role,
-        password: '',
-        confirmPassword: '',
-      }));
-      setUserCreatedModal({ name: `${fn} ${ln}`.trim() });
-    } catch (err) {
-      if (err.message !== 'Session expired. Please log in again.') {
-        setInviteError(err.message || 'Could not add user.');
-      }
-    } finally {
-      setInviteLoading(false);
-    }
-  };
+  const scrollToProfileSection = useCallback(() => {
+    document.getElementById('settings-section-profile')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
 
   return (
-    <div className="page-wrapper account-settings-page" style={{ fontFamily: fontStack }}>
-      <header className="account-settings-hero">
-        <div className="account-settings-hero__identity">
-          <div className="account-settings-avatar" aria-hidden>
-            <span>{initials}</span>
-          </div>
+    <div className="page-wrapper account-settings-page account-settings-page--v2" style={{ fontFamily: fontStack }}>
+      <div className="settings-shell-v2">
+        <header className="settings-shell-v2__header">
           <div>
-            <p className="account-settings-eyebrow">Your account</p>
-            <h1 className="account-settings-title">Account settings</h1>
-            <p className="account-settings-lead">
-              Account &amp; team covers your profile, password, and creating users. Workspace users lists everyone
-              from the server.
+            <h1 className="settings-shell-v2__title">Settings</h1>
+            <p className="settings-shell-v2__subtitle">
+              {user?.email || 'Signed in'}
+              {user?.role ? ` · ${user.role}` : ''}
             </p>
           </div>
-        </div>
-        <div className="account-settings-hero__meta">
-          <span className="account-settings-pill">{user?.email || 'Signed in'}</span>
-          {user?.role ? (
-            <span className="account-settings-pill account-settings-pill--muted">{user.role}</span>
-          ) : null}
-        </div>
-      </header>
+          <button type="button" className="settings-shell-v2__save-btn" onClick={scrollToProfileSection}>
+            <FiSave size={16} strokeWidth={2} aria-hidden />
+            Save changes
+          </button>
+        </header>
 
-      <div className="account-settings-tabs-shell">
-        <div className="account-settings-tablist" role="tablist" aria-label="Settings sections">
-          <button
-            type="button"
-            className={`account-settings-tab${settingsTab === 'forms' ? ' account-settings-tab--active' : ''}`}
-            role="tab"
-            id="account-tab-forms"
-            aria-selected={settingsTab === 'forms'}
-            aria-controls="account-panel-forms"
-            tabIndex={settingsTab === 'forms' ? 0 : -1}
-            onClick={() => setSettingsTab('forms')}
-          >
-            <FiSettings size={16} strokeWidth={2} aria-hidden />
-            Account &amp; team
-          </button>
-          <button
-            type="button"
-            className={`account-settings-tab${settingsTab === 'users' ? ' account-settings-tab--active' : ''}`}
-            role="tab"
-            id="account-tab-users"
-            aria-selected={settingsTab === 'users'}
-            aria-controls="account-panel-users"
-            tabIndex={settingsTab === 'users' ? 0 : -1}
-            onClick={() => setSettingsTab('users')}
-          >
-            <FiUsers size={16} strokeWidth={2} aria-hidden />
-            Workspace users
-          </button>
+        <div className="settings-nav-v2" role="tablist" aria-label="Settings sections">
+          {SETTINGS_NAV.map((item) => {
+            const isActive = settingsTab === item.tabKey;
+            return (
+              <button
+                key={item.key}
+                type="button"
+                role="tab"
+                id={`settings-tab-${item.key}`}
+                className={`settings-nav-v2__tab${isActive ? ' is-active' : ''}`}
+                aria-selected={isActive}
+                aria-controls={`account-panel-${item.tabKey}`}
+                tabIndex={isActive ? 0 : -1}
+                onClick={() => setSettingsTab(item.tabKey)}
+              >
+                <item.Icon size={18} strokeWidth={1.75} aria-hidden />
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
         </div>
 
         <div
           id="account-panel-forms"
           role="tabpanel"
-          aria-labelledby="account-tab-forms"
+          aria-labelledby="settings-tab-account"
           hidden={settingsTab !== 'forms'}
-          className="account-settings-stack"
+          className="settings-shell-v2__panel"
         >
-        <AccountCard
-          title="Profile"
-          icon={<FiUser size={18} strokeWidth={2} />}
-          footer={
-            <button type="button" className="btn btn-sm btn-primary account-settings-btn-primary">
-              <FiSave size={15} strokeWidth={2} />
-              Save changes
-            </button>
-          }
-        >
-          <div className="row g-3">
-            <div className="col-sm-6">
-              <Field label="First name" defaultValue={user?.firstName} placeholder="First name" />
-            </div>
-            <div className="col-sm-6">
-              <Field label="Last name" defaultValue={user?.lastName} placeholder="Last name" />
-            </div>
-            <div className="col-sm-6">
-              <Field label="Email" type="email" defaultValue={user?.email} placeholder="you@agency.com" />
-            </div>
-            <div className="col-sm-6">
-              <Field label="Phone" type="tel" defaultValue={user?.phone} placeholder="+233 00 000 0000" />
-            </div>
-            <div className="col-12">
-              <Field label="Role" defaultValue={user?.role} placeholder="Role" disabled />
-            </div>
-          </div>
-        </AccountCard>
-
-        <AccountCard
-          title="Password"
-          icon={<FiLock size={18} strokeWidth={2} />}
-          footer={
-            <button
-              type="button"
-              className="btn btn-sm btn-primary account-settings-btn-primary"
-              disabled={passwordLoading}
-              onClick={handleChangePassword}
+          <div className="settings-shell-v2__content">
+            <SettingsSection
+              id="settings-section-profile"
+              title="Profile information"
+              subtitle="Manage your name, contact details, and how you appear to your team."
             >
-              <FiLock size={15} strokeWidth={2} />
-              {passwordLoading ? 'Updating…' : 'Update password'}
-            </button>
-          }
-        >
-          <div className="row g-3">
-            <div className="col-12">
+              <div className="settings-profile-avatar-row">
+                <div className="settings-profile-avatar-v2" aria-hidden>
+                  <span>{initials}</span>
+                </div>
+                <div className="settings-profile-avatar-actions">
+                  <button type="button" className="settings-link-btn-v2 settings-link-btn-v2--muted">
+                    Delete
+                  </button>
+                  <button type="button" className="settings-link-btn-v2 settings-link-btn-v2--accent">
+                    Update
+                  </button>
+                </div>
+              </div>
+
+              <SettingsFormRow label="Name" htmlFor="settings-profile-fullname">
+                <input
+                  id="settings-profile-fullname"
+                  className="settings-input-v2"
+                  type="text"
+                  defaultValue={profileDisplayName === '—' ? '' : profileDisplayName}
+                  placeholder="Full name"
+                  autoComplete="name"
+                />
+              </SettingsFormRow>
+              <SettingsFormRow label="Email" htmlFor="settings-profile-email">
+                <input
+                  id="settings-profile-email"
+                  className="settings-input-v2"
+                  type="email"
+                  defaultValue={user?.email || ''}
+                  placeholder="you@agency.com"
+                  autoComplete="email"
+                />
+              </SettingsFormRow>
+              <SettingsFormRow label="Phone number" htmlFor="settings-profile-phone">
+                <input
+                  id="settings-profile-phone"
+                  className="settings-input-v2"
+                  type="tel"
+                  defaultValue={user?.phone || ''}
+                  placeholder="+233 00 000 0000"
+                  autoComplete="tel"
+                />
+              </SettingsFormRow>
+              <SettingsFormRow label="Role" htmlFor="settings-profile-role">
+                <input
+                  id="settings-profile-role"
+                  className="settings-input-v2"
+                  type="text"
+                  defaultValue={user?.role || ''}
+                  placeholder="Role"
+                  disabled
+                />
+              </SettingsFormRow>
+            </SettingsSection>
+
+            <SettingsSection
+              title="Security"
+              subtitle="Extra safeguards for your workspace sign-in (preferences are stored on this device until the API is connected)."
+            >
+              <SettingsToggleRow
+                htmlId="settings-2fa"
+                label="Two-factor authentication"
+                description="Require a second step when signing in from new devices."
+                checked={twoFactorEnabled}
+                onChange={setTwoFactorEnabled}
+              />
+              <SettingsToggleRow
+                htmlId="settings-login-alert"
+                label="Login alert notification"
+                description="Get notified when a new sign-in is detected on your account."
+                checked={loginAlertEnabled}
+                onChange={setLoginAlertEnabled}
+              />
+            </SettingsSection>
+
+            <SettingsSection
+              title="Password management"
+              subtitle="Update the password you use to sign in to CareSense."
+            >
               <div
-                className="account-password-instructions"
+                className="settings-password-note"
                 id="account-password-instructions"
                 role="note"
               >
-                <p className="account-password-instructions__title">Password requirements</p>
-                <ul className="account-password-instructions__list">
+                <p className="settings-password-note__title">Password requirements</p>
+                <ul className="settings-password-note__list">
                   <li>At least 8 characters</li>
-                  <li>Include a mix of letters, numbers, or symbols where possible</li>
+                  <li>Use a mix of letters, numbers, or symbols where possible</li>
                   <li>New password and confirmation must match</li>
                 </ul>
               </div>
-            </div>
-            {passwordError ? (
-              <div className="col-12">
-                <div className="account-settings-alert account-settings-alert--error" role="alert">
+              {passwordError ? (
+                <div className="account-settings-alert account-settings-alert--error mb-3" role="alert">
                   {passwordError}
                 </div>
-              </div>
-            ) : null}
-            {passwordSuccess ? (
-              <div className="col-12">
-                <div className="account-settings-alert account-settings-alert--success" role="status">
+              ) : null}
+              {passwordSuccess ? (
+                <div className="account-settings-alert account-settings-alert--success mb-3" role="status">
                   {passwordSuccess}
                 </div>
+              ) : null}
+              <SettingsFormRow label="Current password" htmlFor="account-current-password">
+                <input
+                  id="account-current-password"
+                  className="settings-input-v2"
+                  type="password"
+                  placeholder="••••••••"
+                  value={passwordForm.current}
+                  onChange={(e) => setPwd('current', e.target.value)}
+                  autoComplete="current-password"
+                />
+              </SettingsFormRow>
+              <SettingsFormRow label="New password" htmlFor="account-new-password">
+                <input
+                  id="account-new-password"
+                  className="settings-input-v2"
+                  type="password"
+                  placeholder="••••••••"
+                  value={passwordForm.next}
+                  onChange={(e) => setPwd('next', e.target.value)}
+                  autoComplete="new-password"
+                />
+              </SettingsFormRow>
+              <SettingsFormRow label="Confirm new password" htmlFor="account-confirm-password">
+                <input
+                  id="account-confirm-password"
+                  className="settings-input-v2"
+                  type="password"
+                  placeholder="••••••••"
+                  value={passwordForm.confirm}
+                  onChange={(e) => setPwd('confirm', e.target.value)}
+                  autoComplete="new-password"
+                />
+              </SettingsFormRow>
+              <div className="settings-section-v2__actions">
+                <button
+                  type="button"
+                  className="settings-shell-v2__action-primary"
+                  disabled={passwordLoading}
+                  onClick={handleChangePassword}
+                >
+                  <FiLock size={16} strokeWidth={2} aria-hidden />
+                  {passwordLoading ? 'Updating…' : 'Update password'}
+                </button>
               </div>
-            ) : null}
-            <div className="col-12">
-              <Field
-                id="account-current-password"
-                label="Current password"
-                type="password"
-                placeholder="••••••••"
-                value={passwordForm.current}
-                onChange={(e) => setPwd('current', e.target.value)}
-                autoComplete="current-password"
-              />
-            </div>
-            <div className="col-sm-6">
-              <Field
-                id="account-new-password"
-                label="New password"
-                type="password"
-                placeholder="••••••••"
-                value={passwordForm.next}
-                onChange={(e) => setPwd('next', e.target.value)}
-                autoComplete="new-password"
-              />
-            </div>
-            <div className="col-sm-6">
-              <Field
-                id="account-confirm-password"
-                label="Confirm new password"
-                type="password"
-                placeholder="••••••••"
-                value={passwordForm.confirm}
-                onChange={(e) => setPwd('confirm', e.target.value)}
-                autoComplete="new-password"
-              />
-            </div>
-          </div>
-        </AccountCard>
+            </SettingsSection>
 
-        <AccountCard
-          className="account-card--span-full"
-          title="Platform users"
-          icon={<FiUserPlus size={18} strokeWidth={2} />}
-          footer={
-            <button
-              type="button"
-              className="btn btn-sm btn-primary account-settings-btn-primary"
-              disabled={inviteLoading}
-              onClick={handleInviteUser}
-            >
-              <FiUserPlus size={15} strokeWidth={2} />
-              {inviteLoading ? 'Adding…' : 'Add user'}
-            </button>
-          }
-        >
-          <p className="account-team-intro">
-            Create staff and other users via the workspace API. New users receive the <strong>email</strong>,{' '}
-            <strong>initial password</strong>, and <strong>role</strong> you define here (they can change their password
-            after sign-in).
-          </p>
-          <div className="row g-3">
-            {inviteError ? (
-              <div className="col-12">
-                <div className="account-settings-alert account-settings-alert--error" role="alert">
-                  {inviteError}
-                </div>
-              </div>
-            ) : null}
-            <div className="col-sm-6">
-              <Field
-                id="invite-first-name"
-                label="First name"
-                value={inviteForm.firstName}
-                onChange={(e) => setInviteField('firstName', e.target.value)}
-                placeholder="First name"
-                autoComplete="given-name"
-              />
-            </div>
-            <div className="col-sm-6">
-              <Field
-                id="invite-last-name"
-                label="Last name"
-                value={inviteForm.lastName}
-                onChange={(e) => setInviteField('lastName', e.target.value)}
-                placeholder="Last name"
-                autoComplete="family-name"
-              />
-            </div>
-            <div className="col-sm-6">
-              <Field
-                id="invite-email"
-                label="Email"
-                type="email"
-                value={inviteForm.email}
-                onChange={(e) => setInviteField('email', e.target.value)}
-                placeholder="colleague@agency.com"
-                autoComplete="email"
-              />
-            </div>
-            <div className="col-sm-6">
-              <Field
-                id="invite-phone"
-                label="Phone"
-                type="tel"
-                value={inviteForm.phone}
-                onChange={(e) => setInviteField('phone', e.target.value)}
-                placeholder="0240000000"
-                autoComplete="tel"
-              />
-            </div>
-            <div className="col-sm-6">
-              <SelectField
-                label="Role"
-                id="invite-role"
-                value={inviteForm.role}
-                onChange={(e) => setInviteField('role', e.target.value)}
-              >
-                {AUTH_USER_ROLE_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </SelectField>
-            </div>
-            <div className="col-sm-6">
-              <Field
-                id="invite-password"
-                label="Initial password"
-                type="password"
-                value={inviteForm.password}
-                onChange={(e) => setInviteField('password', e.target.value)}
-                placeholder="StrongPass123"
-                autoComplete="new-password"
-              />
-            </div>
-            <div className="col-sm-6">
-              <Field
-                id="invite-confirm-password"
-                label="Confirm password"
-                type="password"
-                value={inviteForm.confirmPassword}
-                onChange={(e) => setInviteField('confirmPassword', e.target.value)}
-                placeholder="Repeat password"
-                autoComplete="new-password"
-              />
-            </div>
           </div>
-        </AccountCard>
         </div>
 
+        {/* ── Billing tab ── */}
+        <div
+          id="account-panel-billing"
+          role="tabpanel"
+          aria-labelledby="settings-tab-billing"
+          hidden={settingsTab !== 'billing'}
+          className="settings-shell-v2__panel"
+        >
+          <div className="settings-shell-v2__content">
+            <SettingsSection title="Plan & subscription" subtitle="View your current plan and manage your subscription.">
+              <SettingsFormRow label="Current plan">
+                <div className="settings-plan-badge">Free</div>
+              </SettingsFormRow>
+              <SettingsFormRow label="Billing cycle">
+                <span className="settings-meta-text">Monthly</span>
+              </SettingsFormRow>
+              <SettingsFormRow label="Next invoice">
+                <span className="settings-meta-text">—</span>
+              </SettingsFormRow>
+            </SettingsSection>
+            <SettingsSection title="Payment method" subtitle="Add or update your payment details.">
+              <div className="settings-empty-state">
+                <FiCreditCard size={32} strokeWidth={1.5} />
+                <p>No payment method on file.</p>
+                <button type="button" className="settings-shell-v2__action-primary">Add payment method</button>
+              </div>
+            </SettingsSection>
+          </div>
+        </div>
+
+        {/* ── Appearance tab ── */}
+        <div
+          id="account-panel-appearance"
+          role="tabpanel"
+          aria-labelledby="settings-tab-appearance"
+          hidden={settingsTab !== 'appearance'}
+          className="settings-shell-v2__panel"
+        >
+          <div className="settings-shell-v2__content">
+            <SettingsSection title="Theme" subtitle="Choose how CareSense looks for you.">
+              <SettingsFormRow label="Color theme" htmlFor="settings-theme">
+                <select id="settings-theme" className="settings-select-v2" defaultValue="system">
+                  <option value="light">Light</option>
+                  <option value="dark">Dark</option>
+                  <option value="system">System default</option>
+                </select>
+              </SettingsFormRow>
+            </SettingsSection>
+            <SettingsSection title="Display" subtitle="Adjust layout and density preferences.">
+              <SettingsToggleRow
+                htmlId="settings-compact"
+                label="Compact mode"
+                description="Reduce spacing and padding across the interface."
+                checked={false}
+                onChange={() => {}}
+              />
+              <SettingsToggleRow
+                htmlId="settings-animations"
+                label="Reduce animations"
+                description="Minimise motion effects throughout the app."
+                checked={false}
+                onChange={() => {}}
+              />
+            </SettingsSection>
+          </div>
+        </div>
+
+        {/* ── Notifications tab ── */}
+        <div
+          id="account-panel-notifications"
+          role="tabpanel"
+          aria-labelledby="settings-tab-notifications"
+          hidden={settingsTab !== 'notifications'}
+          className="settings-shell-v2__panel"
+        >
+          <div className="settings-shell-v2__content">
+            <SettingsSection title="Email notifications" subtitle="Control which emails CareSense sends you.">
+              <SettingsToggleRow htmlId="notif-scheduling" label="Scheduling updates" description="When visits are created, modified, or cancelled." checked={true} onChange={() => {}} />
+              <SettingsToggleRow htmlId="notif-patient" label="Patient alerts" description="Critical patient status changes and vital alerts." checked={true} onChange={() => {}} />
+              <SettingsToggleRow htmlId="notif-billing" label="Billing reminders" description="Invoice and payment-related notifications." checked={false} onChange={() => {}} />
+              <SettingsToggleRow htmlId="notif-weekly" label="Weekly summary" description="A digest of key metrics delivered every Monday." checked={true} onChange={() => {}} />
+            </SettingsSection>
+            <SettingsSection title="Push notifications" subtitle="Browser and mobile push alerts.">
+              <SettingsToggleRow htmlId="notif-push-enabled" label="Enable push notifications" description="Receive real-time alerts in your browser." checked={false} onChange={() => {}} />
+            </SettingsSection>
+          </div>
+        </div>
+
+        {/* ── Integrations tab ── */}
+        <div
+          id="account-panel-integrations"
+          role="tabpanel"
+          aria-labelledby="settings-tab-integrations"
+          hidden={settingsTab !== 'integrations'}
+          className="settings-shell-v2__panel"
+        >
+          <div className="settings-shell-v2__content">
+            <SettingsSection title="Connected services" subtitle="Manage third-party integrations with your workspace.">
+              <div className="settings-empty-state">
+                <FiGrid size={32} strokeWidth={1.5} />
+                <p>No integrations connected yet.</p>
+                <button type="button" className="settings-shell-v2__action-primary">Browse integrations</button>
+              </div>
+            </SettingsSection>
+          </div>
+        </div>
+
+        {/* ── Privacy & Data tab ── */}
+        <div
+          id="account-panel-privacy"
+          role="tabpanel"
+          aria-labelledby="settings-tab-privacy"
+          hidden={settingsTab !== 'privacy'}
+          className="settings-shell-v2__panel"
+        >
+          <div className="settings-shell-v2__content">
+            <SettingsSection title="Data management" subtitle="Control how your data is stored and shared.">
+              <SettingsToggleRow htmlId="privacy-analytics" label="Usage analytics" description="Help us improve CareSense by sending anonymous usage data." checked={true} onChange={() => {}} />
+              <SettingsToggleRow htmlId="privacy-crash" label="Crash reports" description="Automatically send error reports to help us fix bugs." checked={true} onChange={() => {}} />
+            </SettingsSection>
+            <SettingsSection title="Data export" subtitle="Download a copy of your workspace data.">
+              <div className="settings-empty-state">
+                <FiShield size={32} strokeWidth={1.5} />
+                <p>Request a full export of your organisation data in CSV format.</p>
+                <button type="button" className="settings-shell-v2__action-primary">Request data export</button>
+              </div>
+            </SettingsSection>
+          </div>
+        </div>
+
+        {/* ── Workspace users tab ── */}
         <div
           id="account-panel-users"
           role="tabpanel"
-          aria-labelledby="account-tab-users"
+          aria-labelledby="settings-tab-workspace"
           hidden={settingsTab !== 'users'}
-          className="account-settings-stack account-settings-stack--users-tab"
+          className="settings-shell-v2__panel"
         >
-        <AccountCard
-          className="account-card--span-full"
-          title="Workspace users"
-          icon={<FiUsers size={18} strokeWidth={2} />}
-        >
-          <div className="account-users-toolbar mb-3 d-flex flex-wrap align-items-center justify-content-between gap-2">
-            <p className="account-team-intro mb-0">
-              Everyone in your workspace from <strong>GET /auth/users</strong>. Use Refresh after adding users on the
-              Account &amp; team tab.
-            </p>
+          <div className="settings-shell-v2__content">
+            <SettingsSection
+              title="Workspace users"
+              subtitle="View and manage all users in your workspace."
+            >
+          <div className="account-users-toolbar mb-3 d-flex flex-wrap align-items-center justify-content-end gap-2">
             <button
               type="button"
               className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
@@ -675,10 +694,31 @@ export default function Account() {
           ) : null}
           {!workspaceUsersLoading && workspaceUsers.length === 0 && !workspaceUsersError ? (
             <p className="text-muted small mb-0">
-              No users returned yet. Tap Refresh or add someone under Account &amp; team.
+              No users found. Tap Refresh or add someone under Account settings.
             </p>
           ) : null}
           {workspaceUsers.length > 0 ? (
+            <div className="patients-searchbox account-users-search mb-3">
+              <FiSearch className="patients-searchbox__icon" size={16} aria-hidden />
+              <input
+                type="search"
+                className="form-control form-control-kh patients-searchbox__input"
+                placeholder="Search by name, email, phone, or role"
+                value={workspaceUsersSearch}
+                onChange={(e) => setWorkspaceUsersSearch(e.target.value)}
+                aria-label="Search workspace users"
+                autoComplete="off"
+              />
+            </div>
+          ) : null}
+          {!workspaceUsersLoading &&
+          workspaceUsers.length > 0 &&
+          filteredWorkspaceUsers.length === 0 &&
+          workspaceUsersSearch.trim() ? (
+            <p className="text-muted small mb-0">No users match your search. Try different keywords.</p>
+          ) : null}
+          {workspaceUsers.length > 0 && filteredWorkspaceUsers.length > 0 ? (
+            <>
             <div className="table-responsive account-users-table-wrap">
               <table className="table table-bordered table-hover align-middle mb-0 account-users-table">
                 <thead className="table-light">
@@ -691,7 +731,7 @@ export default function Account() {
                   </tr>
                 </thead>
                 <tbody>
-                  {workspaceUsers.map((row) => (
+                  {pagedWorkspaceUsers.map((row) => (
                     <tr key={row.id}>
                       <td className="fw-semibold">{row.name}</td>
                       <td className="text-break">{row.email}</td>
@@ -705,8 +745,58 @@ export default function Account() {
                 </tbody>
               </table>
             </div>
+            <div className="patients-pagination-footer account-users-pagination-footer">
+              <div className="patients-pagination-summary">
+                <span>Showing</span>
+                <strong>{workspaceUsersStartRow}–{workspaceUsersEndRow}</strong>
+                <span>of</span>
+                <strong>{filteredWorkspaceUsers.length}</strong>
+              </div>
+              <div className="d-flex gap-1 patients-pagination-actions flex-wrap">
+                {workspaceUsersPgBtn(
+                  () => setWorkspaceUsersPage(1),
+                  workspaceUsersPage === 1,
+                  <FiChevronsLeft size={14} />,
+                )}
+                {workspaceUsersPgBtn(
+                  () => setWorkspaceUsersPage((p) => p - 1),
+                  workspaceUsersPage === 1,
+                  <FiChevronLeft size={14} />,
+                )}
+                {Array.from({ length: workspaceUsersTotalPages }, (_, i) => i + 1)
+                  .filter((p) => p === 1 || p === workspaceUsersTotalPages || Math.abs(p - workspaceUsersPage) <= 1)
+                  .map((pNum, idx, arr) => {
+                    const prev = arr[idx - 1];
+                    const showEllipsis = prev && pNum - prev > 1;
+                    return (
+                      <span key={pNum}>
+                        {showEllipsis && <span className="patients-pagination-ellipsis">…</span>}
+                        <button
+                          type="button"
+                          onClick={() => setWorkspaceUsersPage(pNum)}
+                          className={`patients-page-number${workspaceUsersPage === pNum ? ' active' : ''}`}
+                        >
+                          {pNum}
+                        </button>
+                      </span>
+                    );
+                  })}
+                {workspaceUsersPgBtn(
+                  () => setWorkspaceUsersPage((p) => p + 1),
+                  workspaceUsersPage === workspaceUsersTotalPages,
+                  <FiChevronRight size={14} />,
+                )}
+                {workspaceUsersPgBtn(
+                  () => setWorkspaceUsersPage(workspaceUsersTotalPages),
+                  workspaceUsersPage === workspaceUsersTotalPages,
+                  <FiChevronsRight size={14} />,
+                )}
+              </div>
+            </div>
+            </>
           ) : null}
-        </AccountCard>
+            </SettingsSection>
+          </div>
         </div>
       </div>
 
@@ -721,7 +811,7 @@ export default function Account() {
           </div>
         </div>
         <div className="account-danger-card__body">
-          <div>
+            <div>
             <h3 className="account-danger-card__action-title">Delete account</h3>
             <p className="account-danger-card__action-desc">
               Permanently remove your account and associated access. This cannot be undone.

@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { isTokenValid, clearAuth, getUser } from './api';
 import Sidebar from './components/Sidebar';
 import Topbar from './components/Topbar';
+import useTheme from './hooks/useTheme';
 import Footer from './components/Footer';
 import Dashboard from './pages/Dashboard';
 import Scheduling from './pages/Scheduling';
@@ -119,8 +120,8 @@ function App() {
   }, [isAuthenticated, handleLogout]);
 
   const user = getUser();
+  const { theme, toggleTheme, isDark } = useTheme();
 
-  // Layout wrapper for authenticated pages
   const AuthLayout = ({ children }) => (
     <div
       className={`app-layout kh-bs-theme${sidebarCollapsed ? ' sidebar-collapsed' : ''}`}
@@ -135,6 +136,8 @@ function App() {
         onToggleCollapse={() => setSidebarCollapsed(prev => !prev)}
         onLogout={handleLogout}
         user={user}
+        isDark={isDark}
+        onToggleTheme={toggleTheme}
       />
       <div className={`main-content bg-base-200 text-base-content${sidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
         <Topbar

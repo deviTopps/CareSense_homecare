@@ -152,6 +152,8 @@ export default function Enquiries() {
   const [followUpSubmitting, setFollowUpSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
   const [deleteError, setDeleteError] = useState(null);
+  /** Row pending delete confirmation (modal). */
+  const [deleteConfirmTarget, setDeleteConfirmTarget] = useState(null);
 
   const loadEnquiries = useCallback(async () => {
     setError(null);
@@ -299,14 +301,26 @@ export default function Enquiries() {
     }
   };
 
-  const handleDeleteRow = async (row) => {
+  const openDeleteConfirm = (row) => {
     const id = getEnquiryRecordId(row);
     if (!id) {
       setDeleteError('This enquiry has no server id — refresh the list and try again.');
       return;
     }
-    const label = String(row.nameOfClient || '').trim() || 'this enquiry';
-    if (!window.confirm(`Delete enquiry for “${label}”? This cannot be undone.`)) return;
+    setDeleteError(null);
+    setDeleteConfirmTarget(row);
+  };
+
+  const closeDeleteConfirm = () => {
+    if (deletingId) return;
+    setDeleteConfirmTarget(null);
+  };
+
+  const confirmDeleteEnquiry = async () => {
+    const row = deleteConfirmTarget;
+    if (!row) return;
+    const id = getEnquiryRecordId(row);
+    if (!id) return;
 
     setDeleteError(null);
     setDeletingId(String(id));
@@ -317,6 +331,7 @@ export default function Enquiries() {
         setShowFollowUp(false);
         setSelected(null);
       }
+      setDeleteConfirmTarget(null);
     } catch (e) {
       setDeleteError(e.message || 'Could not delete enquiry');
     } finally {
@@ -521,7 +536,7 @@ export default function Enquiries() {
                                 className="btn btn-sm btn-danger enquiries-delete-btn d-inline-flex align-items-center gap-1 text-white"
                                 disabled={!canDelete || isDeleting}
                                 title={canDelete ? 'Delete this enquiry' : 'Cannot delete without a server id'}
-                                onClick={() => handleDeleteRow(r)}
+                                onClick={() => openDeleteConfirm(r)}
                               >
                                 <FiTrash2 size={12} aria-hidden />
                                 {isDeleting ? '…' : 'Delete'}
@@ -699,6 +714,57 @@ export default function Enquiries() {
             <button type="button" className="btn btn-light btn-sm" disabled={createSubmitting} onClick={() => setShowCreate(false)}>Cancel</button>
             <button type="button" className="btn btn-primary btn-sm" disabled={createSubmitting} onClick={submitCreate}>
               {createSubmitting ? 'Saving…' : 'Create enquiry'}
+            </button>
+          </Modal.Footer>
+        </Modal>
+
+        {/* Delete enquiry confirmation */}
+        <Modal
+          show={Boolean(deleteConfirmTarget)}
+          onHide={closeDeleteConfirm}
+          centered
+          animation={false}
+          backdrop="static"
+          keyboard={!deletingId}
+          dialogClassName="enquiries-delete-modal-dialog"
+          className="kh-rb-portal-modal enquiries-delete-modal"
+          contentClassName="border-0 shadow"
+        >
+          <Modal.Header closeButton={!deletingId} className="border-0 pb-0">
+            <Modal.Title className="h6 d-flex align-items-center gap-2">
+              <span
+                className="rounded-circle d-inline-flex align-items-center justify-content-center flex-shrink-0"
+                style={{ width: 36, height: 36, background: '#fef2f2', color: '#b91c1c' }}
+                aria-hidden
+              >
+                <FiTrash2 size={16} />
+              </span>
+              Delete enquiry?
+            </Modal.Title>
+          </Modal.Header>
+          <Modal.Body className="pt-2 pb-1">
+            <p className="mb-3" style={{ color: 'var(--kh-text, #0f172a)', lineHeight: 1.55, fontSize: '0.9375rem' }}>
+              Are you sure you want to delete the enquiry for{' '}
+              <strong>{String(deleteConfirmTarget?.nameOfClient || '').trim() || 'this client'}</strong>? This cannot be
+              undone.
+            </p>
+            <div className="alert alert-warning py-2 px-2 small mb-0" role="status">
+              <FiAlertCircle className="me-1 flex-shrink-0" size={14} aria-hidden />
+              The record will be removed from your enquiries list.
+            </div>
+          </Modal.Body>
+          <Modal.Footer className="border-0 pt-2">
+            <button type="button" className="btn btn-light btn-sm" disabled={Boolean(deletingId)} onClick={closeDeleteConfirm}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn btn-danger btn-sm d-inline-flex align-items-center gap-1"
+              disabled={Boolean(deletingId)}
+              onClick={confirmDeleteEnquiry}
+            >
+              <FiTrash2 size={14} aria-hidden />
+              {deletingId ? 'Deleting…' : 'Delete'}
             </button>
           </Modal.Footer>
         </Modal>

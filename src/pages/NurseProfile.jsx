@@ -371,6 +371,8 @@ export default function NurseProfile() {
     </div>
   );
 
+
+
   const EditActions = () => (
     <div style={{ display: 'flex', gap: 8, marginTop: 14, justifyContent: 'flex-end' }}>
       {editError && <div style={{ flex: 1, fontSize: 12, color: '#dc2626', display: 'flex', alignItems: 'center', gap: 4 }}><FiAlertCircle size={12} />{editError}</div>}
@@ -408,7 +410,7 @@ export default function NurseProfile() {
           body: formData,
         },
       );
-    } catch (requestError) {
+    } catch (requestError) {ms
       if (requestError instanceof TypeError) {
         throw new Error('Could not reach upload endpoint. Check backend URL, CORS, and network connectivity.');
       }
@@ -485,7 +487,7 @@ export default function NurseProfile() {
   const handleAvatarChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
+      
     if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
       alert('Only JPG, PNG, or WebP images are allowed.'); e.target.value = ''; return;
     }

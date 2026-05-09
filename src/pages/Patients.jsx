@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { FiPlus, FiSearch, FiX, FiChevronRight, FiChevronLeft, FiCheck, FiSave, FiChevronsLeft, FiChevronsRight, FiUserPlus, FiCheckCircle, FiInfo, FiDownload, FiMoreHorizontal, FiUser } from '../icons/hugeicons-feather';
 import { apiFetch } from '../api';
@@ -437,6 +437,7 @@ const TAB_COMPONENTS = {
 
 export default function Patients() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('All');
   const [showModal, setShowModal] = useState(false);
@@ -723,7 +724,7 @@ export default function Patients() {
     }
   };
 
-  const openModal = () => {
+  const openModal = useCallback(() => {
     setShowModal(true);
     setActiveTab(0);
     setCompletedTabs([]);
@@ -731,7 +732,21 @@ export default function Patients() {
     setPartialSaveAlert('');
     setAdmissionForm(initialAdmissionForm);
     setRegistrationCheck({ loading: false, exists: false, checkedValue: '', error: '' });
-  };
+  }, []);
+
+  useEffect(() => {
+    const flag = searchParams.get('admit');
+    if (flag !== '1' && flag !== 'true') return;
+    openModal();
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('admit');
+        return next;
+      },
+      { replace: true },
+    );
+  }, [searchParams, openModal, setSearchParams]);
 
   const normalizeRegistrationNumber = (value) => String(value || '').trim().toLowerCase();
 

@@ -36,6 +36,7 @@ import {
   File02Icon,
   FilterIcon,
   FlagIcon,
+  Folder01Icon,
   GlobeIcon,
   GridIcon,
   HelpCircleIcon,
@@ -48,6 +49,7 @@ import {
   MehIcon,
   Menu01Icon,
   MenuIcon,
+  Moon02Icon,
   MessageCircleReplyIcon,
   MessageSquareCodeIcon,
   MoreHorizontalIcon,
@@ -62,6 +64,7 @@ import {
   Settings01Icon,
   Shield01Icon,
   SmartPhone01Icon,
+  Sun01Icon,
   SmileIcon,
   StarIcon,
   ThermometerIcon,
@@ -109,6 +112,7 @@ const iconMap = {
   FiFileText: File02Icon,
   FiFilter: FilterIcon,
   FiFlag: FlagIcon,
+  FiFolder: Folder01Icon,
   FiFrown: Sad01Icon,
   FiGlobe: GlobeIcon,
   FiGrid: GridIcon,
@@ -122,6 +126,7 @@ const iconMap = {
   FiMapPin: MapPinIcon,
   FiMeh: MehIcon,
   FiMenu: MenuIcon,
+  FiMoon: Moon02Icon,
   FiMessageCircle: MessageCircleReplyIcon,
   FiMessageSquare: MessageSquareCodeIcon,
   FiMoreHorizontal: MoreHorizontalIcon,
@@ -136,6 +141,7 @@ const iconMap = {
   FiSettings: Settings01Icon,
   FiShield: Shield01Icon,
   FiSmartphone: SmartPhone01Icon,
+  FiSun: Sun01Icon,
   FiSmile: SmileIcon,
   FiStar: StarIcon,
   FiThermometer: ThermometerIcon,
@@ -190,6 +196,7 @@ export const FiEyeOff = createIcon('FiEyeOff');
 export const FiFileText = createIcon('FiFileText');
 export const FiFilter = createIcon('FiFilter');
 export const FiFlag = createIcon('FiFlag');
+export const FiFolder = createIcon('FiFolder');
 export const FiFrown = createIcon('FiFrown');
 export const FiGlobe = createIcon('FiGlobe');
 export const FiGrid = createIcon('FiGrid');
@@ -204,6 +211,7 @@ export const FiMapPin = createIcon('FiMapPin');
 export const FiMeh = createIcon('FiMeh');
 export const FiMenu = createIcon('FiMenu');
 export const FiMessageCircle = createIcon('FiMessageCircle');
+export const FiMoon = createIcon('FiMoon');
 export const FiMessageSquare = createIcon('FiMessageSquare');
 export const FiMoreHorizontal = createIcon('FiMoreHorizontal');
 export const FiPhone = createIcon('FiPhone');
@@ -218,6 +226,7 @@ export const FiSettings = createIcon('FiSettings');
 export const FiShield = createIcon('FiShield');
 export const FiSmartphone = createIcon('FiSmartphone');
 export const FiSmile = createIcon('FiSmile');
+export const FiSun = createIcon('FiSun');
 export const FiStar = createIcon('FiStar');
 export const FiThermometer = createIcon('FiThermometer');
 export const FiThumbsDown = createIcon('FiThumbsDown');

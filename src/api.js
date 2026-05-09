@@ -136,12 +136,97 @@ export async function createPlatformUser(payload, onUnauthorized) {
   );
 }
 
-/** GET `/auth/users` — workspace user list (page/limit if supported by backend). */
+/** GET `/users` — all created users for the workspace (page/limit if supported by backend). */
 export async function fetchAuthUsers(params = {}, onUnauthorized) {
   const page = params.page != null ? Number(params.page) : 1;
   const limit = params.limit != null ? Number(params.limit) : 200;
   const qs = new URLSearchParams({ page: String(page), limit: String(limit) });
-  return apiFetch(`/auth/users?${qs}`, { method: 'GET', quiet: true }, onUnauthorized);
+  return apiFetch(`/users?${qs}`, { method: 'GET', quiet: true }, onUnauthorized);
+}
+
+function unwrapDashboardSummaryPayload(json) {
+  if (json == null || typeof json !== 'object') return {};
+  const layered = [json.data, json.summary, json.stats, json.counts, json.totals, json.dashboard];
+  for (const layer of layered) {
+    if (layer != null && typeof layer === 'object' && !Array.isArray(layer)) return layer;
+  }
+  return json;
+}
+
+function readFirstNumericField(source, keys) {
+  if (!source || typeof source !== 'object') return null;
+  for (const key of keys) {
+    const raw = source[key];
+    if (raw == null || raw === '') continue;
+    const n = Number(raw);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
+/**
+ * Map GET `/dashboard/summary` JSON to dashboard stat card values.
+ * Supports nested `data` / `summary` and common field name variants.
+ */
+export function normalizeDashboardSummary(json) {
+  const payload = unwrapDashboardSummaryPayload(json);
+  const patients = readFirstNumericField(payload, [
+    'patientCount',
+    'patients',
+    'totalPatients',
+    'total_patients',
+    'registeredPatients',
+    'registered_patients',
+  ]);
+  const enquiries = readFirstNumericField(payload, [
+    'enquiryCount',
+    'enquiries',
+    'totalEnquiries',
+    'total_enquiries',
+    'leadCount',
+    'leads',
+    'totalLeads',
+  ]);
+  const nurses = readFirstNumericField(payload, [
+    'nurseCount',
+    'nurses',
+    'activeNurses',
+    'active_nurses',
+    'totalNurses',
+    'total_nurses',
+    'staffCount',
+    'careStaff',
+  ]);
+  const emergency = readFirstNumericField(payload, [
+    'emergencyCount',
+    'emergency',
+    'urgentCases',
+    'urgent_cases',
+    'criticalCount',
+    'critical_count',
+    'activeUrgentCases',
+    'flaggedUrgent',
+    'urgent',
+  ]);
+  return {
+    patients: patients ?? 0,
+    enquiries: enquiries ?? 0,
+    nurses: nurses ?? 0,
+    emergency: emergency ?? 0,
+  };
+}
+
+/** GET `/dashboard/summary` — aggregated counts for dashboard overview cards. */
+export async function fetchDashboardSummary(onUnauthorized) {
+  return apiFetch('/dashboard/summary', { method: 'GET', quiet: true }, onUnauthorized);
+}
+
+/** GET `/alerts/pending` — pending alerts for dashboard watchlist (paginated). */
+export async function fetchPendingAlerts(params = {}, onUnauthorized) {
+  const page = params.page != null ? Number(params.page) : 1;
+  const limit = params.limit != null ? Number(params.limit) : 100;
+  const qs = new URLSearchParams({ page: String(page), limit: String(limit) });
+  return apiFetch(`/alerts/pending?${qs}`, { method: 'GET', quiet: true }, onUnauthorized);
 }
 
 /**

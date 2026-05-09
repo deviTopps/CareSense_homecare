@@ -13,8 +13,11 @@ import {
   FiActivity,
   FiAlertCircle,
   FiMessageCircle,
-  FiCreditCard,
+  FiBarChart2,
+  FiFolder,
   FiSmartphone,
+  FiMoon,
+  FiSun,
 } from '../icons/hugeicons-feather';
 
 const sidebarGroups = [
@@ -28,13 +31,13 @@ const sidebarGroups = [
       { to: '/enquiries', icon: FiMessageCircle, label: 'Enquiries' },
       { to: '/clinical', icon: FiAlertCircle, label: 'Emergency Cases' },
       { to: '/attendance', icon: FiClock, label: 'Attendance' },
+      { to: '/billing', icon: FiFolder, label: 'Reports' },
     ],
   },
   {
     title: 'Account',
     items: [
       { to: '/account', icon: FiSettings, label: 'Settings' },
-      { to: '/billing', icon: FiCreditCard, label: 'Billing' },
     ],
   },
 ];
@@ -48,6 +51,8 @@ export default function Sidebar({
   onToggleCollapse,
   onLogout,
   user,
+  isDark = false,
+  onToggleTheme,
 }) {
   const resizeActive = useRef(false);
   const startXRef = useRef(0);
@@ -172,6 +177,17 @@ export default function Sidebar({
 
             <div className="sidebar-group sidebar-group--logout">
               {!isCollapsed && <div className="sidebar-group__title">Session</div>}
+              {typeof onToggleTheme === 'function' && (
+                <button
+                  type="button"
+                  className="sidebar-link sidebar-link--button sidebar-theme-toggle"
+                  onClick={onToggleTheme}
+                  title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+                >
+                  <span className="icon">{isDark ? <FiSun size={18} /> : <FiMoon size={18} />}</span>
+                  <span className="sidebar-link-label">{isDark ? 'Light Mode' : 'Dark Mode'}</span>
+                </button>
+              )}
               <button type="button" className="sidebar-link sidebar-link--button" onClick={onLogout} title="Log out">
                 <span className="icon"><FiLogOut size={18} /></span>
                 <span className="sidebar-link-label">Log out</span>

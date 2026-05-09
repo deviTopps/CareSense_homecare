@@ -1,21 +1,13 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
+import Button from 'react-bootstrap/Button';
+import Overlay from 'react-bootstrap/Overlay';
 import { FiPlus, FiCalendar, FiUser, FiXCircle, FiCheckCircle } from '../icons/hugeicons-feather';
 import { fetchAllPatients } from '../utils/patients';
 import { apiFetch, createCareVisit, fetchOtherCareVisits, fetchUpcomingCareVisits } from '../api';
 
 const VISIT_FILTER_OPTIONS = ['All Visits', 'Up Coming Visits'];
-
-function isUpcomingVisitRow(v) {
-  if (v.status === 'cancelled' || v.status === 'completed') return false;
-  if (!v.nextVisit) return true;
-  const t = new Date(`${v.nextVisit}T12:00:00`).getTime();
-  if (Number.isNaN(t)) return true;
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  return t >= start.getTime();
-}
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -97,6 +89,38 @@ function formatYmdFromIsoInput(ymd) {
   if (parts.length !== 3 || parts.some((n) => Number.isNaN(n))) return '';
   const [y, m, d] = parts;
   return `${d}-${m}-${y}`;
+}
+
+function todayIsoDateLocal() {
+  const t = new Date();
+  return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+}
+
+/** Next visit YYYY-MM-DD from a completed visit date and recurrence (for date inputs). */
+function computeNextVisitIso(visitYmd, frequency) {
+  if (!visitYmd || typeof visitYmd !== 'string') return '';
+  const parts = visitYmd.trim().split('-').map(Number);
+  if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n))) return '';
+  const [y, m, d] = parts;
+  const dt = new Date(y, m - 1, d);
+  if (Number.isNaN(dt.getTime())) return '';
+  switch (frequency) {
+    case 'weekly':
+      dt.setDate(dt.getDate() + 7);
+      break;
+    case 'twice_weekly':
+      dt.setDate(dt.getDate() + 3);
+      break;
+    case 'biweekly':
+      dt.setDate(dt.getDate() + 14);
+      break;
+    case 'monthly':
+      dt.setMonth(dt.getMonth() + 1);
+      break;
+    default:
+      dt.setDate(dt.getDate() + 7);
+  }
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
 }
 
 /** Parse backend strings like `1-5-2026` or ISO dates to `YYYY-MM-DD` for display/sorting */
@@ -216,6 +240,58 @@ function normalizeStatus(raw) {
   if (s.includes('schedul')) return 'scheduled';
   if (s.includes('upcoming')) return 'scheduled';
   return 'scheduled';
+}
+
+function pickPatientIdFromVisitRaw(raw) {
+  if (!raw || typeof raw !== 'object') return '';
+  const id =
+    raw.patientId ??
+    raw.patient_id ??
+    pickPatientApiId(raw.patient) ??
+    '';
+  return String(id || '').trim();
+}
+
+function pickNurseIdFromVisitRaw(raw) {
+  if (!raw || typeof raw !== 'object') return '';
+  const visitingRef = raw.visitingNurse ?? raw.visiting_nurse;
+  const assignedRef = raw.assignedNurse ?? raw.assigned_nurse;
+  if (visitingRef != null && visitingRef !== '') {
+    if (typeof visitingRef === 'object') return normalizeNurseIdString(visitingRef);
+    return String(visitingRef).trim();
+  }
+  if (assignedRef != null && assignedRef !== '') {
+    if (typeof assignedRef === 'object') return normalizeNurseIdString(assignedRef);
+    return String(assignedRef).trim();
+  }
+  return normalizeNurseIdString(
+    raw.nurseId ?? raw.nurse_id ?? raw.assignedNurseId ?? raw.assigned_nurse_id ?? raw.nurse ?? '',
+  );
+}
+
+function normalizeFrequencyForForm(raw) {
+  const f = String(raw?.frequency ?? raw?.visitFrequency ?? raw?.visit_frequency ?? 'weekly')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_')
+    .replace(/-/g, '_');
+  if (FREQUENCY_OPTIONS.some((o) => o.value === f)) return f;
+  if (f.includes('twice') && f.includes('week')) return 'twice_weekly';
+  if (f.includes('biweekly') || f.includes('every_2') || f.includes('2_week')) return 'biweekly';
+  if (f.includes('month')) return 'monthly';
+  return 'weekly';
+}
+
+/** Map a table row (with .raw) into schedule form fields for "Update visit". */
+function scheduleFormFromVisitRow(v) {
+  const raw = v?.raw && typeof v.raw === 'object' ? v.raw : {};
+  return {
+    patientId: pickPatientIdFromVisitRaw(raw),
+    visitingNurse: pickNurseIdFromVisitRaw(raw),
+    lastVisit: v?.prevVisit || '',
+    nextVisit: v?.nextVisit || '',
+    frequency: normalizeFrequencyForForm(raw),
+  };
 }
 
 function mapCareVisitRow(raw, index, lookups) {
@@ -362,6 +438,98 @@ function mapCareVisitRow(raw, index, lookups) {
   };
 }
 
+/** Portals the menu to document.body so it is not clipped by .table-responsive or layout transforms. */
+function CareVisitRowActions({ visit, onMarkCompleted, onOpenUpdate, onRequestCancel }) {
+  const toggleRef = useRef(null);
+  const [open, setOpen] = useState(false);
+  const [overlayContainer, setOverlayContainer] = useState(null);
+  const close = useCallback(() => setOpen(false), []);
+
+  useLayoutEffect(() => {
+    setOverlayContainer(document.body);
+  }, []);
+
+  return (
+    <div className="care-visits-actions-dropdown d-inline-flex">
+      <Button
+        ref={toggleRef}
+        variant="light"
+        size="sm"
+        id={`care-visit-actions-${visit.id}`}
+        type="button"
+        className="cv-actions-dropdown-toggle dropdown-toggle"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((o) => !o);
+        }}
+      >
+        Actions
+      </Button>
+      <Overlay
+        show={open && overlayContainer}
+        target={toggleRef}
+        placement="bottom-end"
+        rootClose
+        rootCloseEvent="click"
+        flip
+        transition={false}
+        offset={[0, 6]}
+        container={overlayContainer}
+        popperConfig={{ strategy: 'fixed' }}
+        onHide={close}
+      >
+        {({ ref: menuRef, style, className: popperClassName }) => (
+          <div
+            ref={menuRef}
+            role="menu"
+            aria-labelledby={`care-visit-actions-${visit.id}`}
+            style={style}
+            className={`dropdown-menu care-visits-actions-menu show dropdown-menu-end${popperClassName ? ` ${popperClassName}` : ''}`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              role="menuitem"
+              className="dropdown-item small"
+              onClick={() => {
+                close();
+                onMarkCompleted(visit);
+              }}
+            >
+              Mark as Completed
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="dropdown-item small"
+              onClick={() => {
+                close();
+                onOpenUpdate(visit);
+              }}
+            >
+              Update Visit
+            </button>
+            <hr className="dropdown-divider" role="separator" />
+            <button
+              type="button"
+              role="menuitem"
+              className="dropdown-item small text-danger"
+              onClick={() => {
+                close();
+                onRequestCancel(visit);
+              }}
+            >
+              Cancel visit
+            </button>
+          </div>
+        )}
+      </Overlay>
+    </div>
+  );
+}
+
 export default function Scheduling() {
   const navigate = useNavigate();
   const onUnauthorized = useCallback(() => {
@@ -380,8 +548,17 @@ export default function Scheduling() {
   const [refsLoading, setRefsLoading] = useState(true);
   const [refsError, setRefsError] = useState('');
 
-  const [filter, setFilter] = useState('All Visits');
+  const [filter, setFilter] = useState('Up Coming Visits');
   const [cancelTarget, setCancelTarget] = useState(null);
+
+  const [completeVisitRow, setCompleteVisitRow] = useState(null);
+  const [completeVisitForm, setCompleteVisitForm] = useState({
+    visitDate: '',
+    frequency: 'weekly',
+    nextVisit: '',
+  });
+  const [completeVisitSaving, setCompleteVisitSaving] = useState(false);
+  const [completeVisitError, setCompleteVisitError] = useState('');
 
   const [scheduleForm, setScheduleForm] = useState(() => ({
     patientId: '',
@@ -481,6 +658,25 @@ export default function Scheduling() {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [showScheduleModal, scheduleSaving]);
+
+  useEffect(() => {
+    if (!completeVisitRow) return undefined;
+    const onKeyDown = (e) => {
+      if (e.key !== 'Escape' || completeVisitSaving) return;
+      e.preventDefault();
+      setCompleteVisitRow(null);
+      setCompleteVisitError('');
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [completeVisitRow, completeVisitSaving]);
+
+  useEffect(() => {
+    if (!completeVisitRow) return;
+    const next = computeNextVisitIso(completeVisitForm.visitDate, completeVisitForm.frequency);
+    if (!next) return;
+    setCompleteVisitForm((f) => (f.nextVisit === next ? f : { ...f, nextVisit: next }));
+  }, [completeVisitRow, completeVisitForm.visitDate, completeVisitForm.frequency]);
 
   const loadUpcomingVisitRows = useCallback(async () => {
     setVisitsUpcomingError('');
@@ -597,11 +793,8 @@ export default function Scheduling() {
     reloadVisitLists();
   }, [refsLoading, reloadVisitLists]);
 
-  const filtered = visits.filter((v) => {
-    if (filter === 'All Visits') return true;
-    if (filter === 'Up Coming Visits') return isUpcomingVisitRow(v);
-    return true;
-  });
+  /** Upcoming tab: full list from `GET /care-visits/upcoming`. All Visits: `GET /care-visits/other`. */
+  const filtered = visits;
 
   const visitsListLoading =
     filter === 'All Visits' ? visitsOtherLoading : visitsUpcomingLoading;
@@ -620,6 +813,37 @@ export default function Scheduling() {
     setOtherVisitRowsRaw(patch);
     setCancelTarget(null);
   };
+
+  const patchVisitRowCompleted = useCallback((visitId) => {
+    const cid = String(visitId);
+    const patch = (prev) =>
+      prev.map((r, i) => {
+        const rid = String(r?.id ?? r?._id ?? r?.uuid ?? r?.visitId ?? `cv-${i}`);
+        return rid === cid ? { ...r, status: 'completed' } : r;
+      });
+    setUpcomingVisitRowsRaw(patch);
+    setOtherVisitRowsRaw(patch);
+  }, []);
+
+  const openCompleteVisitModal = useCallback((v) => {
+    const base = scheduleFormFromVisitRow(v);
+    const visitDate = base.nextVisit || v.nextVisit || todayIsoDateLocal();
+    const frequency = base.frequency;
+    const nextVisit = computeNextVisitIso(visitDate, frequency);
+    setCompleteVisitError('');
+    setCompleteVisitRow(v);
+    setCompleteVisitForm({
+      visitDate,
+      frequency,
+      nextVisit: nextVisit || visitDate,
+    });
+  }, []);
+
+  const openVisitUpdateModal = useCallback((v) => {
+    setScheduleError('');
+    setScheduleForm(scheduleFormFromVisitRow(v));
+    setShowScheduleModal(true);
+  }, []);
 
   const resetScheduleFormSample = () => {
     setScheduleError('');
@@ -708,6 +932,66 @@ export default function Scheduling() {
     }
   };
 
+  const handleCompleteVisitSubmit = async () => {
+    if (!completeVisitRow) return;
+    setCompleteVisitError('');
+    const visitYmdApi = formatYmdFromIsoInput(completeVisitForm.visitDate);
+    const nextYmdApi = formatYmdFromIsoInput(completeVisitForm.nextVisit);
+    if (!visitYmdApi || !nextYmdApi) {
+      setCompleteVisitError('Choose both the visit date and the next visit date.');
+      return;
+    }
+    const { patientId, visitingNurse } = scheduleFormFromVisitRow(completeVisitRow);
+    if (!String(patientId || '').trim()) {
+      setCompleteVisitError('Patient could not be determined for this visit.');
+      return;
+    }
+    if (!String(visitingNurse || '').trim()) {
+      setCompleteVisitError('Visiting nurse could not be determined for this visit.');
+      return;
+    }
+    const payload = {
+      patientId: String(patientId).trim(),
+      visitingNurse: String(visitingNurse).trim(),
+      lastVisit: visitYmdApi,
+      nextVisit: nextYmdApi,
+      frequency: completeVisitForm.frequency,
+    };
+    const patientLabel =
+      completeVisitRow.patientLine || completeVisitRow.patient || 'Patient';
+    const nurseLabel = completeVisitRow.nurseName || '';
+
+    setCompleteVisitSaving(true);
+    try {
+      const res = await createCareVisit(payload, onUnauthorized);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(json?.message || json?.error || `Could not save visit (${res.status})`);
+      }
+      patchVisitRowCompleted(completeVisitRow.id);
+      setCompleteVisitRow(null);
+      setScheduleSuccessModal({
+        patientLabel,
+        nurseLabel,
+        nextVisitLabel: formatYmdFromIsoInput(completeVisitForm.nextVisit) || completeVisitForm.nextVisit,
+        frequency: payload.frequency,
+        title: 'Visit marked complete',
+        variant: 'markComplete',
+      });
+      try {
+        await reloadVisitLists();
+      } catch {
+        /* list refresh failed */
+      }
+    } catch (e) {
+      if (e.message !== 'Session expired. Please log in again.') {
+        setCompleteVisitError(e.message || 'Could not mark visit complete.');
+      }
+    } finally {
+      setCompleteVisitSaving(false);
+    }
+  };
+
   const listBanner = [refsError, visitsUpcomingError, visitsOtherError].filter(Boolean).join(' ');
 
   return (
@@ -751,7 +1035,7 @@ export default function Scheduling() {
           }
         >
           <FiPlus size={15} /> Schedule a visit
-        </button>
+          </button>
       </div>
 
       {/* Table */}
@@ -847,18 +1131,14 @@ export default function Scheduling() {
                     </span>
                   </td>
                   <td className="cv-cell-actions">
-                    <div className="cv-actions-inner">
+                    <div className="cv-actions-inner" onClick={(e) => e.stopPropagation()}>
                       {v.status === 'scheduled' ? (
-                        <button
-                          type="button"
-                          className="cv-btn-cancel"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setCancelTarget(v);
-                          }}
-                        >
-                          Cancel
-                        </button>
+                        <CareVisitRowActions
+                          visit={v}
+                          onMarkCompleted={openCompleteVisitModal}
+                          onOpenUpdate={openVisitUpdateModal}
+                          onRequestCancel={setCancelTarget}
+                        />
                       ) : null}
                     </div>
                   </td>
@@ -960,6 +1240,184 @@ export default function Scheduling() {
           </div>
         </div>
       )}
+
+      {completeVisitRow &&
+        createPortal(
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 9990,
+              backgroundColor: 'rgba(15, 23, 42, 0.5)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 16,
+            }}
+            onClick={() => {
+              if (!completeVisitSaving) {
+                setCompleteVisitRow(null);
+                setCompleteVisitError('');
+              }
+            }}
+            role="presentation"
+          >
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="complete-visit-modal-title"
+              className="bg-white shadow-lg"
+              style={{
+                borderRadius: 12,
+                maxWidth: 480,
+                width: '100%',
+                maxHeight: 'calc(100vh - 32px)',
+                outline: 'none',
+                display: 'flex',
+                flexDirection: 'column',
+                overflow: 'hidden',
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div
+                style={{
+                  padding: '18px 20px',
+                  borderBottom: '1px solid var(--kh-border-light, #e5e7eb)',
+                  flexShrink: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 12,
+                }}
+              >
+                <h6 id="complete-visit-modal-title" className="mb-0" style={{ fontWeight: 700, fontSize: 16 }}>
+                  Mark visit complete
+                </h6>
+                <button
+                  type="button"
+                  className="btn-close"
+                  aria-label="Close"
+                  disabled={completeVisitSaving}
+                  onClick={() => {
+                    if (completeVisitSaving) return;
+                    setCompleteVisitRow(null);
+                    setCompleteVisitError('');
+                  }}
+                />
+              </div>
+              <div style={{ overflowY: 'auto', padding: '20px', flex: 1 }}>
+                {completeVisitError ? (
+                  <div className="alert alert-danger py-2 small mb-3" role="alert">
+                    {completeVisitError}
+                  </div>
+                ) : null}
+                <p className="text-muted small mb-3" style={{ lineHeight: 1.5 }}>
+                  Record when this visit took place, confirm how often visits should repeat, and set the next visit date
+                  (filled automatically from the frequency — you can adjust it).
+                </p>
+                <p className="small mb-3" style={{ fontWeight: 600, color: 'var(--kh-text)' }}>
+                  {completeVisitRow.patientLine || completeVisitRow.patient}
+                </p>
+                <div className="row g-3">
+                  <div className="col-md-6">
+                    <label
+                      className="form-label"
+                      style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--kh-text-secondary)' }}
+                    >
+                      Visit date
+                    </label>
+                    <input
+                      type="date"
+                      className="form-control form-control-kh"
+                      value={completeVisitForm.visitDate}
+                      onChange={(e) =>
+                        setCompleteVisitForm((f) => ({ ...f, visitDate: e.target.value }))
+                      }
+                      disabled={completeVisitSaving}
+                    />
+                  </div>
+                  <div className="col-md-6">
+                    <label
+                      className="form-label"
+                      style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--kh-text-secondary)' }}
+                    >
+                      Frequency
+                    </label>
+                    <select
+                      className="form-select form-control-kh"
+                      value={completeVisitForm.frequency}
+                      onChange={(e) =>
+                        setCompleteVisitForm((f) => ({ ...f, frequency: e.target.value }))
+                      }
+                      disabled={completeVisitSaving}
+                    >
+                      {FREQUENCY_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="col-12">
+                    <label
+                      className="form-label"
+                      style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--kh-text-secondary)' }}
+                    >
+                      Next visit
+                    </label>
+                    <input
+                      type="date"
+                      className="form-control form-control-kh"
+                      value={completeVisitForm.nextVisit}
+                      onChange={(e) =>
+                        setCompleteVisitForm((f) => ({ ...f, nextVisit: e.target.value }))
+                      }
+                      disabled={completeVisitSaving}
+                    />
+                    <div className="form-text small" style={{ marginTop: 6 }}>
+                      Suggested from visit date + frequency (e.g. weekly +7 days, twice-weekly +3 days, monthly +1 month).
+                  </div>
+                  </div>
+                  </div>
+              </div>
+              <div
+                style={{
+                  padding: '14px 20px',
+                  borderTop: '1px solid var(--kh-border-light, #e5e7eb)',
+                  flexShrink: 0,
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: 8,
+                  justifyContent: 'flex-end',
+                  alignItems: 'center',
+                  background: '#fafbfd',
+                }}
+              >
+                <button
+                  type="button"
+                  className="btn btn-kh-outline"
+                  disabled={completeVisitSaving}
+                  onClick={() => {
+                    if (completeVisitSaving) return;
+                    setCompleteVisitRow(null);
+                    setCompleteVisitError('');
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-kh-primary"
+                  onClick={handleCompleteVisitSubmit}
+                  disabled={completeVisitSaving}
+                >
+                  {completeVisitSaving ? 'Saving…' : 'Confirm & schedule next'}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
 
       {showScheduleModal &&
         createPortal(
@@ -1217,22 +1675,31 @@ export default function Scheduling() {
                   }}
                 >
                   <FiCheckCircle size={28} style={{ color: '#059669' }} aria-hidden />
-                </div>
+          </div>
                 <h6
                   id="schedule-success-title"
                   style={{ fontWeight: 700, fontSize: 17, color: '#0f172a', marginBottom: 10 }}
                 >
-                  Care visit created
+                  {scheduleSuccessModal.title || 'Care visit created'}
                 </h6>
+                {scheduleSuccessModal.lead ? (
+                  <p style={{ fontSize: 12.5, color: '#64748b', marginBottom: 10 }}>
+                    {scheduleSuccessModal.lead}
+                  </p>
+                ) : null}
                 <p style={{ fontSize: 13, color: '#64748b', lineHeight: 1.65, marginBottom: 8 }}>
                   <strong style={{ color: '#0f172a' }}>{scheduleSuccessModal.patientLabel}</strong>
                   {scheduleSuccessModal.nurseLabel ? (
                     <>
                       {' '}
-                      with <strong style={{ color: '#0f172a' }}>{scheduleSuccessModal.nurseLabel}</strong>
+                      · <strong style={{ color: '#0f172a' }}>{scheduleSuccessModal.nurseLabel}</strong>
                     </>
-                  ) : null}{' '}
-                  is scheduled. Next visit:{' '}
+                  ) : null}
+                  {scheduleSuccessModal.variant === 'markComplete'
+                    ? ' · Visit marked complete. Next visit: '
+                    : scheduleSuccessModal.nurseLabel
+                      ? ' is scheduled. Next visit: '
+                      : ' Next visit: '}
                   <strong style={{ color: '#059669', fontVariantNumeric: 'tabular-nums' }}>
                     {scheduleSuccessModal.nextVisitLabel}
                   </strong>
@@ -1255,11 +1722,11 @@ export default function Scheduling() {
                 >
                   OK
                 </button>
-              </div>
+        </div>
             </div>
           </div>,
           document.body,
-        )}
+      )}
 
     </div>
   );
