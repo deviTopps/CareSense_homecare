@@ -1,4 +1,4 @@
-import { useParams, useNavigate } from 'react-router-dom';
+import { useLocation, useParams, useNavigate } from 'react-router-dom';
 import { Fragment, useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { motion } from 'motion/react';
 import {
@@ -1942,6 +1942,7 @@ function resolveCurrentNurseId(currentUser, tokenPayload) {
 export default function PatientProfile() {
   const { patientId } = useParams();
   const effectivePatientId = patientId || FALLBACK_PATIENT_ID;
+  const location = useLocation();
   const navigate = useNavigate();
   const [tab, setTab] = useState('chart');
   const [photo, setPhoto] = useState(null);
@@ -2276,6 +2277,25 @@ export default function PatientProfile() {
     nextOfKinNotified: false,
     confirmedProcedure: false,
   });
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const openReportDeath = params.get('reportDeath');
+    if (openReportDeath !== '1' && openReportDeath !== 'true') return;
+
+    setReportDeathError('');
+    setReportDeathDone(false);
+    setShowReportDeathModal(true);
+
+    params.delete('reportDeath');
+    const nextSearch = params.toString();
+    navigate(
+      {
+        pathname: location.pathname,
+        search: nextSearch ? `?${nextSearch}` : '',
+      },
+      { replace: true },
+    );
+  }, [location.pathname, location.search, navigate]);
   const [showVitalForm, setShowVitalForm] = useState(false);
   const [vitalForm, setVitalForm] = useState(() => createVitalForm(currentUserName));
   const [expandedVital, setExpandedVital] = useState(null);
@@ -8093,45 +8113,50 @@ export default function PatientProfile() {
           role="presentation"
         >
           <div
-            className="kh-modal-panel app-modal-panel"
+            className="kh-modal-panel app-modal-panel patient-report-modal"
             role="dialog"
             aria-modal="true"
             aria-labelledby="patient-generate-report-title"
             onClick={(e) => e.stopPropagation()}
-            style={{
-              width: 'min(440px, 94vw)',
-              borderRadius: 16,
-              overflow: 'hidden',
-            }}
           >
-            <div className="kh-modal-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #e5e7eb' }}>
-              <div className="d-flex align-items-center gap-2" style={{ fontSize: 15, fontWeight: 800, color: 'var(--kh-text)' }}>
-                <FiFileText size={18} style={{ color: '#2E7DB8' }} />
-                <span id="patient-generate-report-title">Monthly care report</span>
+            <div className="kh-modal-header patient-report-modal__header">
+              <div className="patient-report-modal__title-wrap">
+                <span className="patient-report-modal__icon" aria-hidden>
+                  <FiFileText size={17} />
+                </span>
+                <span id="patient-generate-report-title">Generating report</span>
               </div>
               <button
                 type="button"
-                className="patient-update-modal__close-btn"
+                className="patient-update-modal__close-btn patient-report-modal__close-btn"
                 aria-label="Close"
                 onClick={() => setShowGenerateReportModal(false)}
               >
                 <FiX size={18} />
               </button>
             </div>
-            <div className="kh-modal-body" style={{ padding: '24px 22px' }}>
-              <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--kh-text)', lineHeight: 1.45 }}>
-                Generating Patient Monthly Care Report
+            <div className="kh-modal-body patient-report-modal__body">
+              <div className="patient-report-modal__loader" role="status" aria-live="polite">
+                <div className="spinner-border text-primary patient-report-modal__spinner" aria-hidden />
+              </div>
+              <p className="patient-report-modal__message">
+                Patient Month Health Report Generating , please wait untill report is generated and view the report on the Reports session
               </p>
             </div>
-            <div className="kh-modal-footer" style={{ padding: '14px 18px', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button
-                type="button"
-                className="btn btn-kh-primary"
-                style={{ borderRadius: 10, fontWeight: 700, padding: '10px 18px' }}
-                onClick={() => setShowGenerateReportModal(false)}
-              >
-                Close
-              </button>
+            <div className="kh-modal-footer patient-report-modal__footer">
+              <p className="patient-report-modal__disclaimer">
+                Disclaimer: This Patient Health Report is an AI-generated summary derived from medical records and nursing documentation. Clinical staff must review and validate all findings for accuracy before distribution or inclusion in the final medical record.
+              </p>
+              <div className="patient-report-modal__actions">
+                <button
+                  type="button"
+                  className="btn btn-kh-primary"
+                  style={{ borderRadius: 12, fontWeight: 700, padding: '10px 18px' }}
+                  onClick={() => setShowGenerateReportModal(false)}
+                >
+                  Okay
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -270,7 +270,7 @@ export default function LandingPage() {
                 <li><span className="check-mark">✓</span><span>Smart care plan templates powered by best practices</span></li>
                 <li><span className="check-mark">✓</span><span>Automated visit reports and compliance tracking</span></li>
               </ul>
-              <motion.a href="/login" className="btn btn-primary" style={{ marginTop: 32 }} whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }}>Learn more →</motion.a>
+              <motion.a href="/login" className="btn btn-primary split-cta-btn" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }}>Learn more →</motion.a>
             </motion.div>
             <motion.div variants={fadeUp} transition={{ duration: 0.6, delay: 0.15 }}>
               <div className="visual-card">
@@ -318,11 +318,11 @@ export default function LandingPage() {
               <span className="section-label">Workforce</span>
               <h2 className="section-title">Taking control of your workforce has never been simpler</h2>
               <p className="section-sub">Manage nurse credentials, scheduling, certifications, and performance — all from a single powerful view.</p>
-              <motion.a href="/login" className="btn btn-primary" style={{ marginTop: 32 }} whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }}>Explore workforce →</motion.a>
+              <motion.a href="/login" className="btn btn-primary split-cta-btn" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }}>Explore workforce →</motion.a>
             </motion.div>
             <motion.div variants={fadeUp} transition={{ duration: 0.6, delay: 0.15 }}>
               <div className="visual-card">
-                <div style={{ fontFamily: 'Poppins', fontWeight: 700, fontSize: '0.95rem', marginBottom: 20 }}>Workforce Performance</div>
+                <div className="visual-card-title">Workforce Performance</div>
                 <div className="portfolio-grid">
                   <div className="portfolio-item">
                     <div className="portfolio-label">On-Time Visits</div>

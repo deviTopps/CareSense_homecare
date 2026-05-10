@@ -170,21 +170,21 @@ export default function Auth({ onLogin }) {
           {/* Accent mark */}
           {isFormMode && <div className="auth-split-accent-mark" aria-hidden>✳</div>}
 
-          {/* Heading */}
-          <div className="auth-split-heading">
-            <h1 className="auth-split-heading__title">
-              {mode === 'login' && 'Welcome back'}
-              {mode === 'signup' && 'Create an account'}
-              {mode === 'forgot' && 'Reset password'}
-              {mode === 'thankyou' && "You're all set!"}
-            </h1>
-            <p className="auth-split-heading__sub">
-              {mode === 'login' && 'Access your tasks, patients, and reports anytime, anywhere.'}
-              {mode === 'signup' && 'Set up your agency workspace and start managing homecare.'}
-              {mode === 'forgot' && (forgotSent ? 'Check your inbox for reset instructions.' : 'Enter your email to receive a reset link.')}
-              {mode === 'thankyou' && 'Your account has been created successfully.'}
-            </p>
-          </div>
+          {/* Heading (hidden on thankyou — success page has its own) */}
+          {mode !== 'thankyou' && (
+            <div className="auth-split-heading">
+              <h1 className="auth-split-heading__title">
+                {mode === 'login' && 'Welcome back'}
+                {mode === 'signup' && 'Create an account'}
+                {mode === 'forgot' && 'Reset password'}
+              </h1>
+              <p className="auth-split-heading__sub">
+                {mode === 'login' && 'Access your tasks, patients, and reports anytime, anywhere.'}
+                {mode === 'signup' && 'Set up your agency workspace and start managing homecare.'}
+                {mode === 'forgot' && (forgotSent ? 'Check your inbox for reset instructions.' : 'Enter your email to receive a reset link.')}
+              </p>
+            </div>
+          )}
 
           {/* ═══ LOGIN ═══ */}
           {mode === 'login' && (
@@ -325,17 +325,54 @@ export default function Auth({ onLogin }) {
 
           {/* ═══ THANK YOU ═══ */}
           {mode === 'thankyou' && (
-            <div className="auth-split-success">
-              <div className="auth-split-success__icon">
-                <FiCheck size={28} strokeWidth={3} />
+            <div className="auth-success-page">
+              <div className="auth-success-page__particles" aria-hidden>
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <span key={i} className={`auth-success-particle auth-success-particle--${i + 1}`} />
+                ))}
               </div>
-              <div className="auth-split-success__title">Account created!</div>
-              <p className="auth-split-success__text">
-                You can now sign in to access your dashboard and start managing your homecare operations.
+
+              <div className="auth-success-page__badge">
+                <span className="auth-success-page__badge-ring" />
+                <FiCheck size={32} strokeWidth={3} />
+              </div>
+
+              <h2 className="auth-success-page__title">Welcome to CareSense!</h2>
+              <p className="auth-success-page__subtitle">
+                Your account has been created successfully. You're one step away from streamlining your homecare operations.
               </p>
-              <button type="button" className="auth-split-submit" onClick={() => switchMode('login')}>
-                Go to Sign in <FiArrowRight size={16} />
+
+              <div className="auth-success-page__steps">
+                <div className="auth-success-step">
+                  <span className="auth-success-step__num">1</span>
+                  <div>
+                    <strong>Sign in to your dashboard</strong>
+                    <span>Access scheduling, patient records, and more.</span>
+                  </div>
+                </div>
+                <div className="auth-success-step">
+                  <span className="auth-success-step__num">2</span>
+                  <div>
+                    <strong>Set up your agency</strong>
+                    <span>Add your team members and configure settings.</span>
+                  </div>
+                </div>
+                <div className="auth-success-step">
+                  <span className="auth-success-step__num">3</span>
+                  <div>
+                    <strong>Start managing care</strong>
+                    <span>Create schedules, track visits, and generate reports.</span>
+                  </div>
+                </div>
+              </div>
+
+              <button type="button" className="auth-success-page__btn" onClick={() => switchMode('login')}>
+                Continue to Sign in <FiArrowRight size={16} />
               </button>
+
+              <p className="auth-success-page__footnote">
+                Need help getting started? Contact <a href="mailto:support@caresense.io">support@caresense.io</a>
+              </p>
             </div>
           )}
 

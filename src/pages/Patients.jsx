@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { FiPlus, FiSearch, FiX, FiChevronRight, FiChevronLeft, FiCheck, FiSave, FiChevronsLeft, FiChevronsRight, FiUserPlus, FiCheckCircle, FiInfo, FiDownload, FiMoreHorizontal, FiUser } from '../icons/hugeicons-feather';
+import { FiPlus, FiSearch, FiX, FiChevronRight, FiChevronLeft, FiCheck, FiSave, FiChevronsLeft, FiChevronsRight, FiUserPlus, FiCheckCircle, FiInfo, FiDownload, FiUser } from '../icons/hugeicons-feather';
 import { apiFetch } from '../api';
 import { fetchAllPatients } from '../utils/patients';
 
@@ -917,6 +917,35 @@ export default function Patients() {
     window.URL.revokeObjectURL(url);
   };
 
+  const handlePatientActionSelect = (patient, actionValue) => {
+    if (!patient || !actionValue) return;
+
+    if (actionValue === 'deactivate') {
+      setPatients((prev) =>
+        prev.map((entry) => (entry.id === patient.id ? { ...entry, status: 'discharged' } : entry)),
+      );
+      return;
+    }
+
+    if (actionValue === 'reactivate') {
+      setPatients((prev) =>
+        prev.map((entry) => (entry.id === patient.id ? { ...entry, status: 'active' } : entry)),
+      );
+      return;
+    }
+
+    if (actionValue === 'report_dead') {
+      navigate(`/patients/${patient.profileRouteId || patient.id}?reportDeath=1`);
+      return;
+    }
+
+    if (actionValue === 'delete') {
+      const shouldDelete = window.confirm(`Delete ${patient.name} from the patient list?`);
+      if (!shouldDelete) return;
+      setPatients((prev) => prev.filter((entry) => entry.id !== patient.id));
+    }
+  };
+
   const extractPatientId = (data) => (
     data?.patientId
     || data?.id
@@ -1290,7 +1319,7 @@ export default function Patients() {
                 <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('nurse')}>Assigned Nurse <SortIcon col="nurse" /></th>
                 <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('enrolled')}>Enrolled <SortIcon col="enrolled" /></th>
                 <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('status')}>Status <SortIcon col="status" /></th>
-                <th style={{ width: 56, textAlign: 'right' }}>Action</th>
+                <th style={{ width: 190, textAlign: 'right' }}>Action</th>
               </tr>
             </thead>
             <tbody>
@@ -1350,10 +1379,24 @@ export default function Patients() {
                   </td>
                   <td className="patients-table-date">{p.enrolled}</td>
                   <td><span className={`patients-status-pill ${p.status === 'active' ? 'is-active' : 'is-discharged'}`}>{p.status === 'active' ? 'Active' : 'Death Records'}</span></td>
-                  <td style={{ textAlign: 'right' }}>
-                    <button className="patients-row-action" onClick={(e) => { e.stopPropagation(); navigate(`/patients/${p.profileRouteId || p.id}`); }}>
-                      <FiMoreHorizontal size={16} />
-                    </button>
+                  <td style={{ textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
+                    <select
+                      className="patients-action-select"
+                      defaultValue=""
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => {
+                        const nextAction = e.target.value;
+                        handlePatientActionSelect(p, nextAction);
+                        e.target.value = '';
+                      }}
+                      aria-label={`Actions for ${p.name}`}
+                    >
+                      <option value="" hidden>Select action</option>
+                      <option value="deactivate" disabled={p.status !== 'active'}>Deactivte</option>
+                      <option value="reactivate" disabled={p.status === 'active'}>Reactivate</option>
+                      <option value="report_dead" disabled={p.status !== 'active'}>Report As Dead</option>
+                      <option value="delete">Delete Patient</option>
+                    </select>
                   </td>
                 </tr>
               ))}
@@ -1619,11 +1662,6 @@ export default function Patients() {
                 </div>
               </div>
               <div style={{ padding: '20px 28px', background: '#fff' }}>
-                <div style={{ borderRadius: 12, background: '#F8FAFC', border: '1px solid #E2E8F0', padding: '14px 16px', marginBottom: 18 }}>
-                  <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--kh-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Admission Summary</div>
-                  <div style={{ fontSize: 13, color: 'var(--kh-text)', marginBottom: 6 }}><strong>Patient ID:</strong> {successModal.patientId}</div>
-                  <div style={{ fontSize: 13, color: 'var(--kh-text)' }}><strong>Registration No:</strong> {successModal.registrationNumber}</div>
-                </div>
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
                   <button onClick={() => setSuccessModal(null)} className="btn btn-kh-outline" style={{ fontSize: 13 }}>Close</button>
                   <button onClick={() => { navigate(`/patients/${successModal.patientId}`); setSuccessModal(null); }} className="btn btn-kh-primary" style={{ fontSize: 13, fontWeight: 700 }}>View Patient</button>

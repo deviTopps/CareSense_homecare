@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   FiLock,
   FiSave,
@@ -19,12 +19,42 @@ import {
   FiBell,
   FiGrid,
   FiShield,
+  FiUpload,
 } from '../icons/hugeicons-feather';
-import { getUser, changePassword, fetchAuthUsers } from '../api';
+import { getUser, changePassword, fetchAuthUsers, apiFetch } from '../api';
 
 const fontStack = "'Poppins', -apple-system, BlinkMacSystemFont, sans-serif'";
 
 const WORKSPACE_USERS_PER_PAGE = 10;
+const AGENCY_LOGO_STORAGE_KEY = 'accountSettings.agencyLogo';
+
+function readPersistedAgencyLogo() {
+  try {
+    const raw = localStorage.getItem(AGENCY_LOGO_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function persistAgencyLogo(data) {
+  try {
+    localStorage.setItem(AGENCY_LOGO_STORAGE_KEY, JSON.stringify(data));
+  } catch {
+    // Ignore storage quota/private mode errors; upload still succeeds.
+  }
+}
+
+function clearPersistedAgencyLogo() {
+  try {
+    localStorage.removeItem(AGENCY_LOGO_STORAGE_KEY);
+  } catch {
+    // Ignore storage failures.
+  }
+}
 
 async function parseJsonResponse(res) {
   const text = await res.text();
@@ -88,6 +118,76 @@ function formatUserTableDate(raw) {
   } catch {
     return '—';
   }
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
+    reader.onerror = () => reject(new Error('Could not preview selected file.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function optimizeAgencyLogoFile(file, { maxWidth = 1200, maxHeight = 1200, quality = 0.82 } = {}) {
+  return new Promise((resolve) => {
+    if (!file?.type?.startsWith('image/')) {
+      resolve(file);
+      return;
+    }
+    if (file.size <= 1024 * 1024) {
+      resolve(file);
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const widthRatio = maxWidth / img.width;
+        const heightRatio = maxHeight / img.height;
+        const ratio = Math.min(1, widthRatio, heightRatio);
+        const targetW = Math.max(1, Math.round(img.width * ratio));
+        const targetH = Math.max(1, Math.round(img.height * ratio));
+
+        const canvas = document.createElement('canvas');
+        canvas.width = targetW;
+        canvas.height = targetH;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          URL.revokeObjectURL(objectUrl);
+          resolve(file);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, targetW, targetH);
+
+        canvas.toBlob(
+          (blob) => {
+            URL.revokeObjectURL(objectUrl);
+            if (!blob || blob.size >= file.size) {
+              resolve(file);
+              return;
+            }
+            const optimized = new File([blob], file.name, {
+              type: blob.type || file.type,
+              lastModified: Date.now(),
+            });
+            resolve(optimized);
+          },
+          file.type,
+          quality,
+        );
+      } catch {
+        URL.revokeObjectURL(objectUrl);
+        resolve(file);
+      }
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(file);
+    };
+    img.src = objectUrl;
+  });
 }
 
 function getInitials(user) {
@@ -165,6 +265,7 @@ function SettingsToggleRow({
 
 export default function Account() {
   const user = getUser();
+  const persistedLogo = readPersistedAgencyLogo();
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const confirmWord = 'DELETE';
@@ -188,6 +289,18 @@ export default function Account() {
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
   const [loginAlertEnabled, setLoginAlertEnabled] = useState(true);
   const [settingsTab, setSettingsTab] = useState('forms');
+  const [agencyLogoPreview, setAgencyLogoPreview] = useState(
+    persistedLogo?.previewUrl || user?.agencyLogoUrl || user?.logoUrl || user?.agencyLogo || '',
+  );
+  const [agencyLogoUploading, setAgencyLogoUploading] = useState(false);
+  const [agencyLogoError, setAgencyLogoError] = useState('');
+  const [agencyLogoSuccess, setAgencyLogoSuccess] = useState('');
+  const [agencyLogoAsset, setAgencyLogoAsset] = useState(
+    persistedLogo?.objectKey && persistedLogo?.mediaId
+      ? { objectKey: persistedLogo.objectKey, mediaId: persistedLogo.mediaId }
+      : null,
+  );
+  const agencyLogoInputRef = useRef(null);
 
   const onAuthUnauthorized = useCallback(() => {
     window.location.replace('/login');
@@ -275,6 +388,114 @@ export default function Account() {
 
   const setPwd = (key, v) => {
     setPasswordForm((prev) => ({ ...prev, [key]: v }));
+  };
+
+  const clearAgencyLogoMessages = () => {
+    setAgencyLogoError('');
+    setAgencyLogoSuccess('');
+  };
+
+  const handleAgencyLogoFile = async (file) => {
+    if (!file) return;
+    clearAgencyLogoMessages();
+    if (!file.type.startsWith('image/')) {
+      setAgencyLogoError('Please choose an image file for your agency logo.');
+      return;
+    }
+
+    setAgencyLogoUploading(true);
+    try {
+      const localPreview = await readFileAsDataUrl(file);
+      setAgencyLogoPreview(localPreview);
+      const optimizedFile = await optimizeAgencyLogoFile(file);
+
+      const formData = new FormData();
+      formData.append('file', optimizedFile);
+
+      const res = await apiFetch(
+        '/media/b2/upload/direct',
+        {
+          method: 'POST',
+          body: formData,
+        },
+        onAuthUnauthorized,
+      );
+      const payload = await parseJsonResponse(res);
+      if (!res.ok) {
+        throw new Error(payload?.error || payload?.message || `Logo upload failed (HTTP ${res.status})`);
+      }
+
+      const objectKey = payload?.upload?.objectKey;
+      const mediaId = payload?.media?.id;
+      const remoteUrl =
+        payload?.media?.url || payload?.media?.publicUrl || payload?.upload?.url || payload?.upload?.publicUrl || '';
+
+      if (!objectKey || !mediaId) {
+        throw new Error('Upload succeeded but no media reference was returned.');
+      }
+
+      const fallbackPreview = remoteUrl || localPreview;
+      setAgencyLogoAsset({ objectKey, mediaId });
+      setAgencyLogoPreview(fallbackPreview);
+      persistAgencyLogo({
+        objectKey,
+        mediaId,
+        previewUrl: fallbackPreview,
+        uploadedAt: new Date().toISOString(),
+      });
+      try {
+        const existingUser = getUser() || {};
+        localStorage.setItem(
+          'user',
+          JSON.stringify({
+            ...existingUser,
+            agencyLogoUrl: fallbackPreview,
+            agencyLogoObjectKey: objectKey,
+            agencyLogoMediaId: mediaId,
+          }),
+        );
+      } catch {
+        // Ignore local user persistence errors.
+      }
+      const reducedBytes = file.size - optimizedFile.size;
+      const reductionMb = reducedBytes > 0 ? (reducedBytes / (1024 * 1024)).toFixed(2) : '0';
+      setAgencyLogoSuccess(
+        reducedBytes > 0
+          ? `Agency logo uploaded successfully. Optimized by ${reductionMb} MB for faster upload.`
+          : 'Agency logo uploaded successfully.',
+      );
+    } catch (err) {
+      if (err.message !== 'Session expired. Please log in again.') {
+        setAgencyLogoError(err.message || 'Could not upload agency logo.');
+      }
+    } finally {
+      setAgencyLogoUploading(false);
+      if (agencyLogoInputRef.current) agencyLogoInputRef.current.value = '';
+    }
+  };
+
+  const handleAgencyLogoInput = async (event) => {
+    const file = event.target.files?.[0];
+    await handleAgencyLogoFile(file);
+  };
+
+  const handleAgencyLogoRemove = () => {
+    clearAgencyLogoMessages();
+    setAgencyLogoAsset(null);
+    setAgencyLogoPreview('');
+    clearPersistedAgencyLogo();
+    try {
+      const existingUser = getUser() || {};
+      const {
+        agencyLogoUrl: _agencyLogoUrl,
+        agencyLogoObjectKey: _agencyLogoObjectKey,
+        agencyLogoMediaId: _agencyLogoMediaId,
+        ...rest
+      } = existingUser;
+      localStorage.setItem('user', JSON.stringify(rest));
+    } catch {
+      // Ignore local user persistence errors.
+    }
   };
 
   const handleChangePassword = async () => {
@@ -372,22 +593,58 @@ export default function Account() {
           <div className="settings-shell-v2__content">
             <SettingsSection
               id="settings-section-profile"
-              title="Profile information"
-              subtitle="Manage your name, contact details, and how you appear to your team."
+              title="Agency Information"
+              subtitle="Manage your agency details, contact information, and branding."
             >
               <div className="settings-profile-avatar-row">
-                <div className="settings-profile-avatar-v2" aria-hidden>
-                  <span>{initials}</span>
+                <div className={`settings-profile-avatar-v2 settings-profile-avatar-v2--logo${agencyLogoUploading ? ' is-uploading' : ''}`}>
+                  {agencyLogoPreview ? (
+                    <img src={agencyLogoPreview} alt="Agency logo preview" className="settings-profile-logo-img" />
+                  ) : (
+                    <span aria-hidden>{initials}</span>
+                  )}
                 </div>
                 <div className="settings-profile-avatar-actions">
-                  <button type="button" className="settings-link-btn-v2 settings-link-btn-v2--muted">
-                    Delete
+                  <input
+                    ref={agencyLogoInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleAgencyLogoInput}
+                    className="settings-hidden-file-input"
+                    aria-label="Upload agency logo"
+                  />
+                  <button
+                    type="button"
+                    className="settings-link-btn-v2 settings-link-btn-v2--accent"
+                    disabled={agencyLogoUploading}
+                    onClick={() => agencyLogoInputRef.current?.click()}
+                  >
+                    <FiUpload size={14} strokeWidth={2} aria-hidden />
+                    {agencyLogoUploading ? 'Uploading...' : 'Upload logo'}
                   </button>
-                  <button type="button" className="settings-link-btn-v2 settings-link-btn-v2--accent">
-                    Update
+                  <button
+                    type="button"
+                    className="settings-link-btn-v2 settings-link-btn-v2--muted"
+                    disabled={!agencyLogoPreview || agencyLogoUploading}
+                    onClick={handleAgencyLogoRemove}
+                  >
+                    Remove
                   </button>
                 </div>
               </div>
+              {agencyLogoError ? (
+                <div className="account-settings-alert account-settings-alert--error" role="alert">
+                  {agencyLogoError}
+                </div>
+              ) : null}
+              {agencyLogoSuccess ? (
+                <div className="account-settings-alert account-settings-alert--success" role="status">
+                  {agencyLogoSuccess}
+                </div>
+              ) : null}
+              {agencyLogoAsset?.objectKey ? (
+                <p className="settings-inline-meta">Stored media key: {agencyLogoAsset.objectKey}</p>
+              ) : null}
 
               <SettingsFormRow label="Name" htmlFor="settings-profile-fullname">
                 <input
@@ -800,29 +1057,18 @@ export default function Account() {
         </div>
       </div>
 
-      <section className="account-danger-card">
-        <div className="account-danger-card__head">
-          <span className="account-danger-card__icon" aria-hidden>
-            <FiAlertTriangle size={18} strokeWidth={2} />
-          </span>
-          <div>
-            <h2 className="account-danger-card__title">Danger zone</h2>
-            <p className="account-danger-card__subtitle">Irreversible actions for this workspace account.</p>
-          </div>
-        </div>
-        <div className="account-danger-card__body">
-            <div>
-            <h3 className="account-danger-card__action-title">Delete account</h3>
-            <p className="account-danger-card__action-desc">
-              Permanently remove your account and associated access. This cannot be undone.
-            </p>
+      <section className="dz-section">
+        <h3 className="dz-section__title">Danger zone</h3>
+        <div className="dz-section__row">
+          <div className="dz-section__info">
+            <strong>Delete this account</strong>
+            <span>Once deleted, all data will be permanently removed and cannot be recovered.</span>
           </div>
           <button
             type="button"
-            className="btn btn-sm account-settings-btn-danger"
+            className="dz-section__btn"
             onClick={() => setShowDeleteModal(true)}
           >
-            <FiTrash2 size={15} strokeWidth={2} />
             Delete account
           </button>
         </div>
@@ -875,79 +1121,53 @@ export default function Account() {
 
       {showDeleteModal && (
         <div
-          className="app-modal-overlay app-modal-overlay--danger-flow"
+          className="dz-modal-overlay"
           role="presentation"
-          onClick={() => {
-            setShowDeleteModal(false);
-            setDeleteConfirmText('');
-          }}
+          onClick={() => { setShowDeleteModal(false); setDeleteConfirmText(''); }}
         >
           <div
-            className="destructive-confirm-dialog"
+            className="dz-modal"
             role="dialog"
             aria-modal="true"
-            aria-labelledby="account-delete-title"
+            aria-labelledby="dz-delete-title"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="destructive-confirm-dialog__header">
-              <h2 id="account-delete-title" className="destructive-confirm-dialog__title">
-                Delete account
-              </h2>
-              <button
-                type="button"
-                className="destructive-confirm-dialog__close"
-                aria-label="Close"
-                onClick={() => {
-                  setShowDeleteModal(false);
-                  setDeleteConfirmText('');
-                }}
-              >
-                <FiX size={20} strokeWidth={1.75} />
-              </button>
+            <div className="dz-modal__icon-wrap">
+              <FiAlertTriangle size={24} strokeWidth={2} />
             </div>
-            <div className="destructive-confirm-dialog__body">
-              <div className="destructive-confirm-dialog__warning">
-                <div className="destructive-confirm-dialog__warning-bar" aria-hidden />
-                <div className="destructive-confirm-dialog__warning-text">
-                  This will <strong>permanently delete</strong> your account, all nurses, patient records, schedules and
-                  documents. <strong>This cannot be undone.</strong>
-                </div>
-              </div>
 
-              <label className="destructive-confirm-dialog__input-label" htmlFor="account-delete-confirm">
-                To delete, type <strong>{confirmWord}</strong> below
-              </label>
-              <div className="destructive-confirm-dialog__input-wrap">
-                <span
-                  className="destructive-confirm-dialog__input-icon destructive-confirm-dialog__input-icon--danger"
-                  aria-hidden
-                >
-                  <FiTrash2 size={16} />
-                </span>
-                <input
-                  id="account-delete-confirm"
-                  className="destructive-confirm-dialog__input"
-                  type="text"
-                  autoComplete="off"
-                  value={deleteConfirmText}
-                  onChange={(e) => setDeleteConfirmText(e.target.value)}
-                  placeholder={confirmWord}
-                />
-              </div>
-            </div>
-            <div className="destructive-confirm-dialog__footer">
+            <h2 id="dz-delete-title" className="dz-modal__title">Delete your account?</h2>
+            <p className="dz-modal__desc">
+              This action is <strong>permanent</strong>. All nurses, patient records, schedules, and documents will be removed and cannot be recovered.
+            </p>
+
+            <label className="dz-modal__label" htmlFor="dz-confirm-input">
+              Type <strong>{confirmWord}</strong> to confirm
+            </label>
+            <input
+              id="dz-confirm-input"
+              className="dz-modal__input"
+              type="text"
+              autoComplete="off"
+              value={deleteConfirmText}
+              onChange={(e) => setDeleteConfirmText(e.target.value)}
+              placeholder={confirmWord}
+            />
+
+            <div className="dz-modal__actions">
               <button
                 type="button"
-                className="destructive-confirm-dialog__btn-cancel"
-                onClick={() => {
-                  setShowDeleteModal(false);
-                  setDeleteConfirmText('');
-                }}
+                className="dz-modal__btn dz-modal__btn--cancel"
+                onClick={() => { setShowDeleteModal(false); setDeleteConfirmText(''); }}
               >
                 Cancel
               </button>
-              <button type="button" className="destructive-confirm-dialog__btn-danger" disabled={deleteConfirmText !== confirmWord}>
-                <FiTrash2 size={13} /> Permanently delete
+              <button
+                type="button"
+                className="dz-modal__btn dz-modal__btn--delete"
+                disabled={deleteConfirmText !== confirmWord}
+              >
+                Delete account
               </button>
             </div>
           </div>
