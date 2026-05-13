@@ -12731,52 +12731,53 @@ button.dashboard-stat-card:active {
 }
 
 .reports-document {
-  max-width: 720px;
+  max-width: 680px;
   margin: 0 auto;
   font-family: 'Georgia', 'Times New Roman', serif;
   color: #1a1a1a;
-  line-height: 1.65;
+  line-height: 1.35;
+  font-size: 13px;
 }
 
 .reports-document .report-header {
   text-align: center;
-  border-bottom: 2px solid #1a1a1a;
-  padding-bottom: 16px;
-  margin-bottom: 24px;
+  border-bottom: 1px solid #1a1a1a;
+  padding-bottom: 8px;
+  margin-bottom: 12px;
 }
 
 .reports-document .report-header h1 {
-  font-size: 20px;
+  font-size: 16px;
   font-weight: 700;
-  margin: 0 0 4px;
+  margin: 0 0 2px;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
 }
 
 .reports-document .report-header p {
-  font-size: 12px;
+  font-size: 11px;
   color: #555;
   margin: 0;
-  line-height: 1.5;
+  line-height: 1.25;
 }
 
 .reports-document .report-title {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
   text-align: center;
-  margin-bottom: 20px;
+  margin-bottom: 10px;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
   border: 1px solid #1a1a1a;
-  padding: 8px;
+  padding: 6px;
 }
 
 .reports-document .report-meta {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 6px 24px;
-  margin-bottom: 24px;
-  font-size: 12.5px;
+  gap: 6px 12px;
+  margin-bottom: 12px;
+  font-size: 12px;
 }
 
 .reports-document .report-meta dt {
@@ -12787,6 +12788,38 @@ button.dashboard-stat-card:active {
 .reports-document .report-meta dd {
   margin: 0;
   color: #555;
+}
+
+.reports-document .report-section h3 {
+  font-size: 12px;
+  padding: 6px 8px;
+}
+
+.reports-document table th, .reports-document table td {
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
+/* Key/value rows used in patient information and similar sections */
+.reports-document .report-kv {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 6px 8px;
+  border-bottom: 1px solid #eee;
+}
+.reports-document .report-kv:last-child { border-bottom: none; }
+.reports-document .report-kv__label { font-weight: 700; color: #374151; font-size: 12px; }
+.reports-document .report-kv__value {
+  text-align: right;
+  color: #111;
+  font-size: 12px;
+  margin-left: auto;
+  max-width: 46%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .reports-document .report-section {

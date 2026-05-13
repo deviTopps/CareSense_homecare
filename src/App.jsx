@@ -233,7 +233,7 @@ function App() {
           <AuthLayout><Account /></AuthLayout>
         </ProtectedRoute>
       } />
-      <Route path="/billing" element={
+      <Route path="/reports" element={
         <ProtectedRoute isAuthenticated={isAuthenticated}>
           <AuthLayout><Billing /></AuthLayout>
         </ProtectedRoute>

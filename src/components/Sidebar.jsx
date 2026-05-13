@@ -31,7 +31,7 @@ const sidebarGroups = [
       { to: '/enquiries', icon: FiMessageCircle, label: 'Enquiries' },
       { to: '/clinical', icon: FiAlertCircle, label: 'Emergency Cases' },
       { to: '/attendance', icon: FiClock, label: 'Attendance' },
-      { to: '/billing', icon: FiFolder, label: 'Reports' },
+      { to: '/reports', icon: FiFolder, label: 'Reports' },
     ],
   },
   {
@@ -206,7 +206,7 @@ export default function Sidebar({
               <strong>Standard Plan</strong>
               <p>Collaborate on your finances. Upgrade to Shared Budget.</p>
             </div>
-            <NavLink to="/billing" className="sidebar-upgrade-card__action" title="Upgrade plan">
+            <NavLink to="/reports" className="sidebar-upgrade-card__action" title="Upgrade plan">
               <span className="sidebar-link-label">{agencyName}</span>
             </NavLink>
             {isCollapsed && <span className="sidebar-upgrade-card__initials">{initials}</span>}

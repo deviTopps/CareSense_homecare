@@ -394,7 +394,7 @@ export default function Dashboard() {
     { label: 'Patients', to: '/patients', icon: FiActivity },
     { label: 'Care Visits', to: '/scheduling', icon: FiCalendar },
     { label: 'Attendance', to: '/attendance', icon: FiClock },
-    { label: 'Reports', to: '/billing', icon: FiTrendingUp },
+    { label: 'Reports', to: '/reports', icon: FiTrendingUp },
   ];
 
   return (

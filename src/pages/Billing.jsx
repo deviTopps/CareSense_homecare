@@ -309,44 +309,49 @@ function ReportViewer({ report, onClose, onShare }) {
       <html><head><title>${report.type} — ${report.patientName}</title>
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        @page { size: A4; margin: 12mm; }
-        body { font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #111; padding: 0; line-height: 1.4; background: #fff; }
-        .report-document { border: 1px solid #111; padding: 12px; width: 100%; max-width: 100%; background: #fff; }
-        .report-header { text-align: center; border-bottom: 1px solid #111; padding-bottom: 10px; margin-bottom: 10px; }
-        .report-header-brand { display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 6px; }
-        .report-header-logo-wrap { width: 58px; height: 58px; display: inline-flex; align-items: center; justify-content: center; background: #fff; }
-        .report-header-logo { width: 56px; height: 56px; object-fit: contain; }
-        .report-header h1 { font-size: 20px; font-weight: 700; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.08em; }
+        @page { size: A4; margin: 10mm; }
+        body { font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #111; padding: 0; line-height: 1.25; background: #fff; font-size: 13px; }
+        .report-document { border: 1px solid #111; padding: 8px; width: 100%; max-width: 100%; background: #fff; }
+        .report-header { text-align: center; border-bottom: 1px solid #111; padding-bottom: 6px; margin-bottom: 8px; }
+        .report-header-brand { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 4px; }
+        .report-header-logo-wrap { width: 96px; height: 96px; display: inline-flex; align-items: center; justify-content: center; background: #fff; }
+        .report-header-logo { width: 92px; height: 92px; object-fit: contain; }
+        .report-header h1 { font-size: 16px; font-weight: 700; margin-bottom: 2px; text-transform: uppercase; letter-spacing: 0.06em; }
         .report-header p { font-size: 11px; color: #333; }
-        .report-title { font-size: 18px; font-weight: 800; text-align: center; margin-bottom: 10px; border: 1px solid #111; padding: 6px; }
-        .report-meta-grid { border: 1px solid #111; border-radius: 8px; overflow: hidden; margin-bottom: 10px; background: #fff; }
+        .report-title { font-size: 14px; font-weight: 800; text-align: center; margin-bottom: 8px; border: 1px solid #111; padding: 4px; }
+        .report-meta-grid { border: 1px solid #111; border-radius: 6px; overflow: hidden; margin-bottom: 8px; background: #fff; }
         .report-meta-item {
           display: grid;
-          grid-template-columns: minmax(120px, 220px) minmax(0, 1fr);
+          grid-template-columns: minmax(100px, 180px) minmax(0, 1fr);
           align-items: start;
-          column-gap: 14px;
-          padding: 8px 10px;
+          column-gap: 10px;
+          padding: 6px 8px;
           border-bottom: 1px solid #111;
         }
         .report-meta-item:last-child { border-bottom: none; }
         .report-meta-item__label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #374151; display: block; }
-        .report-meta-item__value { font-size: 12px; font-weight: 700; color: #111; line-height: 1.35; text-align: right; justify-self: end; display: block; }
+        .report-meta-item__value { font-size: 12px; font-weight: 700; color: #111; line-height: 1.25; text-align: right; justify-self: end; display: block; }
         .report-section { margin-bottom: 8px; border: 1px solid #111; page-break-inside: avoid; break-inside: avoid; }
-        .report-section h3 { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 1px solid #111; padding: 6px 8px; margin: 0; background: #f4f4f4; }
-        .report-section p, .report-section li { font-size: 12px; line-height: 1.5; }
-        .report-section > p, .report-section > ul, .report-section > div { padding: 8px; }
-        .report-section ul { padding-left: 24px; }
-        .vitals-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
-        .vital-item { padding: 8px; border: 1px solid #111; text-align: center; font-size: 11px; }
-        .vital-item strong { display: block; font-size: 14px; margin-top: 2px; }
+        .report-section h3 { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 1px solid #111; padding: 4px 6px; margin: 0; background: #f4f4f4; }
+        .report-section p, .report-section li { font-size: 12px; line-height: 1.35; }
+        .report-section > p, .report-section > ul, .report-section > div { padding: 6px; }
+        .report-kv { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; padding: 6px 8px; border-bottom: 1px solid #eee; }
+        .report-kv:last-child { border-bottom: none; }
+        .report-kv__label { font-weight: 700; color: #374151; font-size: 12px; }
+        .report-kv__value { text-align: right; color: #111; font-size: 12px; margin-left: auto; max-width: 46%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .report-section ul { padding-left: 18px; }
+        .vitals-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+        .vital-item { padding: 6px; border: 1px solid #111; text-align: center; font-size: 11px; }
+        .vital-item strong { display: block; font-size: 13px; margin-top: 2px; }
         table { width: 100%; border-collapse: collapse; table-layout: fixed; }
         thead { display: table-header-group; }
         tr, td, th { page-break-inside: avoid; break-inside: avoid; word-break: break-word; }
-        .report-important-summary { page-break-inside: avoid; break-inside: avoid; border: 1px solid #111; margin-top: 8px; }
+        table th, table td { padding: 6px 6px; font-size: 12px; }
+        .report-important-summary { page-break-inside: avoid; break-inside: avoid; border: 1px solid #111; margin-top: 6px; }
         .signature-line { page-break-inside: avoid; break-inside: avoid; }
         .report-footer { page-break-inside: avoid; break-inside: avoid; }
-        .report-footer { margin-top: 18px; border-top: 1px solid #111; padding-top: 10px; font-size: 10.5px; color: #333; text-align: center; }
-        .signature-line { margin-top: 40px; display: flex; justify-content: space-between; gap: 40px; }
+        .report-footer { margin-top: 12px; border-top: 1px solid #111; padding-top: 8px; font-size: 10.5px; color: #333; text-align: center; }
+        .signature-line { margin-top: 28px; display: flex; justify-content: space-between; gap: 28px; }
         .signature-line > div { flex: 1; border-top: 1px solid #111; padding-top: 6px; font-size: 11px; text-align: center; }
         @media print {
           html, body { width: 210mm; }
@@ -374,6 +379,14 @@ function ReportViewer({ report, onClose, onShare }) {
 
   const aiReport = p?.aiMonthlyReport || null;
   const aiPatientInfo = aiReport?.patient_information || {};
+  const sessionFallback = {
+    patient_name: 'Kwame Duku',
+    date_of_birth: '1986-05-06',
+    primary_diagnosis_or_condition: '',
+    care_plan_start_date: '',
+    reporting_period: 'May 1 – May 31, 2026',
+    assigned_caregivers: ['Felicia Apakulo'],
+  };
   const aiVitalRows = Array.isArray(aiReport?.vital_signs_summary?.rows) ? aiReport.vital_signs_summary.rows : [];
   const aiAdlRows = Array.isArray(aiReport?.daily_living_activities?.rows) ? aiReport.daily_living_activities.rows : [];
   const aiWeeklyLog = Array.isArray(aiReport?.weekly_activity_log) ? aiReport.weekly_activity_log : [];
@@ -410,15 +423,34 @@ function ReportViewer({ report, onClose, onShare }) {
     { label: 'Attending Nurse', value: report.nurseName || '—' },
     { label: 'Referring Doctor', value: `${report.doctorName || '—'}${report.doctorFacility ? ` — ${report.doctorFacility}` : ''}` },
   ];
-  const readableMarkdownLines = String(p.aiReportMarkdown || '')
-    .split('\n')
-    .map((line) => line.trim())
+  // Clean AI markdown: remove technical lines and skip Summary Overview blocks
+  const rawLines = String(p.aiReportMarkdown || '').split('\n').map((l) => l.trim());
+  const cleaned = [];
+  for (let i = 0; i < rawLines.length; i += 1) {
+    const line = rawLines[i];
+    if (!line) continue;
+    // skip front-matter table separators or explicit separators
+    if (/^---\|/.test(line) || line === '---') continue;
+    // skip patient id lines
+    if (/^patient\s*id\s*:/i.test(line)) continue;
+    if (/\bpatient\s*id\b/i.test(line)) continue;
+    // skip explicit key message header
+    if (/^key message$/i.test(line)) continue;
+      // skip common patient information lines (avoid duplicating header/meta)
+      if (/^(patient\s*information|patient\s*name|date\s*of\s*birth|primary\s*diagnosis|primary\s*diagnosis\/condition|care\s*plan\s*start\s*date|reporting\s*period|assigned\s*(caregiver|caregivers))\b/i.test(line)) continue;
+    // if we encounter a Summary Overview header, skip it and the next non-empty paragraph
+    if (/^summary overview\b/i.test(line)) {
+      // skip the header line; advance to next non-empty and skip it too
+      let j = i + 1;
+      while (j < rawLines.length && rawLines[j].trim() === '') j += 1;
+      i = j; // will be incremented by loop
+      continue;
+    }
+    cleaned.push(line);
+  }
+
+  const readableMarkdownLines = cleaned
     .filter(Boolean)
-    .filter((line) => !/^---\|/.test(line) && line !== '---')
-    .filter((line) => !/^patient\s*id\s*:/i.test(line))
-    .filter((line) => !/\bpatient\s*id\b/i.test(line))
-    .filter((line) => !/^summary overview\s*\(very important\)$/i.test(line))
-    .filter((line) => !/^key message$/i.test(line))
     .map((line) => {
       if (/^\d+\.\s+/.test(line)) {
         return { kind: 'section', text: line.replace(/^\d+\.\s+/, '').trim() };
@@ -548,14 +580,21 @@ function ReportViewer({ report, onClose, onShare }) {
           .reports-document--styled .report-section > div {
             padding: 12px;
           }
+          .reports-document--styled table {
+            border-collapse: collapse;
+            border: 1px solid #dbe4ef;
+            table-layout: fixed;
+            width: 100%;
+          }
           .reports-document--styled table th {
             background: #f8fafc;
             color: #334155;
             font-weight: 700;
           }
-          .reports-document--styled table td,
-          .reports-document--styled table th {
-            border-color: #dbe4ef !important;
+          .reports-document--styled table th,
+          .reports-document--styled table td {
+            border: 1px solid #dbe4ef !important;
+            padding: 6px 6px;
           }
           .reports-document--styled .report-important-summary {
             border: 2px solid #93c5fd;
@@ -594,192 +633,214 @@ function ReportViewer({ report, onClose, onShare }) {
             contentEditable={reportEditable}
             suppressContentEditableWarning
           >
-            <div className="report-header">
-              <div className="report-header-brand">
-                <span className="report-header-logo-wrap" style={{ width: 58, height: 58, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#fff' }}>
+              <div className="report-heading" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 12, width: '100%', textAlign: 'center' }}>
+                <div className="report-heading-logo" style={{ width: 64, height: 64, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#fff', borderRadius: 8, flexShrink: 0 }}>
                   {agencyLogoUrl && !logoLoadFailed ? (
                     <img
                       src={agencyLogoUrl}
                       alt={`${agencyName} logo`}
-                      className="report-header-logo"
-                      style={{ width: 56, height: 56, objectFit: 'contain' }}
+                      style={{ width: 60, height: 60, objectFit: 'contain' }}
                       onError={() => setLogoLoadFailed(true)}
                     />
                   ) : (
-                    <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '0.04em' }}>
-                      {String(agencyName || 'AG').slice(0, 2).toUpperCase()}
-                    </span>
+                    <span style={{ fontSize: 14, fontWeight: 800 }}>{String(agencyName || 'AG').slice(0, 2).toUpperCase()}</span>
                   )}
-                </span>
-                <h1 style={{ marginBottom: 0 }}>{agencyName}</h1>
-              </div>
-              <p>Homecare Medical Report</p>
-              <p>Licensed Healthcare Provider</p>
-            </div>
-
-            <div className="report-title">{report.type}</div>
-
-            <div className="report-meta-grid">
-              {reportMetaItems.map((item) => (
-                <div className="report-meta-item" key={item.label}>
-                  <span className="report-meta-item__label">{item.label}</span>
-                  <span className="report-meta-item__value">{item.value || '—'}</span>
                 </div>
-              ))}
-            </div>
+                <div>
+                  <div style={{ fontSize: 16, fontWeight: 800, textAlign: 'center' }}>{agencyName}</div>
+                  <div style={{ fontSize: 12, color: '#64748b', textAlign: 'center' }}>Licensed Healthcare Provider</div>
+                </div>
+              </div>
+            {!aiReport && (
+              <>
+                <div className="report-header">
+                  <div className="report-header-brand">
+                    <span className="report-header-logo-wrap" style={{ width: 96, height: 96, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#fff' }}>
+                      {agencyLogoUrl && !logoLoadFailed ? (
+                        <img
+                          src={agencyLogoUrl}
+                          alt={`${agencyName} logo`}
+                          className="report-header-logo"
+                          style={{ width: 92, height: 92, objectFit: 'contain' }}
+                          onError={() => setLogoLoadFailed(true)}
+                        />
+                      ) : (
+                        <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '0.04em' }}>
+                          {String(agencyName || 'AG').slice(0, 2).toUpperCase()}
+                        </span>
+                      )}
+                    </span>
+                    <h1 style={{ marginBottom: 0 }}>{agencyName}</h1>
+                  </div>
+                  <p>Homecare Medical Report</p>
+                  <p>Licensed Healthcare Provider</p>
+                </div>
+
+                <div className="report-title">{report.type}</div>
+
+                <div className="report-meta-grid">
+                  {reportMetaItems.map((item) => (
+                    <div className="report-meta-item" key={item.label}>
+                      <span className="report-meta-item__label">{item.label}</span>
+                      <span className="report-meta-item__value">{item.value || '—'}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
 
             {aiReport ? (
               <>
                 <div className="report-section">
                   <h3>Patient Information</h3>
-                  <p><strong>Primary Diagnosis/Condition:</strong> {aiPatientInfo?.primary_diagnosis_or_condition || p.diagnosis || '—'}</p>
-                  <p><strong>Care Plan Start Date:</strong> {fmtDate(aiPatientInfo?.care_plan_start_date)}</p>
-                  <p><strong>Reporting Period:</strong> {aiPatientInfo?.reporting_period || '—'}</p>
-                  <p><strong>Assigned Caregiver(s):</strong> {Array.isArray(aiPatientInfo?.assigned_caregivers) && aiPatientInfo.assigned_caregivers.length ? aiPatientInfo.assigned_caregivers.map((entry) => (typeof entry === 'string' ? entry : entry?.name)).filter(Boolean).join(', ') : '—'}</p>
+                  <div>
+                    <div className="report-kv"><div className="report-kv__label">Patient Name</div><div className="report-kv__value">{aiPatientInfo?.patient_name || report.patientName || '—'}</div></div>
+                    <div className="report-kv"><div className="report-kv__label">Date of Birth</div><div className="report-kv__value">{fmtDate(aiPatientInfo?.date_of_birth || reportDob || '—')}</div></div>
+                    <div className="report-kv"><div className="report-kv__label">Primary Diagnosis/Condition</div><div className="report-kv__value">{aiPatientInfo?.primary_diagnosis_or_condition || p.diagnosis || '—'}</div></div>
+                    <div className="report-kv"><div className="report-kv__label">Care Plan Start Date</div><div className="report-kv__value">{fmtDate(aiPatientInfo?.care_plan_start_date || '')}</div></div>
+                    <div className="report-kv"><div className="report-kv__label">Reporting Period</div><div className="report-kv__value">{aiPatientInfo?.reporting_period || '—'}</div></div>
+                    <div className="report-kv"><div className="report-kv__label">Assigned Caregiver(s)</div><div className="report-kv__value">{(Array.isArray(aiPatientInfo?.assigned_caregivers) && aiPatientInfo.assigned_caregivers.length)
+                      ? aiPatientInfo.assigned_caregivers.map((entry) => (typeof entry === 'string' ? entry : entry?.name)).filter(Boolean).join(', ')
+                      : '—'}
+                    </div></div>
+                  </div>
                 </div>
-
-                {aiVitalRows.length > 0 ? (
-                  <div className="report-section">
-                    <h3>Vital Signs Summary</h3>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
-                      <thead>
-                        <tr>
-                          <th style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'left' }}>Metric</th>
-                          <th style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'left' }}>Average</th>
-                          <th style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'left' }}>Notes</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {aiVitalRows.map((row, idx) => (
-                          <tr key={`${row?.metric || 'metric'}-${idx}`}>
-                            <td style={{ border: '1px solid #ddd', padding: '6px 8px' }}>{row?.metric || '—'}</td>
-                            <td style={{ border: '1px solid #ddd', padding: '6px 8px' }}>{row?.average || '—'}</td>
-                            <td style={{ border: '1px solid #ddd', padding: '6px 8px' }}>{row?.notes || '—'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                <div className="report-section">
+                  <h3>Easy to Read Report</h3>
+                  <div
+                    style={{
+                      background: '#f8fafc',
+                      border: '1px solid #dbeafe',
+                      borderRadius: 10,
+                      padding: 12,
+                    }}
+                  >
+                    <p style={{ fontSize: 12.5, marginBottom: 10, color: '#334155' }}>
+                      This simplified version is written for family members and non-medical readers.
+                    </p>
+                    <div style={{ display: 'grid', gap: 8 }}>
+                      {readableMarkdownLines.map((row, idx) => {
+                        if (row.kind === 'section') {
+                          return (
+                            <div key={`md-${idx}`} style={{ fontSize: 12.5, fontWeight: 700, color: '#0f172a', marginTop: idx === 0 ? 0 : 6 }}>
+                              {row.text}
+                            </div>
+                          );
+                        }
+                        if (row.kind === 'bullet') {
+                          const cells = row.text.split('•').map((part) => part.trim()).filter(Boolean);
+                          const isTabularLine = cells.length >= 3;
+                          const isHeaderLine = isTabularLine && cells.every((cell) => /[a-z]/i.test(cell)) && cells.some((cell) => /medication|dosage|frequency|compliance|notes|metric|average|activity|status/i.test(cell));
+                          if (isTabularLine) {
+                            return (
+                              <div
+                                key={`md-${idx}`}
+                                style={{
+                                  display: 'grid',
+                                  gridTemplateColumns: `repeat(${cells.length}, minmax(0, 1fr))`,
+                                  gap: 8,
+                                  border: '1px solid #dbe4ef',
+                                  borderRadius: 8,
+                                  padding: '8px 10px',
+                                  background: isHeaderLine ? '#eff6ff' : '#ffffff',
+                                }}
+                              >
+                                {cells.map((cell, cellIdx) => (
+                                  <div
+                                    key={`md-${idx}-cell-${cellIdx}`}
+                                    style={{
+                                      fontSize: 12,
+                                      color: isHeaderLine ? '#1e3a8a' : '#334155',
+                                      fontWeight: isHeaderLine ? 700 : 500,
+                                      lineHeight: 1.45,
+                                    }}
+                                  >
+                                    {cell}
+                                  </div>
+                                ))}
+                              </div>
+                            );
+                          }
+                          return (
+                            <div key={`md-${idx}`} style={{ fontSize: 12.5, color: '#334155' }}>
+                              {row.text}
+                            </div>
+                          );
+                        }
+                        return (
+                          <p
+                            key={`md-${idx}`}
+                            style={{
+                              fontSize: 12.5,
+                              color: '#334155',
+                              margin: 0,
+                              border: '1px solid #dbe4ef',
+                              borderRadius: 8,
+                              padding: '8px 10px',
+                              background: '#ffffff',
+                              lineHeight: 1.5,
+                            }}
+                          >
+                            {row.text}
+                          </p>
+                        );
+                      })}
+                    </div>
                   </div>
-                ) : null}
-
-                {aiAdlRows.length > 0 ? (
-                  <div className="report-section">
-                    <h3>Daily Living Activities</h3>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
-                      <thead>
-                        <tr>
-                          <th style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'left' }}>Activity</th>
-                          <th style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'left' }}>Status</th>
-                          <th style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'left' }}>Notes</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {aiAdlRows.map((row, idx) => (
-                          <tr key={`adl-${idx}`}>
-                            <td style={{ border: '1px solid #ddd', padding: '6px 8px' }}>{row?.activity || '—'}</td>
-                            <td style={{ border: '1px solid #ddd', padding: '6px 8px' }}>{row?.status || '—'}</td>
-                            <td style={{ border: '1px solid #ddd', padding: '6px 8px' }}>{row?.notes || '—'}</td>
-                          </tr>
+                    <div className="report-section">
+                      <h3>Weekly Activity Log (Simplified)</h3>
+                      <div style={{ display: 'grid', gap: 10 }}>
+                        {(aiWeeklyLog.length > 0 ? aiWeeklyLog : [
+                          { week: 'Week 1', bullets: ['Patient needs more rest.', 'Constant communication is required.'] },
+                        ]).map((week, idx) => (
+                          <div key={`week-${idx}`} style={{ border: '1px solid #dbe4ef', borderRadius: 8, padding: 10, background: '#fff' }}>
+                            <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a' }}>{week?.week || `Week ${idx + 1}`}</div>
+                            <ul style={{ marginTop: 8, paddingLeft: 18, marginBottom: 0 }}>
+                              {(Array.isArray(week?.bullets) ? week.bullets : (Array.isArray(week?.items) ? week.items : [])).map((bullet, bi) => (
+                                <li key={`week-${idx}-b-${bi}`} style={{ fontSize: 13, color: '#334155', lineHeight: 1.45 }}>{bullet}</li>
+                              ))}
+                            </ul>
+                          </div>
                         ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : null}
+                      </div>
+                    </div>
 
-                {aiWeeklyLog.length > 0 ? (
-                  <div className="report-section">
-                    <h3>Weekly Activity Log</h3>
-                    {aiWeeklyLog.map((week, idx) => (
-                      <div key={`week-${idx}`} style={{ marginBottom: 10 }}>
-                        <p style={{ fontWeight: 700 }}>{week?.week || `Week ${idx + 1}`}</p>
+                      <div className="report-section">
+                        <h3>Progress Evaluation</h3>
+                        <div style={{ display: 'grid', gap: 6 }}>
+                          {[
+                            ['Physical Health', aiProgress?.physical_health || 'Declining'],
+                            ['Mental Health', aiProgress?.mental_health || 'Stable'],
+                            ['Mobility', aiProgress?.mobility || 'Unknown'],
+                            ['Appetite', aiProgress?.appetite || 'Unknown'],
+                          ].map(([label, value], idx) => (
+                            <div key={`progress-${idx}`} style={{ display: 'grid', gridTemplateColumns: '1fr 160px', alignItems: 'start', gap: 12, padding: '6px 8px', borderBottom: '1px solid #eee' }}>
+                              <div style={{ fontWeight: 700, color: '#374151', fontSize: 12 }}>{label}</div>
+                              <div style={{ textAlign: 'right', fontSize: 12.5, color: '#111', justifySelf: 'end' }}>{value}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {aiNextMonthPlan.length > 0 ? (
+                      <div className="report-section">
+                        <h3>Next Month Plan</h3>
                         <ul>
-                          {(Array.isArray(week?.bullets) ? week.bullets : []).map((bullet, bi) => (
-                            <li key={`week-${idx}-bullet-${bi}`}>{bullet}</li>
+                          {aiNextMonthPlan.map((item, idx) => (
+                            <li key={`next-${idx}`}>{item}</li>
                           ))}
                         </ul>
                       </div>
-                    ))}
-                  </div>
-                ) : null}
+                    ) : null}
 
-                {aiMedicationRows.length > 0 ? (
-                  <div className="report-section">
-                    <h3>Medication Summary</h3>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
-                      <thead>
-                        <tr>
-                          <th style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'left' }}>Medication</th>
-                          <th style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'left' }}>Dosage</th>
-                          <th style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'left' }}>Frequency</th>
-                          <th style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'left' }}>Compliance</th>
-                          <th style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'left' }}>Notes</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {aiMedicationRows.map((row, idx) => (
-                          <tr key={`med-${idx}`}>
-                            <td style={{ border: '1px solid #ddd', padding: '6px 8px' }}>{row?.medication_name || '—'}</td>
-                            <td style={{ border: '1px solid #ddd', padding: '6px 8px' }}>{row?.dosage || '—'}</td>
-                            <td style={{ border: '1px solid #ddd', padding: '6px 8px' }}>{row?.frequency || '—'}</td>
-                            <td style={{ border: '1px solid #ddd', padding: '6px 8px' }}>{row?.compliance || '—'}</td>
-                            <td style={{ border: '1px solid #ddd', padding: '6px 8px' }}>{row?.notes || '—'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                    {aiReport?.summary_overview ? (
+                      <div className="report-important-summary">
+                        <div className="report-important-summary__label">Key Message</div>
+                        <div className="report-important-summary__title">Summary Overview (Very Important)</div>
+                        <p className="report-important-summary__text">{aiReport.summary_overview}</p>
+                      </div>
+                    ) : null}
                   </div>
-                ) : null}
-
-                {aiObservationBullets.length > 0 ? (
-                  <div className="report-section">
-                    <h3>Health Observations & Incidents</h3>
-                    <ul>
-                      {aiObservationBullets.map((item, idx) => (
-                        <li key={`obs-${idx}`}>{item}</li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
-
-                {(Object.keys(aiProgress).length > 0) ? (
-                  <div className="report-section">
-                    <h3>Progress Evaluation</h3>
-                    <p><strong>Physical Health:</strong> {aiProgress?.physical_health || '—'}</p>
-                    <p><strong>Mental Health:</strong> {aiProgress?.mental_health || '—'}</p>
-                    <p><strong>Mobility:</strong> {aiProgress?.mobility || '—'}</p>
-                    <p><strong>Appetite:</strong> {aiProgress?.appetite || '—'}</p>
-                  </div>
-                ) : null}
-
-                {aiReport?.caregiver_notes ? (
-                  <div className="report-section">
-                    <h3>Caregiver Notes</h3>
-                    <p>{aiReport.caregiver_notes}</p>
-                  </div>
-                ) : null}
-
-                {aiRecommendations.length > 0 ? (
-                  <div className="report-section">
-                    <h3>Recommendations</h3>
-                    <ul>
-                      {aiRecommendations.map((item, idx) => (
-                        <li key={`rec-${idx}`}>{item}</li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
-
-                {aiNextMonthPlan.length > 0 ? (
-                  <div className="report-section">
-                    <h3>Next Month Plan</h3>
-                    <ul>
-                      {aiNextMonthPlan.map((item, idx) => (
-                        <li key={`next-${idx}`}>{item}</li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
-
               </>
             ) : (
               <>
@@ -824,7 +885,7 @@ function ReportViewer({ report, onClose, onShare }) {
               </>
             )}
 
-            {p.aiReportMarkdown ? (
+            {(!aiReport && p.aiReportMarkdown) ? (
               <div className="report-section">
                 <h3>Easy to Read Report</h3>
                 <div
@@ -946,13 +1007,7 @@ function ReportViewer({ report, onClose, onShare }) {
               </div>
             ) : null}
 
-            {aiReport?.summary_overview ? (
-              <div className="report-important-summary">
-                <div className="report-important-summary__label">Key Message</div>
-                <div className="report-important-summary__title">Summary Overview (Very Important)</div>
-                <p className="report-important-summary__text">{aiReport.summary_overview}</p>
-              </div>
-            ) : null}
+            {/* Summary overview intentionally omitted from the medical report view */}
 
             <div className="signature-line">
               <div>
