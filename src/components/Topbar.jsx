@@ -106,6 +106,7 @@ export default function Topbar({ onToggleSidebar, onLogout, user }) {
             alignItems: 'center',
           }}
         >
+          
           <FiMessageCircle size={13} aria-hidden />
           <span className="topbar-enquiry-cta__text topbar-enquiry-cta__text--long">Create an Enquiry</span>
           <span className="topbar-enquiry-cta__text topbar-enquiry-cta__text--short" aria-hidden="true">

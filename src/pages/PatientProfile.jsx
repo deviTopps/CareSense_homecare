@@ -220,6 +220,7 @@ const FlagItem = ({ label, detail }) => (
 
 const TABS = [
   { key: 'chart', label: 'General', icon: <FiGrid size={14} /> },
+  { key: 'assignednurses', label: 'Assigned Nurses' },
   { key: 'medications', label: 'Medications' },
   { key: 'clinical', label: 'Clinical' },
   { key: 'vitals', label: 'Vitals' },
@@ -721,6 +722,82 @@ async function uploadFileViaBackend(file) {
   return { objectKey, mediaId };
 }
 
+function extractAssignedNurses(rawPatient) {
+  const patientObj = rawPatient && typeof rawPatient === 'object' ? rawPatient : {};
+  const sourceList = []
+    .concat(
+      Array.isArray(patientObj?.assignedNurses) ? patientObj.assignedNurses : [],
+      Array.isArray(patientObj?.assigned_nurses) ? patientObj.assigned_nurses : [],
+      Array.isArray(patientObj?.nurses) ? patientObj.nurses : [],
+      Array.isArray(patientObj?.careTeam) ? patientObj.careTeam : [],
+      Array.isArray(patientObj?.careTeamMembers) ? patientObj.careTeamMembers : [],
+    );
+
+  const normalized = sourceList
+    .map((entry, index) => {
+      if (!entry) return null;
+
+      if (typeof entry === 'string') {
+        const name = entry.trim();
+        return name ? { id: `nurse:${name.toLowerCase()}:${index}`, name, role: '', region: '' } : null;
+      }
+
+      if (typeof entry !== 'object') return null;
+      const nestedNurse = entry?.nurse && typeof entry.nurse === 'object' ? entry.nurse : null;
+      const name = String(
+        entry?.name
+        || entry?.fullName
+        || nurseObjectToDisplayName(entry)
+        || nurseObjectToDisplayName(nestedNurse)
+        || ''
+      ).trim();
+      if (!name) return null;
+
+      return {
+        id: String(
+          entry?.nurseId
+          || entry?.id
+          || entry?._id
+          || nestedNurse?.id
+          || nestedNurse?._id
+          || `nurse:${name.toLowerCase()}`
+        ).trim(),
+        assignmentId: String(
+          entry?.assignmentId
+          || entry?.assignment?._id
+          || entry?.assignment?.id
+          || entry?.assignmentRecordId
+          || ''
+        ).trim(),
+        name,
+        role: String(entry?.role || entry?.jobTitle || entry?.specialisation || nestedNurse?.role || nestedNurse?.jobTitle || '').trim(),
+        region: String(entry?.region || entry?.location || nestedNurse?.region || nestedNurse?.location || '').trim(),
+      };
+    })
+    .filter(Boolean);
+
+  if (normalized.length === 0) {
+    const fallbackName = String(patientObj?.admittingNurse || patientObj?.nurse || patientObj?.admissionChecklist?.admittingNurse || '').trim();
+    if (fallbackName) {
+      normalized.push({
+        id: `nurse:${fallbackName.toLowerCase()}`,
+        assignmentId: '',
+        name: fallbackName,
+        role: '',
+        region: '',
+      });
+    }
+  }
+
+  const seen = new Set();
+  return normalized.filter((entry) => {
+    const key = String(entry?.id || entry?.name || '').trim().toLowerCase();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function normalizePatientProfile(rawPatient, fallbackId) {
   if (!rawPatient || typeof rawPatient !== 'object') {
     return JSON.parse(JSON.stringify(patientsData[0]));
@@ -886,6 +963,7 @@ function normalizePatientProfile(rawPatient, fallbackId) {
     sectionHygienePsychological: rawPatient?.hygienePsychological || null,
     sectionSkinMobility: rawPatient?.skinMobility || null,
     sectionInitialVitals: rawPatient?.initialVitals || null,
+    assignedNurses: extractAssignedNurses(rawPatient),
   };
 }
 
@@ -1959,6 +2037,12 @@ export default function PatientProfile() {
   const [photoUploadSuccess, setPhotoUploadSuccess] = useState('');
   const [avatarImageError, setAvatarImageError] = useState(false);
   const [photoRefreshLoading, setPhotoRefreshLoading] = useState(false);
+  const [removingAssignedNurseId, setRemovingAssignedNurseId] = useState('');
+  const [assignedNurseActionError, setAssignedNurseActionError] = useState('');
+  const [assignedNurseActionSuccess, setAssignedNurseActionSuccess] = useState('');
+  const [assignedNurseCandidateId, setAssignedNurseCandidateId] = useState('');
+  const [assigningProfileNurseId, setAssigningProfileNurseId] = useState('');
+  const [pendingRemoveAssignedNurse, setPendingRemoveAssignedNurse] = useState(null);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [savingProfileUpdate, setSavingProfileUpdate] = useState(false);
   const [profileUpdateError, setProfileUpdateError] = useState('');
@@ -2264,6 +2348,9 @@ export default function PatientProfile() {
   const [showIncidentsMegaModal, setShowIncidentsMegaModal] = useState(false);
   const [showMedicationsMegaModal, setShowMedicationsMegaModal] = useState(false);
   const [showGenerateReportModal, setShowGenerateReportModal] = useState(false);
+  const [generateReportSubmitting, setGenerateReportSubmitting] = useState(false);
+  const [generateReportError, setGenerateReportError] = useState('');
+  const [generateReportDone, setGenerateReportDone] = useState(false);
   const [showReportDeathModal, setShowReportDeathModal] = useState(false);
   const [reportDeathSubmitting, setReportDeathSubmitting] = useState(false);
   const [reportDeathError, setReportDeathError] = useState('');
@@ -4491,20 +4578,15 @@ export default function PatientProfile() {
       return;
     }
 
-    const trim = (value) => {
-      const normalized = String(value ?? '').trim();
-      return normalized || undefined;
-    };
+    const trim = (value) => String(value ?? '').trim();
 
     const payload = {
       patientId: pid,
-      dateOfDeath: reportDeathForm.dateOfDeath,
+      dateOfDeath: trim(reportDeathForm.dateOfDeath),
       timeOfDeath: trim(reportDeathForm.timeOfDeath),
       placeOfDeath: trim(reportDeathForm.placeOfDeath),
-      causeOrCircumstances: trim(reportDeathForm.causeOrCircumstances),
-      notes: trim(reportDeathForm.notes),
-      nextOfKinNotified: Boolean(reportDeathForm.nextOfKinNotified),
-      reportedByName: trim(currentUserName),
+      causeOfDeath: trim(reportDeathForm.causeOrCircumstances),
+      additionalNote: trim(reportDeathForm.notes),
     };
 
     const postDeathReport = async (path) => {
@@ -4532,25 +4614,171 @@ export default function PatientProfile() {
 
     setReportDeathSubmitting(true);
     try {
-      try {
-        await postDeathReport('/patients/death-report');
-      } catch (first) {
-        if (first?.status === 404) {
-          await postDeathReport(`/patients/${encodeURIComponent(pid)}/death-report`);
-        } else {
-          throw first;
-        }
-      }
+      await postDeathReport(`/patients/${encodeURIComponent(pid)}/death`);
       setReportDeathDone(true);
       loadPatientProfile();
     } catch (error) {
       const hint = error?.status === 404
-        ? ' The server does not expose a death-report endpoint yet—ask your administrator to add POST /patients/death-report (or /patients/:id/death-report).'
+        ? ' The server does not expose POST /patients/:id/death for this patient record.'
         : '';
       setReportDeathError((error?.message || 'Unable to submit death report.') + hint);
     } finally {
       setReportDeathSubmitting(false);
     }
+  };
+
+  const handleGenerateReport = async () => {
+    setShowGenerateReportModal(true);
+    setGenerateReportError('');
+    setGenerateReportDone(false);
+
+    const pid = String(effectivePatientId || '').trim();
+    if (!pid) {
+      setGenerateReportError('Patient ID is missing.');
+      return;
+    }
+
+    setGenerateReportSubmitting(true);
+    try {
+      const response = await apiFetch('/ai/medical-report', {
+        method: 'POST',
+        body: JSON.stringify({
+          patientId: pid,
+        }),
+        quiet: true,
+      });
+
+      const responseText = await response.text().catch(() => '');
+      let data = {};
+      if (responseText) {
+        try {
+          data = JSON.parse(responseText);
+        } catch {
+          data = { message: responseText };
+        }
+      }
+
+      if (!response.ok) {
+        const err = new Error(data?.message || data?.error || 'Unable to generate patient medical report.');
+        err.status = response.status;
+        throw err;
+      }
+
+      setGenerateReportDone(true);
+    } catch (error) {
+      setGenerateReportError(error?.message || 'Unable to generate patient medical report.');
+    } finally {
+      setGenerateReportSubmitting(false);
+    }
+  };
+
+  const handleRemoveAssignedNurse = async (nurse) => {
+    const assignmentId = String(nurse?.assignmentId || '').trim();
+    if (!assignmentId) {
+      setAssignedNurseActionError('Assignment ID is missing for this nurse.');
+      setAssignedNurseActionSuccess('');
+      return;
+    }
+
+    setRemovingAssignedNurseId(assignmentId);
+    setAssignedNurseActionError('');
+    setAssignedNurseActionSuccess('');
+
+    try {
+      const response = await apiFetch(`/assignments/${encodeURIComponent(assignmentId)}`, {
+        method: 'DELETE',
+        quiet: true,
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.message || payload?.error || 'Unable to remove assigned nurse.');
+      }
+
+      setRemotePatient((prev) => {
+        if (!prev || typeof prev !== 'object') return prev;
+        const nextAssigned = (Array.isArray(prev.assignedNurses) ? prev.assignedNurses : [])
+          .filter((entry) => String(entry?.assignmentId || '').trim() !== assignmentId);
+        return { ...prev, assignedNurses: nextAssigned };
+      });
+      setAssignedNurseActionSuccess(payload?.message || `${nurse?.name || 'Nurse'} removed successfully.`);
+      setPendingRemoveAssignedNurse(null);
+      loadPatientProfile();
+    } catch (error) {
+      setAssignedNurseActionError(error?.message || 'Unable to remove assigned nurse.');
+    } finally {
+      setRemovingAssignedNurseId('');
+    }
+  };
+
+  const openRemoveAssignedNurseModal = (nurse) => {
+    setAssignedNurseActionError('');
+    setAssignedNurseActionSuccess('');
+    setPendingRemoveAssignedNurse(nurse || null);
+  };
+
+  const handleAssignNewNurse = async () => {
+    const selectedNurseId = String(assignedNurseCandidateId || '').trim();
+    if (!selectedNurseId) {
+      setAssignedNurseActionError('Please select a nurse to assign.');
+      setAssignedNurseActionSuccess('');
+      return;
+    }
+
+    const selectedNurse = incidentNurses.find((row) => String(row?.id || '').trim() === selectedNurseId)
+      || incidentNurses.find((row) => Array.isArray(row?.idsForMatch) && row.idsForMatch.includes(selectedNurseId));
+
+    if (!selectedNurse) {
+      setAssignedNurseActionError('Selected nurse could not be resolved.');
+      setAssignedNurseActionSuccess('');
+      return;
+    }
+
+    const patientIdentifierCandidates = Array.from(new Set([
+      p?.id,
+      effectivePatientId,
+      rawPatientApiRef?.current?.id,
+      rawPatientApiRef?.current?.patientId,
+      rawPatientApiRef?.current?.uuid,
+      rawPatientApiRef?.current?._id,
+    ].map((value) => String(value || '').trim()).filter(Boolean)));
+
+    if (patientIdentifierCandidates.length === 0) {
+      setAssignedNurseActionError('Patient ID is missing.');
+      setAssignedNurseActionSuccess('');
+      return;
+    }
+
+    setAssigningProfileNurseId(selectedNurseId);
+    setAssignedNurseActionError('');
+    setAssignedNurseActionSuccess('');
+
+    let lastError = 'Unable to assign nurse to this patient.';
+    for (const patientIdCandidate of patientIdentifierCandidates) {
+      try {
+        const response = await apiFetch('/assignments', {
+          method: 'POST',
+          body: JSON.stringify({ patientId: patientIdCandidate, nurseId: selectedNurseId }),
+          quiet: true,
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          lastError = payload?.message || payload?.error || lastError;
+          continue;
+        }
+
+        setAssignedNurseActionSuccess(payload?.message || `${selectedNurse.name} assigned successfully.`);
+        setAssignedNurseCandidateId('');
+        setAssigningProfileNurseId('');
+        loadPatientProfile();
+        return;
+      } catch (error) {
+        lastError = error?.message || lastError;
+      }
+    }
+
+    setAssignedNurseActionError(lastError);
+    setAssignedNurseActionSuccess('');
+    setAssigningProfileNurseId('');
   };
 
   const localPatient = patientsData.find((pt) => {
@@ -4564,6 +4792,24 @@ export default function PatientProfile() {
     return candidateIds.includes(String(patientId || ''));
   });
   const p = remotePatient || localPatient;
+  const assignedNursesForProfile = Array.isArray(p?.assignedNurses) ? p.assignedNurses : [];
+  const assignedNurseMatchKeys = useMemo(() => {
+    const keys = new Set();
+    assignedNursesForProfile.forEach((entry) => {
+      const id = String(entry?.id || '').trim().toLowerCase();
+      if (id) keys.add(id);
+      const name = String(entry?.name || '').trim().toLowerCase();
+      if (name) keys.add(name);
+    });
+    return keys;
+  }, [assignedNursesForProfile]);
+  const assignableNursesForProfile = useMemo(() => (
+    incidentNurses.filter((row) => {
+      const id = String(row?.id || '').trim().toLowerCase();
+      const name = String(row?.name || '').trim().toLowerCase();
+      return !(assignedNurseMatchKeys.has(id) || assignedNurseMatchKeys.has(name));
+    })
+  ), [incidentNurses, assignedNurseMatchKeys]);
   const persistedPhotoUrl = p?.profileImage?.url || null;
   const persistedPreviewDataUrl = p?.profileImage?.previewDataUrl || null;
   const avatarSrc = photo || persistedPhotoUrl || persistedPreviewDataUrl || null;
@@ -4614,6 +4860,13 @@ export default function PatientProfile() {
       confirmedProcedure: false,
     });
   }, [showReportDeathModal]);
+
+  useEffect(() => {
+    if (tab !== 'assignednurses') return;
+    if (!incidentNurses.length && !incidentNursesLoading) {
+      loadIncidentNurses();
+    }
+  }, [tab, incidentNurses.length, incidentNursesLoading, loadIncidentNurses]);
 
   useEffect(() => {
     if (!medicationSaveSuccess) {
@@ -5016,7 +5269,7 @@ export default function PatientProfile() {
             </button>
           </div>
           <div className="pp-pharm-topbar__actions">
-            <button type="button" className="pp-pharm-btn-yellow" onClick={() => setShowGenerateReportModal(true)}>
+            <button type="button" className="pp-pharm-btn-yellow" onClick={handleGenerateReport}>
               Generate Report
             </button>
             <button
@@ -5463,6 +5716,257 @@ export default function PatientProfile() {
                 </>
               ) : <NoDataState />}
             </Panel>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ ASSIGNED NURSES ═══ */}
+      {tab === 'assignednurses' && (
+        <div className="row g-3">
+          <div className="col-12">
+            <Panel title="Assigned Nurses" icon={<FiUser size={14} />} variant="summary">
+              {assignedNurseActionError && (
+                <div style={{ marginBottom: 10, color: '#dc2626', fontSize: 12.5, fontWeight: 600 }}>
+                  {assignedNurseActionError}
+                </div>
+              )}
+              {assignedNurseActionSuccess && (
+                <div style={{ marginBottom: 10, color: '#047857', fontSize: 12.5, fontWeight: 600 }}>
+                  {assignedNurseActionSuccess}
+                </div>
+              )}
+              <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <select
+                  className="form-select form-control-kh"
+                  style={{ minWidth: 260, maxWidth: 420, fontSize: 12.5 }}
+                  value={assignedNurseCandidateId}
+                  onChange={(event) => setAssignedNurseCandidateId(event.target.value)}
+                  disabled={incidentNursesLoading || assigningProfileNurseId !== ''}
+                >
+                  <option value="">
+                    {incidentNursesLoading ? 'Loading nurses...' : 'Select nurse to assign'}
+                  </option>
+                  {assignableNursesForProfile.map((row) => (
+                    <option key={row.id} value={row.id}>
+                      {row.name}{row.jobTitle ? ` — ${row.jobTitle}` : ''}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className="btn btn-kh-primary"
+                  style={{ fontSize: 12.5, fontWeight: 700, padding: '8px 12px', minHeight: 'auto' }}
+                  onClick={handleAssignNewNurse}
+                  disabled={!assignedNurseCandidateId || assigningProfileNurseId !== '' || incidentNursesLoading}
+                >
+                  {assigningProfileNurseId ? 'Assigning...' : 'Assign New Nurse'}
+                </button>
+              </div>
+              {assignedNursesForProfile.length === 0 ? (
+                <NoDataState text="No assigned nurses found for this patient." />
+              ) : (
+                <div style={{ display: 'grid', gap: 12 }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 12,
+                      padding: '12px 14px',
+                      borderRadius: 14,
+                      border: '1px solid #e2e8f0',
+                      background: 'linear-gradient(135deg, #f8fbff 0%, #f1f7ff 100%)',
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontSize: 11.5, color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        Active care team
+                      </div>
+                      <div style={{ fontSize: 15, color: '#0f172a', fontWeight: 800, marginTop: 2 }}>
+                        {assignedNursesForProfile.length} assigned nurse{assignedNursesForProfile.length === 1 ? '' : 's'}
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 12, color: '#475569' }}>
+                      Manage patient assignment coverage
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    {assignedNursesForProfile.map((nurse, index) => (
+                      <div
+                        key={nurse.id || `${nurse.name}-${index}`}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: 12,
+                          padding: '12px 14px',
+                          borderRadius: 12,
+                          border: '1px solid #e5e7eb',
+                          background: '#fff',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                          <div
+                            aria-hidden
+                            style={{
+                              width: 34,
+                              height: 34,
+                              borderRadius: '50%',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              background: '#e8f3ff',
+                              color: '#1d4ed8',
+                              fontSize: 12,
+                              fontWeight: 800,
+                              flexShrink: 0,
+                            }}
+                          >
+                            {String(nurse?.name || 'N')
+                              .split(' ')
+                              .map((piece) => piece[0] || '')
+                              .join('')
+                              .slice(0, 2)
+                              .toUpperCase()}
+                          </div>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: 13.5, fontWeight: 700, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {nurse.name || '—'}
+                            </div>
+                            <div style={{ marginTop: 2 }}>
+                              <span
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  padding: '3px 8px',
+                                  borderRadius: 999,
+                                  fontSize: 11,
+                                  fontWeight: 700,
+                                  background: nurse.role ? '#eef6ff' : '#f1f5f9',
+                                  color: nurse.role ? '#1d4ed8' : '#64748b',
+                                }}
+                              >
+                                {nurse.role || 'Role not set'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          className="btn btn-kh-outline"
+                          style={{
+                            fontSize: 12,
+                            padding: '7px 11px',
+                            minHeight: 'auto',
+                            fontWeight: 700,
+                            whiteSpace: 'nowrap',
+                            color: '#b91c1c',
+                            borderColor: '#fca5a5',
+                            background: '#fef2f2',
+                          }}
+                          onClick={() => openRemoveAssignedNurseModal(nurse)}
+                          disabled={!nurse.assignmentId || removingAssignedNurseId === String(nurse.assignmentId)}
+                          title={!nurse.assignmentId ? 'Assignment ID unavailable' : 'Remove nurse'}
+                        >
+                          {removingAssignedNurseId === String(nurse.assignmentId) ? 'Removing...' : 'Remove Nurse'}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </Panel>
+          </div>
+        </div>
+      )}
+
+      {/* ── Remove Assigned Nurse Confirmation Modal ── */}
+      {pendingRemoveAssignedNurse && (
+        <div
+          className="destructive-confirm-overlay"
+          role="presentation"
+          onClick={() => {
+            if (removingAssignedNurseId) return;
+            setPendingRemoveAssignedNurse(null);
+            setAssignedNurseActionError('');
+          }}
+        >
+          <div
+            className="destructive-confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="destructive-assigned-nurse-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="destructive-confirm-dialog__header">
+              <h2 id="destructive-assigned-nurse-title" className="destructive-confirm-dialog__title">
+                Remove assigned nurse
+              </h2>
+              <button
+                type="button"
+                className="destructive-confirm-dialog__close"
+                aria-label="Close"
+                disabled={Boolean(removingAssignedNurseId)}
+                onClick={() => {
+                  if (removingAssignedNurseId) return;
+                  setPendingRemoveAssignedNurse(null);
+                  setAssignedNurseActionError('');
+                }}
+              >
+                <FiX size={20} strokeWidth={1.75} />
+              </button>
+            </div>
+
+            <div className="destructive-confirm-dialog__body">
+              <p className="destructive-confirm-dialog__lead">
+                Are you sure you want to remove this nurse from the patient&apos;s assigned care team?
+              </p>
+              <div className="destructive-confirm-dialog__warning">
+                <div className="destructive-confirm-dialog__warning-bar" aria-hidden />
+                <div className="destructive-confirm-dialog__warning-text">
+                  <strong>Warning:</strong> This nurse will no longer appear under Assigned Nurses for this patient.
+                </div>
+              </div>
+              {assignedNurseActionError && (
+                <div className="destructive-confirm-dialog__banner-error">{assignedNurseActionError}</div>
+              )}
+              <div className="destructive-confirm-dialog__card">
+                <div className="destructive-confirm-dialog__card-icon destructive-confirm-dialog__card-icon--brand" aria-hidden>
+                  <FiUser size={18} />
+                </div>
+                <div className="destructive-confirm-dialog__card-body">
+                  <div className="destructive-confirm-dialog__card-title">{pendingRemoveAssignedNurse?.name || 'Assigned nurse'}</div>
+                  <div className="destructive-confirm-dialog__card-meta">
+                    {pendingRemoveAssignedNurse?.role || 'Role not set'}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="destructive-confirm-dialog__footer">
+              <button
+                type="button"
+                className="destructive-confirm-dialog__btn-cancel"
+                disabled={Boolean(removingAssignedNurseId)}
+                onClick={() => {
+                  if (removingAssignedNurseId) return;
+                  setPendingRemoveAssignedNurse(null);
+                  setAssignedNurseActionError('');
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="destructive-confirm-dialog__btn-danger"
+                disabled={Boolean(removingAssignedNurseId)}
+                onClick={() => handleRemoveAssignedNurse(pendingRemoveAssignedNurse)}
+              >
+                {removingAssignedNurseId ? 'Removing…' : 'Remove Nurse'}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -8109,7 +8613,7 @@ export default function PatientProfile() {
         <div
           className="kh-modal-overlay app-modal-overlay"
           style={{ zIndex: 10000, padding: 16 }}
-          onClick={() => setShowGenerateReportModal(false)}
+          onClick={() => { if (!generateReportSubmitting) setShowGenerateReportModal(false); }}
           role="presentation"
         >
           <div
@@ -8130,17 +8634,46 @@ export default function PatientProfile() {
                 type="button"
                 className="patient-update-modal__close-btn patient-report-modal__close-btn"
                 aria-label="Close"
-                onClick={() => setShowGenerateReportModal(false)}
+                onClick={() => { if (!generateReportSubmitting) setShowGenerateReportModal(false); }}
+                disabled={generateReportSubmitting}
               >
                 <FiX size={18} />
               </button>
             </div>
             <div className="kh-modal-body patient-report-modal__body">
-              <div className="patient-report-modal__loader" role="status" aria-live="polite">
-                <div className="spinner-border text-primary patient-report-modal__spinner" aria-hidden />
-              </div>
+              {generateReportSubmitting && (
+                <div className="patient-report-modal__loader" role="status" aria-live="polite">
+                  <div className="spinner-border text-primary patient-report-modal__spinner" aria-hidden />
+                </div>
+              )}
+              {!generateReportSubmitting && generateReportDone && !generateReportError && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.6, y: 6 }}
+                  animate={{ opacity: 1, scale: [0.8, 1.14, 1], y: [6, -2, 0] }}
+                  transition={{ duration: 0.5, ease: 'easeOut' }}
+                  style={{
+                    width: 64,
+                    height: 64,
+                    borderRadius: '50%',
+                    margin: '2px auto 10px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    background: 'radial-gradient(circle, rgba(34,197,94,0.22) 0%, rgba(34,197,94,0.08) 60%, rgba(34,197,94,0) 100%)',
+                  }}
+                  aria-hidden
+                >
+                  <FiCheckCircle size={44} style={{ color: '#16a34a' }} />
+                </motion.div>
+              )}
               <p className="patient-report-modal__message">
-                Patient Month Health Report Generating , please wait untill report is generated and view the report on the Reports session
+                {generateReportSubmitting
+                  ? 'Patient Month Health Report Generating , please wait untill report is generated and view the report on the Reports session'
+                  : generateReportError
+                    ? generateReportError
+                    : generateReportDone
+                      ? 'Patient medical report generated successfully. You can now view it in the Reports session.'
+                      : 'Ready to generate patient medical report.'}
               </p>
             </div>
             <div className="kh-modal-footer patient-report-modal__footer">
@@ -8153,6 +8686,7 @@ export default function PatientProfile() {
                   className="btn btn-kh-primary"
                   style={{ borderRadius: 12, fontWeight: 700, padding: '10px 18px' }}
                   onClick={() => setShowGenerateReportModal(false)}
+                  disabled={generateReportSubmitting}
                 >
                   Okay
                 </button>

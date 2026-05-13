@@ -41,6 +41,28 @@ function fmtDateTime(raw) {
   }
 }
 
+function computeAgeFromDob(dobValue) {
+  const raw = String(dobValue || '').trim();
+  if (!raw) return '—';
+  const dob = new Date(raw);
+  if (Number.isNaN(dob.getTime())) return '—';
+  const now = new Date();
+  let age = now.getFullYear() - dob.getFullYear();
+  const monthDelta = now.getMonth() - dob.getMonth();
+  if (monthDelta < 0 || (monthDelta === 0 && now.getDate() < dob.getDate())) age -= 1;
+  return Number.isFinite(age) && age >= 0 ? String(age) : '—';
+}
+
+function normalizeGenderValue(rawValue) {
+  const value = String(rawValue ?? '').trim();
+  if (!value) return '';
+  const lower = value.toLowerCase();
+  if (lower === 'm' || lower === 'male') return 'Male';
+  if (lower === 'f' || lower === 'female') return 'Female';
+  if (lower === 'other' || lower === 'non-binary' || lower === 'nonbinary') return 'Other';
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
 function getPatientId(p) {
   return String(p?._id || p?.id || p?.patientId || p?.uuid || '').trim();
 }
@@ -53,87 +75,192 @@ function getPatientName(p) {
   return full || p.name || p.fullName || p.patientName || '—';
 }
 
-function buildReportsFromPatient(patient) {
-  const id = getPatientId(patient);
-  const name = getPatientName(patient);
-  const diagnosis = patient.diagnosis || patient.primaryDiagnosis || '—';
-  const gender = patient.gender || '—';
-  const age = patient.age || (patient.dob ? Math.floor((Date.now() - new Date(patient.dob).getTime()) / 31557600000) : '—');
-  const dob = patient.dob || patient.dateOfBirth || patient.date_of_birth || '';
-  const nurseRaw = patient.nurse || patient.assignedNurse || patient.visitingNurse;
-  const nurseName = typeof nurseRaw === 'object' ? getPatientName(nurseRaw) : (nurseRaw || '—');
-  const doctorRaw = patient.doctor;
-  const doctorName = typeof doctorRaw === 'object' ? (doctorRaw.name || '—') : (doctorRaw || '—');
-  const doctorFacility = typeof doctorRaw === 'object' ? (doctorRaw.facility || '') : '';
-  const enrolled = patient.enrolled || patient.createdAt || patient.created_at || '';
-  const medications = patient.medications || '';
-  const medicalHistory = patient.medicalHistory || patient.medical_history || '';
-  const vitals = patient.vitals || {};
-  const status = patient.status || 'active';
+function extractAgencyLogoUrl(user) {
+  const directCandidates = [
+    user?.agencyLogoUrl,
+    user?.agencyLogo,
+    user?.logoUrl,
+    user?.logo,
+    user?.agency?.logoUrl,
+    user?.agency?.logo,
+    user?.agency?.brandLogoUrl,
+    user?.agencyLogoAsset?.url,
+    user?.agencyLogoAsset?.previewDataUrl,
+    user?.agencyLogoAsset?.link?.url,
+    user?.agency?.logo?.url,
+    user?.agency?.logo?.link?.url,
+  ];
 
-  const reports = [];
-
-  if (vitals && Object.keys(vitals).length > 0) {
-    reports.push({
-      reportId: `RPT-V-${id}`,
-      patientId: id,
-      patientName: name,
-      type: 'Vitals Assessment',
-      date: enrolled || new Date().toISOString(),
-      status: 'Final',
-      nurseName,
-      doctorName,
-      doctorFacility,
-      patient: { ...patient, name, age, gender, dob, diagnosis, medications, medicalHistory, vitals, status },
-    });
+  for (const value of directCandidates) {
+    const url = String(value || '').trim();
+    if (url) return url;
   }
 
-  if (diagnosis && diagnosis !== '—') {
-    reports.push({
-      reportId: `RPT-C-${id}`,
-      patientId: id,
-      patientName: name,
-      type: 'Clinical Summary',
-      date: enrolled || new Date().toISOString(),
-      status: 'Final',
-      nurseName,
-      doctorName,
-      doctorFacility,
-      patient: { ...patient, name, age, gender, dob, diagnosis, medications, medicalHistory, vitals, status },
-    });
+  try {
+    const raw = localStorage.getItem('accountSettings.agencyLogo');
+    if (!raw) return '';
+    const parsed = JSON.parse(raw);
+    const storedCandidates = [
+      parsed?.previewUrl,
+      parsed?.url,
+      parsed?.link?.url,
+      parsed?.asset?.url,
+      parsed?.asset?.link?.url,
+    ];
+    for (const value of storedCandidates) {
+      const url = String(value || '').trim();
+      if (url) return url;
+    }
+  } catch {
   }
 
-  if (medications && medications !== '—') {
-    reports.push({
-      reportId: `RPT-M-${id}`,
-      patientId: id,
-      patientName: name,
-      type: 'Medication Review',
-      date: enrolled || new Date().toISOString(),
-      status: 'Final',
-      nurseName,
-      doctorName,
-      doctorFacility,
-      patient: { ...patient, name, age, gender, dob, diagnosis, medications, medicalHistory, vitals, status },
-    });
-  }
+  return '';
+}
 
-  if (reports.length === 0) {
-    reports.push({
-      reportId: `RPT-G-${id}`,
-      patientId: id,
-      patientName: name,
-      type: 'General Assessment',
-      date: enrolled || new Date().toISOString(),
-      status: 'Draft',
-      nurseName,
-      doctorName,
-      doctorFacility,
-      patient: { ...patient, name, age, gender, dob, diagnosis, medications, medicalHistory, vitals, status },
-    });
-  }
+function extractMedicalReportArray(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.reports)) return payload.reports;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (payload?.data && typeof payload.data === 'object' && (payload.data.report || payload.data.reportMarkdown || payload.data.patient)) return [payload.data];
+  if (Array.isArray(payload?.data?.reports)) return payload.data.reports;
+  if (Array.isArray(payload?.items)) return payload.items;
+  if (payload?.report && typeof payload.report === 'object') return [payload.report];
+  if (payload && typeof payload === 'object' && (payload.report || payload.reportMarkdown || payload.patient)) return [payload];
+  if (payload?.data?.report && typeof payload.data.report === 'object') return [payload.data.report];
+  return [];
+}
 
-  return reports;
+function normalizeMedicalReport(rawReport, index) {
+  const raw = rawReport && typeof rawReport === 'object' ? rawReport : {};
+  const isStructuredReport = Boolean(
+    raw?.patient_information
+    || raw?.summary_overview
+    || raw?.vital_signs_summary
+    || raw?.medication_summary,
+  );
+  const structuredReport = isStructuredReport
+    ? raw
+    : ((raw.report && typeof raw.report === 'object') ? raw.report : null);
+  const wrapperPatient = (raw.patient && typeof raw.patient === 'object') ? raw.patient : {};
+  const patient = (wrapperPatient && Object.keys(wrapperPatient).length > 0)
+    ? wrapperPatient
+    : ((raw.patientData && typeof raw.patientData === 'object') ? raw.patientData : {});
+  const patientNameFromStructured = String(
+    structuredReport?.patient_information?.patient_name
+    || `${wrapperPatient?.firstName || ''} ${wrapperPatient?.lastName || ''}`.trim()
+    || '',
+  ).trim();
+  const assignedCaregiverNames = Array.isArray(structuredReport?.patient_information?.assigned_caregivers)
+    ? structuredReport.patient_information.assigned_caregivers
+      .map((entry) => {
+        if (!entry) return '';
+        if (typeof entry === 'string') return entry.trim();
+        return String(entry?.name || `${entry?.firstName || ''} ${entry?.lastName || ''}`).trim();
+      })
+      .filter(Boolean)
+    : [];
+  const patientId = String(
+    raw.patientId
+    || raw.patientUUID
+    || raw.patientUuid
+    || wrapperPatient?.id
+    || getPatientId(patient)
+    || ''
+  ).trim();
+  const patientName = String(
+    raw.patientName
+    || raw.name
+    || patientNameFromStructured
+    || getPatientName(patient)
+    || '—'
+  ).trim() || '—';
+  const reportId = String(
+    raw.reportId
+    || raw.id
+    || raw._id
+    || (raw.month ? `RPT-${patientId || 'patient'}-${raw.month}` : '')
+    || `${patientId || 'patient'}-report-${index + 1}`
+  ).trim();
+  const type = String(
+    raw.type
+    || raw.reportType
+    || raw.category
+    || structuredReport?.title
+    || 'Medical Report'
+  ).trim() || 'Medical Report';
+  const date = raw.generatedAt
+    || raw.createdAt
+    || raw.updatedAt
+    || raw.date
+    || (raw.month ? `${raw.month}-01` : '')
+    || new Date().toISOString();
+  const status = String(raw.status || 'Final').trim() || 'Final';
+  const nurseName = String(
+    raw.nurseName
+    || raw.generatedBy
+    || (assignedCaregiverNames.length > 0 ? assignedCaregiverNames.join(', ') : '')
+    || (typeof patient.nurse === 'string' ? patient.nurse : getPatientName(patient.nurse))
+    || '—'
+  ).trim() || '—';
+  const doctorName = String(
+    raw.doctorName
+    || (typeof patient.doctor === 'object' ? patient.doctor?.name : patient.doctor)
+    || '—'
+  ).trim() || '—';
+  const doctorFacility = String(
+    raw.doctorFacility
+    || (typeof patient.doctor === 'object' ? patient.doctor?.facility : '')
+    || ''
+  ).trim();
+  const reportBody = String(
+    raw.reportMarkdown
+    || raw.markdown
+    || raw.summary
+    || raw.content
+    || raw.message
+    || '',
+  ).trim();
+
+  return {
+    reportId,
+    patientId,
+    patientName,
+    type,
+    date,
+    status,
+    nurseName,
+    doctorName,
+    doctorFacility,
+    patient: {
+      ...patient,
+      name: patientName,
+      gender: normalizeGenderValue(
+        patient?.gender
+        || patient?.Gender
+        || patient?.sex
+        || patient?.Sex
+        || patient?.demographics?.gender
+        || patient?.demographics?.sex
+        || raw?.gender
+        || raw?.Gender
+        || raw?.sex
+        || raw?.Sex
+        || structuredReport?.patient_information?.gender
+        || structuredReport?.patient_information?.sex
+        || structuredReport?.patient_information?.patient_gender
+        || structuredReport?.patient_information?.patient_sex
+        || ''
+      ),
+      diagnosis: patient?.diagnosis || raw?.diagnosis || '—',
+      medicalHistory: patient?.medicalHistory || raw?.medicalHistory || '',
+      medications: patient?.medications || raw?.medications || '',
+      vitals: patient?.vitals || raw?.vitals || {},
+      aiReportText: reportBody,
+      aiMonthlyReport: structuredReport,
+      aiReportMarkdown: String(raw?.reportMarkdown || raw?.markdown || '').trim(),
+      aiReportMonth: String(raw?.month || '').trim(),
+    },
+  };
 }
 
 const REPORT_TYPE_COLORS = {
@@ -168,41 +295,145 @@ function ReportViewer({ report, onClose, onShare }) {
   const p = report.patient || {};
   const user = getUser();
   const agencyName = user?.agencyName || user?.agency?.name || 'CareSense Homecare';
+  const agencyLogoUrl = extractAgencyLogoUrl(user);
+  const [logoLoadFailed, setLogoLoadFailed] = useState(false);
+  const [reportEditable, setReportEditable] = useState(true);
   const now = new Date();
 
-  const handlePrint = () => {
+  const openReportPrintWindow = (documentTitle) => {
     const content = printRef.current;
     if (!content) return;
     const win = window.open('', '_blank');
+    if (!win) return;
     win.document.write(`
       <html><head><title>${report.type} — ${report.patientName}</title>
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Georgia', 'Times New Roman', serif; color: #1a1a1a; padding: 40px; line-height: 1.6; }
-        .report-header { text-align: center; border-bottom: 2px solid #1a1a1a; padding-bottom: 16px; margin-bottom: 24px; }
+        @page { size: A4; margin: 12mm; }
+        body { font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #111; padding: 0; line-height: 1.4; background: #fff; }
+        .report-document { border: 1px solid #111; padding: 12px; width: 100%; max-width: 100%; background: #fff; }
+        .report-header { text-align: center; border-bottom: 1px solid #111; padding-bottom: 10px; margin-bottom: 10px; }
+        .report-header-brand { display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 6px; }
+        .report-header-logo-wrap { width: 58px; height: 58px; display: inline-flex; align-items: center; justify-content: center; background: #fff; }
+        .report-header-logo { width: 56px; height: 56px; object-fit: contain; }
         .report-header h1 { font-size: 20px; font-weight: 700; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.08em; }
-        .report-header p { font-size: 12px; color: #555; }
-        .report-title { font-size: 16px; font-weight: 700; text-align: center; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 0.05em; border: 1px solid #1a1a1a; padding: 8px; }
-        .report-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 24px; margin-bottom: 20px; font-size: 12px; }
-        .report-meta dt { font-weight: 700; color: #333; }
-        .report-meta dd { margin: 0; color: #555; }
-        .report-section { margin-bottom: 18px; }
-        .report-section h3 { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; border-bottom: 1px solid #ccc; padding-bottom: 4px; margin-bottom: 10px; }
-        .report-section p, .report-section li { font-size: 12.5px; line-height: 1.7; }
-        .report-section ul { padding-left: 18px; }
+        .report-header p { font-size: 11px; color: #333; }
+        .report-title { font-size: 18px; font-weight: 800; text-align: center; margin-bottom: 10px; border: 1px solid #111; padding: 6px; }
+        .report-meta-grid { border: 1px solid #111; border-radius: 8px; overflow: hidden; margin-bottom: 10px; background: #fff; }
+        .report-meta-item {
+          display: grid;
+          grid-template-columns: minmax(120px, 220px) minmax(0, 1fr);
+          align-items: start;
+          column-gap: 14px;
+          padding: 8px 10px;
+          border-bottom: 1px solid #111;
+        }
+        .report-meta-item:last-child { border-bottom: none; }
+        .report-meta-item__label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #374151; display: block; }
+        .report-meta-item__value { font-size: 12px; font-weight: 700; color: #111; line-height: 1.35; text-align: right; justify-self: end; display: block; }
+        .report-section { margin-bottom: 8px; border: 1px solid #111; page-break-inside: avoid; break-inside: avoid; }
+        .report-section h3 { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 1px solid #111; padding: 6px 8px; margin: 0; background: #f4f4f4; }
+        .report-section p, .report-section li { font-size: 12px; line-height: 1.5; }
+        .report-section > p, .report-section > ul, .report-section > div { padding: 8px; }
+        .report-section ul { padding-left: 24px; }
         .vitals-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
-        .vital-item { padding: 8px; border: 1px solid #ddd; text-align: center; font-size: 11px; }
+        .vital-item { padding: 8px; border: 1px solid #111; text-align: center; font-size: 11px; }
         .vital-item strong { display: block; font-size: 14px; margin-top: 2px; }
-        .report-footer { margin-top: 32px; border-top: 1px solid #ccc; padding-top: 12px; font-size: 11px; color: #777; text-align: center; }
+        table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+        thead { display: table-header-group; }
+        tr, td, th { page-break-inside: avoid; break-inside: avoid; word-break: break-word; }
+        .report-important-summary { page-break-inside: avoid; break-inside: avoid; border: 1px solid #111; margin-top: 8px; }
+        .signature-line { page-break-inside: avoid; break-inside: avoid; }
+        .report-footer { page-break-inside: avoid; break-inside: avoid; }
+        .report-footer { margin-top: 18px; border-top: 1px solid #111; padding-top: 10px; font-size: 10.5px; color: #333; text-align: center; }
         .signature-line { margin-top: 40px; display: flex; justify-content: space-between; gap: 40px; }
-        .signature-line > div { flex: 1; border-top: 1px solid #1a1a1a; padding-top: 6px; font-size: 11px; text-align: center; }
-        @media print { body { padding: 20px; } }
+        .signature-line > div { flex: 1; border-top: 1px solid #111; padding-top: 6px; font-size: 11px; text-align: center; }
+        @media print {
+          html, body { width: 210mm; }
+          body { padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .reports-document, .report-document { box-shadow: none !important; border-radius: 0 !important; }
+        }
       </style></head><body>${content.innerHTML}
-      <script>window.print();window.close();<\/script>
+      <script>
+        document.title = ${JSON.stringify(documentTitle)};
+        window.focus();
+        setTimeout(function () { window.print(); }, 120);
+      <\/script>
       </body></html>
     `);
     win.document.close();
   };
+
+  const handlePrint = () => {
+    openReportPrintWindow(`${report.type} — ${report.patientName}`);
+  };
+
+  const handleDownloadPdf = () => {
+    openReportPrintWindow(`${String(report.patientName || 'patient').replace(/[^\w\s-]/g, '')}-medical-report`);
+  };
+
+  const aiReport = p?.aiMonthlyReport || null;
+  const aiPatientInfo = aiReport?.patient_information || {};
+  const aiVitalRows = Array.isArray(aiReport?.vital_signs_summary?.rows) ? aiReport.vital_signs_summary.rows : [];
+  const aiAdlRows = Array.isArray(aiReport?.daily_living_activities?.rows) ? aiReport.daily_living_activities.rows : [];
+  const aiWeeklyLog = Array.isArray(aiReport?.weekly_activity_log) ? aiReport.weekly_activity_log : [];
+  const aiMedicationRows = Array.isArray(aiReport?.medication_summary?.rows) ? aiReport.medication_summary.rows : [];
+  const aiObservationBullets = Array.isArray(aiReport?.health_observations_and_incidents?.bullets) ? aiReport.health_observations_and_incidents.bullets : [];
+  const aiRecommendations = Array.isArray(aiReport?.recommendations) ? aiReport.recommendations : [];
+  const aiNextMonthPlan = Array.isArray(aiReport?.next_month_plan) ? aiReport.next_month_plan : [];
+  const aiProgress = aiReport?.progress_evaluation && typeof aiReport.progress_evaluation === 'object' ? aiReport.progress_evaluation : {};
+  const reportDob = String(aiPatientInfo?.date_of_birth || p.dob || '').trim();
+  const reportAge = String(p.age ?? '').trim() || computeAgeFromDob(reportDob);
+  const reportGender = normalizeGenderValue(
+    aiPatientInfo?.gender
+    || aiPatientInfo?.sex
+    || aiPatientInfo?.patient_gender
+    || aiPatientInfo?.patient_sex
+    || p.gender
+    || p.Gender
+    || p.sex
+    || p.Sex
+    || p.demographics?.gender
+    || p.demographics?.sex
+    || report?.gender
+    || report?.patient?.gender
+    || report?.patient?.sex
+    || ''
+  );
+  const reportMetaItems = [
+    { label: 'Patient Name', value: aiPatientInfo?.patient_name || report.patientName || '—' },
+    { label: 'Patient Age', value: reportAge !== '—' ? `${reportAge} yrs` : '—' },
+    { label: 'Gender', value: reportGender || '—' },
+    { label: 'Date of Report', value: fmtDate(report.date) },
+    { label: 'Date of Birth', value: fmtDate(reportDob) },
+    { label: 'Status', value: report.status || '—' },
+    { label: 'Attending Nurse', value: report.nurseName || '—' },
+    { label: 'Referring Doctor', value: `${report.doctorName || '—'}${report.doctorFacility ? ` — ${report.doctorFacility}` : ''}` },
+  ];
+  const readableMarkdownLines = String(p.aiReportMarkdown || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !/^---\|/.test(line) && line !== '---')
+    .filter((line) => !/^patient\s*id\s*:/i.test(line))
+    .filter((line) => !/\bpatient\s*id\b/i.test(line))
+    .filter((line) => !/^summary overview\s*\(very important\)$/i.test(line))
+    .filter((line) => !/^key message$/i.test(line))
+    .map((line) => {
+      if (/^\d+\.\s+/.test(line)) {
+        return { kind: 'section', text: line.replace(/^\d+\.\s+/, '').trim() };
+      }
+      if (/^- /.test(line)) {
+        return { kind: 'bullet', text: line.replace(/^- /, '').trim() };
+      }
+      if (line.includes('|')) {
+        const cells = line.split('|').map((cell) => cell.trim()).filter(Boolean);
+        if (cells.length >= 2) {
+          return { kind: 'bullet', text: cells.join(' • ') };
+        }
+      }
+      return { kind: 'paragraph', text: line };
+    });
 
   const vitals = p.vitals || {};
   const vitalEntries = Object.entries(vitals).filter(([, v]) => v && v !== '—');
@@ -216,9 +447,21 @@ function ReportViewer({ report, onClose, onShare }) {
             <span>{report.type}</span>
           </div>
           <div className="reports-viewer-toolbar__actions">
+            <button type="button" className="reports-viewer-action-btn" onClick={handleDownloadPdf} title="Download PDF">
+              <FiDownload size={15} />
+              <span>Download PDF</span>
+            </button>
             <button type="button" className="reports-viewer-action-btn" onClick={handlePrint} title="Print report">
               <FiPrinter size={15} />
               <span>Print</span>
+            </button>
+            <button
+              type="button"
+              className="reports-viewer-action-btn"
+              onClick={() => setReportEditable((prev) => !prev)}
+              title={reportEditable ? 'Lock editing' : 'Enable editing'}
+            >
+              <span>{reportEditable ? 'Lock Edit' : 'Edit Report'}</span>
             </button>
             <button type="button" className="reports-viewer-action-btn" onClick={onShare} title="Share via email">
               <FiSend size={15} />
@@ -230,94 +473,486 @@ function ReportViewer({ report, onClose, onShare }) {
           </div>
         </div>
 
+        <style>{`
+          .reports-document--styled {
+            background: #ffffff;
+            border: 1px solid #dbe4ef;
+            border-radius: 14px;
+            box-shadow: 0 24px 50px rgba(15, 23, 42, 0.08);
+            padding: 20px;
+            font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+          }
+          .reports-document--styled .report-header {
+            border-radius: 12px;
+            border: 1px solid #dbe4ef;
+            background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+            padding: 12px;
+            margin-bottom: 14px;
+          }
+          .reports-document--styled .report-title {
+            border-radius: 10px;
+            border: 1px solid #cbd5e1;
+            background: #f8fafc;
+            color: #0f172a;
+          }
+          .reports-document--styled .report-meta {
+            border-radius: 10px;
+            overflow: hidden;
+            border-color: #dbe4ef !important;
+            margin-bottom: 14px !important;
+          }
+          .reports-document--styled .report-meta-grid {
+            border-color: #dbe4ef;
+            border-radius: 10px;
+            margin-bottom: 14px;
+            box-shadow: 0 8px 22px rgba(15, 23, 42, 0.05);
+          }
+          .reports-document--styled .report-meta-item {
+            border-color: #e2e8f0;
+            background: #fff;
+            min-height: 52px;
+            padding: 9px 12px;
+            display: grid;
+            grid-template-columns: minmax(120px, 220px) minmax(0, 1fr);
+            align-items: start;
+            column-gap: 14px;
+          }
+          .reports-document--styled .report-meta-item__label {
+            color: #64748b;
+            display: block;
+          }
+          .reports-document--styled .report-meta-item__value {
+            color: #0f172a;
+            justify-self: end;
+            text-align: right;
+            display: block;
+          }
+          .reports-document--styled .report-section {
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            margin-bottom: 12px;
+            background: #fff;
+            overflow: hidden;
+          }
+          .reports-document--styled .report-section h3 {
+            background: #f8fafc;
+            border-bottom: 1px solid #dbe4ef;
+            color: #0f172a;
+            font-size: 12px;
+            font-weight: 800;
+            letter-spacing: 0.04em;
+            padding: 8px 10px;
+          }
+          .reports-document--styled .report-section > p,
+          .reports-document--styled .report-section > ul,
+          .reports-document--styled .report-section > div {
+            padding: 12px;
+          }
+          .reports-document--styled table th {
+            background: #f8fafc;
+            color: #334155;
+            font-weight: 700;
+          }
+          .reports-document--styled table td,
+          .reports-document--styled table th {
+            border-color: #dbe4ef !important;
+          }
+          .reports-document--styled .report-important-summary {
+            border: 2px solid #93c5fd;
+            border-radius: 12px;
+            background: linear-gradient(180deg, #eff6ff 0%, #f8fbff 100%);
+            padding: 14px;
+            margin-bottom: 12px;
+          }
+          .reports-document--styled .report-important-summary__label {
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: #1d4ed8;
+            margin-bottom: 6px;
+          }
+          .reports-document--styled .report-important-summary__title {
+            font-size: 16px;
+            font-weight: 800;
+            color: #0f172a;
+            margin-bottom: 8px;
+            line-height: 1.3;
+          }
+          .reports-document--styled .report-important-summary__text {
+            font-size: 13px;
+            color: #1e293b;
+            line-height: 1.7;
+            margin: 0;
+          }
+        `}</style>
+
         <div className="reports-viewer-body">
-          <div ref={printRef} className="reports-document">
+          <div
+            ref={printRef}
+            className="reports-document reports-document--styled"
+            contentEditable={reportEditable}
+            suppressContentEditableWarning
+          >
             <div className="report-header">
-              <h1>{agencyName}</h1>
+              <div className="report-header-brand">
+                <span className="report-header-logo-wrap" style={{ width: 58, height: 58, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#fff' }}>
+                  {agencyLogoUrl && !logoLoadFailed ? (
+                    <img
+                      src={agencyLogoUrl}
+                      alt={`${agencyName} logo`}
+                      className="report-header-logo"
+                      style={{ width: 56, height: 56, objectFit: 'contain' }}
+                      onError={() => setLogoLoadFailed(true)}
+                    />
+                  ) : (
+                    <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '0.04em' }}>
+                      {String(agencyName || 'AG').slice(0, 2).toUpperCase()}
+                    </span>
+                  )}
+                </span>
+                <h1 style={{ marginBottom: 0 }}>{agencyName}</h1>
+              </div>
               <p>Homecare Medical Report</p>
               <p>Licensed Healthcare Provider</p>
             </div>
 
             <div className="report-title">{report.type}</div>
 
-            <dl className="report-meta">
-              <dt>Patient Name</dt><dd>{report.patientName}</dd>
-              <dt>Report ID</dt><dd>{report.reportId}</dd>
-              <dt>Age / Gender</dt><dd>{p.age || '—'} yrs / {p.gender || '—'}</dd>
-              <dt>Date of Report</dt><dd>{fmtDate(report.date)}</dd>
-              <dt>Date of Birth</dt><dd>{fmtDate(p.dob)}</dd>
-              <dt>Status</dt><dd>{report.status}</dd>
-              <dt>Attending Nurse</dt><dd>{report.nurseName}</dd>
-              <dt>Referring Doctor</dt><dd>{report.doctorName}{report.doctorFacility ? ` — ${report.doctorFacility}` : ''}</dd>
-            </dl>
+            <div className="report-meta-grid">
+              {reportMetaItems.map((item) => (
+                <div className="report-meta-item" key={item.label}>
+                  <span className="report-meta-item__label">{item.label}</span>
+                  <span className="report-meta-item__value">{item.value || '—'}</span>
+                </div>
+              ))}
+            </div>
 
-            {(p.diagnosis && p.diagnosis !== '—') && (
-              <div className="report-section">
-                <h3>Diagnosis / Presenting Condition</h3>
-                <p>{p.diagnosis}</p>
-              </div>
-            )}
+            {aiReport ? (
+              <>
+                <div className="report-section">
+                  <h3>Patient Information</h3>
+                  <p><strong>Primary Diagnosis/Condition:</strong> {aiPatientInfo?.primary_diagnosis_or_condition || p.diagnosis || '—'}</p>
+                  <p><strong>Care Plan Start Date:</strong> {fmtDate(aiPatientInfo?.care_plan_start_date)}</p>
+                  <p><strong>Reporting Period:</strong> {aiPatientInfo?.reporting_period || '—'}</p>
+                  <p><strong>Assigned Caregiver(s):</strong> {Array.isArray(aiPatientInfo?.assigned_caregivers) && aiPatientInfo.assigned_caregivers.length ? aiPatientInfo.assigned_caregivers.map((entry) => (typeof entry === 'string' ? entry : entry?.name)).filter(Boolean).join(', ') : '—'}</p>
+                </div>
 
-            {(p.medicalHistory && p.medicalHistory !== '—') && (
-              <div className="report-section">
-                <h3>Medical History</h3>
-                <p>{p.medicalHistory}</p>
-              </div>
-            )}
+                {aiVitalRows.length > 0 ? (
+                  <div className="report-section">
+                    <h3>Vital Signs Summary</h3>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+                      <thead>
+                        <tr>
+                          <th style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'left' }}>Metric</th>
+                          <th style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'left' }}>Average</th>
+                          <th style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'left' }}>Notes</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {aiVitalRows.map((row, idx) => (
+                          <tr key={`${row?.metric || 'metric'}-${idx}`}>
+                            <td style={{ border: '1px solid #ddd', padding: '6px 8px' }}>{row?.metric || '—'}</td>
+                            <td style={{ border: '1px solid #ddd', padding: '6px 8px' }}>{row?.average || '—'}</td>
+                            <td style={{ border: '1px solid #ddd', padding: '6px 8px' }}>{row?.notes || '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : null}
 
-            {vitalEntries.length > 0 && (
-              <div className="report-section">
-                <h3>Vital Signs</h3>
-                <div className="vitals-grid">
-                  {vitalEntries.map(([key, val]) => (
-                    <div className="vital-item" key={key}>
-                      {key.replace(/([A-Z])/g, ' $1').replace(/^./, c => c.toUpperCase()).replace('Spo2', 'SpO₂').replace('Bp', 'Blood Pressure')}
-                      <strong>{val}</strong>
+                {aiAdlRows.length > 0 ? (
+                  <div className="report-section">
+                    <h3>Daily Living Activities</h3>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+                      <thead>
+                        <tr>
+                          <th style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'left' }}>Activity</th>
+                          <th style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'left' }}>Status</th>
+                          <th style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'left' }}>Notes</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {aiAdlRows.map((row, idx) => (
+                          <tr key={`adl-${idx}`}>
+                            <td style={{ border: '1px solid #ddd', padding: '6px 8px' }}>{row?.activity || '—'}</td>
+                            <td style={{ border: '1px solid #ddd', padding: '6px 8px' }}>{row?.status || '—'}</td>
+                            <td style={{ border: '1px solid #ddd', padding: '6px 8px' }}>{row?.notes || '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : null}
+
+                {aiWeeklyLog.length > 0 ? (
+                  <div className="report-section">
+                    <h3>Weekly Activity Log</h3>
+                    {aiWeeklyLog.map((week, idx) => (
+                      <div key={`week-${idx}`} style={{ marginBottom: 10 }}>
+                        <p style={{ fontWeight: 700 }}>{week?.week || `Week ${idx + 1}`}</p>
+                        <ul>
+                          {(Array.isArray(week?.bullets) ? week.bullets : []).map((bullet, bi) => (
+                            <li key={`week-${idx}-bullet-${bi}`}>{bullet}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                {aiMedicationRows.length > 0 ? (
+                  <div className="report-section">
+                    <h3>Medication Summary</h3>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+                      <thead>
+                        <tr>
+                          <th style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'left' }}>Medication</th>
+                          <th style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'left' }}>Dosage</th>
+                          <th style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'left' }}>Frequency</th>
+                          <th style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'left' }}>Compliance</th>
+                          <th style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'left' }}>Notes</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {aiMedicationRows.map((row, idx) => (
+                          <tr key={`med-${idx}`}>
+                            <td style={{ border: '1px solid #ddd', padding: '6px 8px' }}>{row?.medication_name || '—'}</td>
+                            <td style={{ border: '1px solid #ddd', padding: '6px 8px' }}>{row?.dosage || '—'}</td>
+                            <td style={{ border: '1px solid #ddd', padding: '6px 8px' }}>{row?.frequency || '—'}</td>
+                            <td style={{ border: '1px solid #ddd', padding: '6px 8px' }}>{row?.compliance || '—'}</td>
+                            <td style={{ border: '1px solid #ddd', padding: '6px 8px' }}>{row?.notes || '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : null}
+
+                {aiObservationBullets.length > 0 ? (
+                  <div className="report-section">
+                    <h3>Health Observations & Incidents</h3>
+                    <ul>
+                      {aiObservationBullets.map((item, idx) => (
+                        <li key={`obs-${idx}`}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+
+                {(Object.keys(aiProgress).length > 0) ? (
+                  <div className="report-section">
+                    <h3>Progress Evaluation</h3>
+                    <p><strong>Physical Health:</strong> {aiProgress?.physical_health || '—'}</p>
+                    <p><strong>Mental Health:</strong> {aiProgress?.mental_health || '—'}</p>
+                    <p><strong>Mobility:</strong> {aiProgress?.mobility || '—'}</p>
+                    <p><strong>Appetite:</strong> {aiProgress?.appetite || '—'}</p>
+                  </div>
+                ) : null}
+
+                {aiReport?.caregiver_notes ? (
+                  <div className="report-section">
+                    <h3>Caregiver Notes</h3>
+                    <p>{aiReport.caregiver_notes}</p>
+                  </div>
+                ) : null}
+
+                {aiRecommendations.length > 0 ? (
+                  <div className="report-section">
+                    <h3>Recommendations</h3>
+                    <ul>
+                      {aiRecommendations.map((item, idx) => (
+                        <li key={`rec-${idx}`}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+
+                {aiNextMonthPlan.length > 0 ? (
+                  <div className="report-section">
+                    <h3>Next Month Plan</h3>
+                    <ul>
+                      {aiNextMonthPlan.map((item, idx) => (
+                        <li key={`next-${idx}`}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+
+              </>
+            ) : (
+              <>
+                {(p.diagnosis && p.diagnosis !== '—') && (
+                  <div className="report-section">
+                    <h3>Diagnosis / Presenting Condition</h3>
+                    <p>{p.diagnosis}</p>
+                  </div>
+                )}
+
+                {(p.medicalHistory && p.medicalHistory !== '—') && (
+                  <div className="report-section">
+                    <h3>Medical History</h3>
+                    <p>{p.medicalHistory}</p>
+                  </div>
+                )}
+
+                {vitalEntries.length > 0 && (
+                  <div className="report-section">
+                    <h3>Vital Signs</h3>
+                    <div className="vitals-grid">
+                      {vitalEntries.map(([key, val]) => (
+                        <div className="vital-item" key={key}>
+                          {key.replace(/([A-Z])/g, ' $1').replace(/^./, c => c.toUpperCase()).replace('Spo2', 'SpO₂').replace('Bp', 'Blood Pressure')}
+                          <strong>{val}</strong>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  </div>
+                )}
+
+                {(p.medications && p.medications !== '—') && (
+                  <div className="report-section">
+                    <h3>Current Medications</h3>
+                    <ul>
+                      {String(p.medications).split(',').map((med, i) => (
+                        <li key={i}>{med.trim()}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </>
+            )}
+
+            {p.aiReportMarkdown ? (
+              <div className="report-section">
+                <h3>Easy to Read Report</h3>
+                <div
+                  style={{
+                    background: '#f8fafc',
+                    border: '1px solid #dbeafe',
+                    borderRadius: 10,
+                    padding: 12,
+                  }}
+                >
+                  <p style={{ fontSize: 12.5, marginBottom: 10, color: '#334155' }}>
+                    This simplified version is written for family members and non-medical readers.
+                  </p>
+                  <div style={{ display: 'grid', gap: 8 }}>
+                    {readableMarkdownLines.map((row, idx) => {
+                      if (row.kind === 'section') {
+                        return (
+                          <div key={`md-${idx}`} style={{ fontSize: 12.5, fontWeight: 700, color: '#0f172a', marginTop: idx === 0 ? 0 : 6 }}>
+                            {row.text}
+                          </div>
+                        );
+                      }
+                      if (row.kind === 'bullet') {
+                        const cells = row.text.split('•').map((part) => part.trim()).filter(Boolean);
+                        const isTabularLine = cells.length >= 3;
+                        const isHeaderLine = isTabularLine && cells.every((cell) => /[a-z]/i.test(cell)) && cells.some((cell) => /medication|dosage|frequency|compliance|notes|metric|average|activity|status/i.test(cell));
+                        if (isTabularLine) {
+                          return (
+                            <div
+                              key={`md-${idx}`}
+                              style={{
+                                display: 'grid',
+                                gridTemplateColumns: `repeat(${cells.length}, minmax(0, 1fr))`,
+                                gap: 8,
+                                border: '1px solid #dbe4ef',
+                                borderRadius: 8,
+                                padding: '8px 10px',
+                                background: isHeaderLine ? '#eff6ff' : '#ffffff',
+                              }}
+                            >
+                              {cells.map((cell, cellIdx) => (
+                                <div
+                                  key={`md-${idx}-cell-${cellIdx}`}
+                                  style={{
+                                    fontSize: 12,
+                                    color: isHeaderLine ? '#1e3a8a' : '#334155',
+                                    fontWeight: isHeaderLine ? 700 : 500,
+                                    lineHeight: 1.45,
+                                  }}
+                                >
+                                  {cell}
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        }
+                        return (
+                          <div
+                            key={`md-${idx}`}
+                            style={{
+                              fontSize: 12.5,
+                              color: '#334155',
+                              border: '1px solid #dbe4ef',
+                              borderRadius: 8,
+                              padding: '8px 10px',
+                              background: '#ffffff',
+                              lineHeight: 1.5,
+                            }}
+                          >
+                            • {row.text}
+                          </div>
+                        );
+                      }
+                      const kvMatch = row.text.match(/^([A-Za-z][A-Za-z\s/&-]{1,40}):\s*(.+)$/);
+                      if (kvMatch) {
+                        return (
+                          <div
+                            key={`md-${idx}`}
+                            style={{
+                              display: 'grid',
+                              gridTemplateColumns: '180px minmax(0, 1fr)',
+                              gap: 10,
+                              border: '1px solid #dbe4ef',
+                              borderRadius: 8,
+                              padding: '8px 10px',
+                              background: '#ffffff',
+                              alignItems: 'start',
+                            }}
+                          >
+                            <div style={{ fontSize: 12, color: '#334155', fontWeight: 700 }}>
+                              {kvMatch[1]}
+                            </div>
+                            <div style={{ fontSize: 12.5, color: '#0f172a', lineHeight: 1.45 }}>
+                              {kvMatch[2]}
+                            </div>
+                          </div>
+                        );
+                      }
+                      return (
+                        <p
+                          key={`md-${idx}`}
+                          style={{
+                            fontSize: 12.5,
+                            color: '#334155',
+                            margin: 0,
+                            border: '1px solid #dbe4ef',
+                            borderRadius: 8,
+                            padding: '8px 10px',
+                            background: '#ffffff',
+                            lineHeight: 1.5,
+                          }}
+                        >
+                          {row.text}
+                        </p>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
-            )}
+            ) : null}
 
-            {(p.medications && p.medications !== '—') && (
-              <div className="report-section">
-                <h3>Current Medications</h3>
-                <ul>
-                  {p.medications.split(',').map((med, i) => (
-                    <li key={i}>{med.trim()}</li>
-                  ))}
-                </ul>
+            {aiReport?.summary_overview ? (
+              <div className="report-important-summary">
+                <div className="report-important-summary__label">Key Message</div>
+                <div className="report-important-summary__title">Summary Overview (Very Important)</div>
+                <p className="report-important-summary__text">{aiReport.summary_overview}</p>
               </div>
-            )}
-
-            {p.pain?.present && (
-              <div className="report-section">
-                <h3>Pain Assessment</h3>
-                <p>Location: {p.pain.location || '—'} | Score: {p.pain.score ?? '—'}/3 | Analgesia: {p.pain.analgesia || 'None'}</p>
-              </div>
-            )}
-
-            {p.mobility && (
-              <div className="report-section">
-                <h3>Functional Assessment</h3>
-                <p>
-                  Independent mobility: {p.mobility.independent ? 'Yes' : 'No'} |
-                  Bed movement: {p.mobility.bedMove ? 'Yes' : 'No'} |
-                  Bed to chair: {p.mobility.bedToChair ? 'Yes' : 'No'} |
-                  Toilet: {p.mobility.toilet ? 'Yes' : 'No'}
-                </p>
-              </div>
-            )}
-
-            <div className="report-section">
-              <h3>Clinical Notes</h3>
-              <p>
-                Patient {report.patientName} is currently under homecare management for {p.diagnosis || 'the noted condition'}.
-                {p.medications ? ` Current medications have been reviewed and are being administered as prescribed.` : ''}
-                {vitalEntries.length > 0 ? ' Vital signs have been assessed and recorded as above.' : ''}
-                {' '}Continued monitoring and follow-up as per care plan.
-              </p>
-            </div>
+            ) : null}
 
             <div className="signature-line">
               <div>
@@ -448,8 +1083,9 @@ function ShareEmailModal({ report, onClose }) {
 }
 
 export default function Billing() {
-  const [patients, setPatients] = useState([]);
+  const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('All');
   const [patientFilter, setPatientFilter] = useState('All');
@@ -461,10 +1097,73 @@ export default function Billing() {
     let cancelled = false;
     (async () => {
       try {
-        const list = await fetchAllPatients();
-        if (!cancelled) setPatients(list);
-      } catch {
-        if (!cancelled) setPatients([]);
+        setLoadError('');
+        let loadedReports = [];
+        let shouldFallbackToPatientRequests = false;
+
+        const response = await apiFetch('/ai/medical-report', { method: 'GET', quiet: true });
+        const payload = await response.json().catch(() => ({}));
+        if (response.ok) {
+          loadedReports = extractMedicalReportArray(payload)
+            .map((entry, index) => normalizeMedicalReport(entry, index))
+            .filter((entry) => entry?.reportId);
+        } else {
+          const message = String(payload?.message || payload?.error || '').toLowerCase();
+          shouldFallbackToPatientRequests = response.status === 404 || response.status === 405 || message.includes('not found');
+          if (!shouldFallbackToPatientRequests) {
+            throw new Error(payload?.message || payload?.error || 'Unable to load generated medical reports.');
+          }
+        }
+
+        if (shouldFallbackToPatientRequests) {
+          const patients = await fetchAllPatients();
+          const patientReports = await Promise.allSettled(
+            (Array.isArray(patients) ? patients : [])
+              .map((patient) => ({ patient, patientId: getPatientId(patient) }))
+              .filter(({ patientId }) => Boolean(patientId))
+              .map(async ({ patient, patientId }) => {
+                const reportResponse = await apiFetch('/ai/medical-report', {
+                  method: 'POST',
+                  body: JSON.stringify({ patientId }),
+                  quiet: true,
+                });
+                const reportPayload = await reportResponse.json().catch(() => ({}));
+                if (!reportResponse.ok) return [];
+
+                const extracted = extractMedicalReportArray(reportPayload);
+                if (!extracted.length && reportPayload && typeof reportPayload === 'object') {
+                  extracted.push(reportPayload);
+                }
+
+                return extracted
+                  .map((entry, index) => normalizeMedicalReport(
+                    {
+                      ...entry,
+                      patient: entry?.patient || patient,
+                      patientId: entry?.patientId || patientId,
+                      patientName: entry?.patientName || getPatientName(patient),
+                    },
+                    index,
+                  ))
+                  .filter((entry) => entry?.reportId);
+              }),
+          );
+
+          loadedReports = patientReports
+            .filter((result) => result.status === 'fulfilled')
+            .flatMap((result) => result.value || []);
+        }
+
+        const uniqueByReportId = Array.from(
+          new Map(loadedReports.map((entry) => [String(entry.reportId), entry])).values(),
+        );
+
+        if (!cancelled) setReports(uniqueByReportId);
+      } catch (error) {
+        if (!cancelled) {
+          setReports([]);
+          setLoadError(error?.message || 'Unable to load generated medical reports.');
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -473,9 +1172,8 @@ export default function Billing() {
   }, []);
 
   const allReports = useMemo(() => {
-    return patients.flatMap(buildReportsFromPatient)
-      .sort((a, b) => new Date(b.date) - new Date(a.date));
-  }, [patients]);
+    return [...reports].sort((a, b) => new Date(b.date) - new Date(a.date));
+  }, [reports]);
 
   const reportTypes = useMemo(() => {
     const set = new Set(allReports.map((r) => r.type));
@@ -624,9 +1322,12 @@ export default function Billing() {
                 {loading && (
                   <tr><td colSpan={7} className="text-center py-4" style={{ color: 'var(--kh-text-muted)', fontSize: 13 }}>Loading reports…</td></tr>
                 )}
+                {!loading && loadError && (
+                  <tr><td colSpan={7} className="text-center py-4" style={{ color: '#dc2626', fontSize: 13, fontWeight: 600 }}>{loadError}</td></tr>
+                )}
                 {!loading && paged.length === 0 && (
                   <tr><td colSpan={7} className="text-center py-4" style={{ color: 'var(--kh-text-muted)', fontSize: 13 }}>
-                    {allReports.length === 0 ? 'No reports generated yet. Reports are created from patient data.' : 'No reports match your filters.'}
+                    {allReports.length === 0 ? 'No reports generated yet.' : 'No reports match your filters.'}
                   </td></tr>
                 )}
                 {!loading && paged.map((r, i) => (

@@ -197,11 +197,19 @@ const normalizeNurseAssignment = (nurse, index = 0) => {
   const firstName = nurse?.firstName || nurse?.personal?.firstName || nurse?.nurse?.firstName || '';
   const lastName = nurse?.lastName || nurse?.personal?.lastName || nurse?.nurse?.lastName || '';
   const name = nurse?.name || nurse?.fullName || nurse?.nurse?.name || `${firstName} ${lastName}`.trim();
+  const assignmentId = nurse?.assignmentId
+    || nurse?.assignment?._id
+    || nurse?.assignment?.id
+    || nurse?.assignmentRecordId
+    || nurse?.linkId
+    || (nurse?.nurse && (nurse?._id || nurse?.id))
+    || null;
 
   if (!name) return null;
 
   return {
     id: nurse?._id || nurse?.id || nurse?.nurseId || nurse?.nurse?._id || nurse?.nurse?.id || `name:${name.toLowerCase()}`,
+    assignmentId: assignmentId ? String(assignmentId) : null,
     name,
     role: nurse?.jobTitle || NURSE_ROLE_LABELS[nurse?.role] || nurse?.specialisation || nurse?.specialization || '',
     region: nurse?.region || nurse?.location || nurse?.address || nurse?.nurse?.region || '',
@@ -448,6 +456,8 @@ export default function Patients() {
   const [page, setPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(5);
   const [patients, setPatients] = useState([]);
+  const [deceasedPatients, setDeceasedPatients] = useState([]);
+  const [deactivatedPatients, setDeactivatedPatients] = useState([]);
   const [assignableNurses, setAssignableNurses] = useState([]);
   const [assignModal, setAssignModal] = useState(null); // patient object or null
   const [nurseSearch, setNurseSearch] = useState('');
@@ -456,6 +466,7 @@ export default function Patients() {
   const [nursesError, setNursesError] = useState('');
   const [assignmentError, setAssignmentError] = useState('');
   const [assignmentSuccess, setAssignmentSuccess] = useState('');
+  const [unassigningAssignmentId, setUnassigningAssignmentId] = useState('');
   const [admissionForm, setAdmissionForm] = useState(initialAdmissionForm);
   const [savingAdmission, setSavingAdmission] = useState(false);
   const [admissionError, setAdmissionError] = useState('');
@@ -526,7 +537,7 @@ export default function Patients() {
     );
   };
 
-  const normalizePatient = (patient, index) => {
+  const normalizePatient = (patient, index, forcedStatus) => {
     const firstName = patient?.firstName || '';
     const lastName = patient?.lastName || '';
     const fullName = patient?.name || patient?.fullName || `${firstName} ${lastName}`.trim();
@@ -545,8 +556,12 @@ export default function Patients() {
     const enrolledRaw = patient?.dateOfAdmission || patient?.admissionDate || patient?.createdAt || patient?.created_at || '';
     const enrolled = typeof enrolledRaw === 'string' && enrolledRaw.includes('T') ? enrolledRaw.split('T')[0] : (enrolledRaw || '-');
 
-    const statusRaw = String(patient?.status || 'active').toLowerCase();
-    const status = statusRaw === 'discharged' ? 'discharged' : 'active';
+    const statusRaw = String(forcedStatus || patient?.status || 'active').toLowerCase();
+    const status = statusRaw.includes('deceased') || statusRaw.includes('dead')
+      ? 'deceased'
+      : (statusRaw.includes('deactiv') || statusRaw.includes('discharg') || statusRaw.includes('inactive'))
+        ? 'deactivated'
+        : 'active';
     const profileImageUrl = extractPatientProfileImageUrl(patient) || getCachedPatientPhotoUrl(patient);
     const displayId = patient?.registrationNumber || patient?.regNo || patient?.patientId || patient?.id || `P-${String(index + 1).padStart(4, '0')}`;
     const recordId = patient?._id || patient?.id || patient?.patientId || null;
@@ -573,20 +588,69 @@ export default function Patients() {
     };
   };
 
+  const extractPatientArray = (payload) => {
+    if (Array.isArray(payload)) return payload;
+    if (Array.isArray(payload?.patients)) return payload.patients;
+    if (Array.isArray(payload?.data)) return payload.data;
+    if (Array.isArray(payload?.items)) return payload.items;
+    return [];
+  };
+
+  const patientIdentity = (entry) => String(
+    entry?.profileRouteId || entry?.recordId || entry?.uuid || entry?.id || '',
+  ).trim().toLowerCase();
+
+  const samePatient = (left, right) => {
+    const a = patientIdentity(left);
+    const b = patientIdentity(right);
+    if (a && b) return a === b;
+    return String(left?.id || '').trim().toLowerCase() === String(right?.id || '').trim().toLowerCase();
+  };
+
+  const dedupePatientsByIdentity = (list) => {
+    const seen = new Set();
+    return (Array.isArray(list) ? list : []).filter((entry) => {
+      const key = patientIdentity(entry) || String(entry?.id || '').trim().toLowerCase();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  };
+
   const loadPatients = useCallback(async () => {
     setPatientsLoading(true);
     setPatientsError('');
 
     try {
-      const patientList = await fetchAllPatients();
+      const [patientList, deceasedResponse, deactivatedResponse] = await Promise.all([
+        fetchAllPatients(),
+        apiFetch('/patients/deceased', { method: 'GET', quiet: true }),
+        apiFetch('/patients/deactivated', { method: 'GET', quiet: true }),
+      ]);
 
-      if (patientList.length > 0) {
-        setPatients(patientList.map((patient, index) => normalizePatient(patient, index)));
-      } else {
-        setPatients([]);
+      const deceasedPayload = await deceasedResponse.json().catch(() => ({}));
+      if (!deceasedResponse.ok) {
+        throw new Error(deceasedPayload?.message || deceasedPayload?.error || 'Unable to fetch deceased patients.');
       }
+      const deactivatedPayload = await deactivatedResponse.json().catch(() => ({}));
+      if (!deactivatedResponse.ok) {
+        throw new Error(deactivatedPayload?.message || deactivatedPayload?.error || 'Unable to fetch deactivated patients.');
+      }
+
+      const normalizedPatients = patientList.map((patient, index) => normalizePatient(patient, index));
+      const normalizedDeceased = extractPatientArray(deceasedPayload)
+        .map((patient, index) => normalizePatient(patient, index, 'deceased'));
+      const normalizedDeactivated = extractPatientArray(deactivatedPayload)
+        .map((patient, index) => normalizePatient(patient, index, 'deactivated'));
+
+      setPatients(normalizedPatients);
+      setDeceasedPatients(normalizedDeceased);
+      setDeactivatedPatients(dedupePatientsByIdentity(normalizedDeactivated));
     } catch (error) {
       setPatientsError(error?.message || 'Unable to fetch patients right now.');
+      setPatients([]);
+      setDeceasedPatients([]);
+      setDeactivatedPatients([]);
     } finally {
       setPatientsLoading(false);
     }
@@ -646,16 +710,29 @@ export default function Patients() {
 
   /* ── filtering ── */
   const activeCount = patients.filter((patient) => patient.status === 'active').length;
-  const dischargedCount = patients.filter((patient) => patient.status === 'discharged').length;
+  const dischargedCount = deceasedPatients.length;
+  const deactivatedCount = deactivatedPatients.length;
   const assignedCount = patients.filter((patient) => Array.isArray(patient.nurses) && patient.nurses.length > 0).length;
-  const filterCounts = { All: patients.length, Active: activeCount, 'Death Records': dischargedCount };
+  const filterCounts = {
+    All: patients.length,
+    Active: activeCount,
+    Deactivated: deactivatedCount,
+    'Death Records': dischargedCount,
+  };
 
-  const filtered = patients.filter(p => {
+  const activeSource = filter === 'Death Records'
+    ? deceasedPatients
+    : filter === 'Deactivated'
+      ? deactivatedPatients
+      : patients;
+
+  const filtered = activeSource.filter(p => {
     const sl = search.toLowerCase();
     const sm = !search || p.name.toLowerCase().includes(sl) || p.id.toLowerCase().includes(sl) || p.nurses.some(n => n.toLowerCase().includes(sl));
     const fm = filter === 'All'
       || (filter === 'Active' && p.status === 'active')
-      || (filter === 'Death Records' && p.status === 'discharged');
+      || (filter === 'Deactivated' && p.status === 'deactivated')
+      || (filter === 'Death Records');
     return sm && fm;
   });
 
@@ -799,6 +876,7 @@ export default function Patients() {
     setAssignmentError('');
     setAssignmentSuccess('');
     setAssigningNurseId('');
+    setUnassigningAssignmentId('');
   };
 
   const handleAssignNurse = async (patient, nurse) => {
@@ -882,6 +960,45 @@ export default function Patients() {
     setAssigningNurseId('');
   };
 
+  const handleUnassignNurse = async (patient, assignedNurse) => {
+    const assignmentId = String(assignedNurse?.assignmentId || '').trim();
+    if (!assignmentId) {
+      setAssignmentError('This nurse assignment does not include an assignment ID and cannot be removed.');
+      return;
+    }
+
+    setUnassigningAssignmentId(assignmentId);
+    setAssignmentError('');
+    setAssignmentSuccess('');
+
+    try {
+      const response = await apiFetch(`/assignments/${encodeURIComponent(assignmentId)}`, {
+        method: 'DELETE',
+        quiet: true,
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.message || payload?.error || 'Unable to remove this assigned nurse.');
+      }
+
+      setPatients((prev) => prev.map((entry) => {
+        if (!samePatient(entry, patient)) return entry;
+        const nextAssigned = (entry.assignedNurseRecords || []).filter((item) => String(item?.assignmentId || '').trim() !== assignmentId);
+        return {
+          ...entry,
+          assignedNurseRecords: nextAssigned,
+          nurses: nextAssigned.map((item) => item.name),
+        };
+      }));
+      setAssignmentSuccess(payload?.message || `${assignedNurse?.name || 'Assigned nurse'} removed successfully.`);
+      loadPatients();
+    } catch (error) {
+      setAssignmentError(error?.message || 'Unable to remove this assigned nurse.');
+    } finally {
+      setUnassigningAssignmentId('');
+    }
+  };
+
   const ActiveTabComponent = TAB_COMPONENTS[TABS[activeTab].key];
   const progress = Math.round((completedTabs.length / TABS.length) * 100);
 
@@ -899,7 +1016,7 @@ export default function Patients() {
       patient.region,
       patient.nurses.join('; '),
       patient.enrolled,
-      patient.status === 'active' ? 'Active' : 'Death Records',
+      patient.status === 'active' ? 'Active' : (patient.status === 'deactivated' ? 'Deactivated' : 'Death Records'),
     ]);
 
     const csv = [headers, ...rows]
@@ -917,20 +1034,96 @@ export default function Patients() {
     window.URL.revokeObjectURL(url);
   };
 
-  const handlePatientActionSelect = (patient, actionValue) => {
+  const handlePatientActionSelect = async (patient, actionValue) => {
     if (!patient || !actionValue) return;
 
     if (actionValue === 'deactivate') {
-      setPatients((prev) =>
-        prev.map((entry) => (entry.id === patient.id ? { ...entry, status: 'discharged' } : entry)),
-      );
+      const patientIdentifierCandidates = Array.from(new Set([
+        patient?.uuid,
+        patient?.recordId,
+        patient?.profileRouteId,
+        patient?.id,
+      ].map((value) => String(value || '').trim()).filter(Boolean)));
+
+      if (patientIdentifierCandidates.length === 0) {
+        window.alert('Unable to deactivate this patient because a valid patient ID was not found.');
+        return;
+      }
+
+      let lastError = 'Unable to deactivate this patient right now.';
+      for (const patientId of patientIdentifierCandidates) {
+        try {
+          const response = await apiFetch(`/patients/${encodeURIComponent(patientId)}/deactivate`, {
+            method: 'POST',
+            quiet: true,
+          });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            lastError = payload?.message || payload?.error || lastError;
+            continue;
+          }
+
+          const updatedPatient = { ...patient, status: 'deactivated' };
+          setPatients((prev) =>
+            prev.map((entry) => (samePatient(entry, patient) ? { ...entry, status: 'deactivated' } : entry)),
+          );
+          setDeactivatedPatients((prev) => {
+            if (prev.some((entry) => samePatient(entry, patient))) {
+              return prev.map((entry) => (samePatient(entry, patient) ? { ...entry, status: 'deactivated' } : entry));
+            }
+            return dedupePatientsByIdentity([...prev, updatedPatient]);
+          });
+          setDeceasedPatients((prev) => prev.filter((entry) => !samePatient(entry, patient)));
+          loadPatients();
+          return;
+        } catch (error) {
+          lastError = error?.message || lastError;
+        }
+      }
+
+      window.alert(lastError);
       return;
     }
 
     if (actionValue === 'reactivate') {
-      setPatients((prev) =>
-        prev.map((entry) => (entry.id === patient.id ? { ...entry, status: 'active' } : entry)),
-      );
+      const patientIdentifierCandidates = Array.from(new Set([
+        patient?.uuid,
+        patient?.recordId,
+        patient?.profileRouteId,
+        patient?.id,
+      ].map((value) => String(value || '').trim()).filter(Boolean)));
+
+      if (patientIdentifierCandidates.length === 0) {
+        window.alert('Unable to reactivate this patient because a valid patient ID was not found.');
+        return;
+      }
+
+      let lastError = 'Unable to reactivate this patient right now.';
+      for (const patientId of patientIdentifierCandidates) {
+        try {
+          const response = await apiFetch(`/patients/${encodeURIComponent(patientId)}/reactivate`, {
+            method: 'POST',
+            quiet: true,
+          });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            lastError = payload?.message || payload?.error || lastError;
+            continue;
+          }
+
+          setPatients((prev) =>
+            prev.map((entry) => (samePatient(entry, patient) ? { ...entry, status: 'active' } : entry)),
+          );
+          setDeceasedPatients((prev) => prev.filter((entry) => !samePatient(entry, patient)));
+          setDeactivatedPatients((prev) => prev.filter((entry) => !samePatient(entry, patient)));
+          loadPatients();
+          return;
+        } catch (error) {
+          lastError = error?.message || lastError;
+        }
+      }
+
+      window.alert(lastError);
       return;
     }
 
@@ -942,7 +1135,9 @@ export default function Patients() {
     if (actionValue === 'delete') {
       const shouldDelete = window.confirm(`Delete ${patient.name} from the patient list?`);
       if (!shouldDelete) return;
-      setPatients((prev) => prev.filter((entry) => entry.id !== patient.id));
+      setPatients((prev) => prev.filter((entry) => !samePatient(entry, patient)));
+      setDeceasedPatients((prev) => prev.filter((entry) => !samePatient(entry, patient)));
+      setDeactivatedPatients((prev) => prev.filter((entry) => !samePatient(entry, patient)));
     }
   };
 
@@ -1251,7 +1446,7 @@ export default function Patients() {
         <motion.div className="kh-card patients-board-card" initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.28, ease: 'easeOut' }}>
           <div className="patients-topbar">
             <div className="patients-segmented-control">
-              {['All', 'Active', 'Death Records'].map((item) => (
+              {['All', 'Active', 'Deactivated', 'Death Records'].map((item) => (
                 <button
                   key={item}
                   type="button"
@@ -1378,7 +1573,11 @@ export default function Patients() {
                     </div>
                   </td>
                   <td className="patients-table-date">{p.enrolled}</td>
-                  <td><span className={`patients-status-pill ${p.status === 'active' ? 'is-active' : 'is-discharged'}`}>{p.status === 'active' ? 'Active' : 'Death Records'}</span></td>
+                  <td>
+                    <span className={`patients-status-pill ${p.status === 'active' ? 'is-active' : 'is-discharged'}`}>
+                      {p.status === 'active' ? 'Active' : (p.status === 'deactivated' ? 'Deactivated' : 'Death Records')}
+                    </span>
+                  </td>
                   <td style={{ textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
                     <select
                       className="patients-action-select"
@@ -1487,6 +1686,7 @@ export default function Patients() {
                         style={{
                           display: 'inline-flex',
                           alignItems: 'center',
+                          gap: 8,
                           padding: '6px 10px',
                           borderRadius: 999,
                           background: '#f3f7fb',
@@ -1496,6 +1696,27 @@ export default function Patients() {
                         }}
                       >
                         {assigned.name}
+                        <button
+                          type="button"
+                          onClick={() => handleUnassignNurse(currentPatient || assignModal, assigned)}
+                          disabled={!assigned.assignmentId || unassigningAssignmentId === String(assigned.assignmentId)}
+                          title={!assigned.assignmentId ? 'Assignment ID not available' : 'Remove assigned nurse'}
+                          style={{
+                            border: 'none',
+                            background: 'transparent',
+                            color: '#475569',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: 16,
+                            height: 16,
+                            padding: 0,
+                            cursor: !assigned.assignmentId || unassigningAssignmentId === String(assigned.assignmentId) ? 'not-allowed' : 'pointer',
+                            opacity: !assigned.assignmentId || unassigningAssignmentId === String(assigned.assignmentId) ? 0.5 : 1,
+                          }}
+                        >
+                          <FiX size={12} />
+                        </button>
                       </span>
                     ))}
                   </div>

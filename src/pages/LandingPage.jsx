@@ -1,15 +1,6 @@
 import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { FiMenu, FiX } from '../icons/hugeicons-feather';
-import { HugeiconsIcon } from '@hugeicons/react';
-import {
-  Calendar03Icon,
-  NoteEditIcon,
-  Invoice01Icon,
-  SecurityLockIcon,
-  Analytics02Icon,
-  UserGroupIcon,
-} from '@hugeicons/core-free-icons';
 import './LandingPage.css';
 
 /* animation presets */
@@ -147,12 +138,24 @@ export default function LandingPage() {
   };
 
   const features = [
-    { icon: Calendar03Icon, title: 'Smart Scheduling', desc: 'Coordinate visits, shift swaps, and patient assignments from one intuitive calendar view.' },
-    { icon: NoteEditIcon, title: 'Clinical Documentation', desc: 'Capture compliant care notes, medication logs, and visit records with guided workflows.' },
-    { icon: Invoice01Icon, title: 'Billing & Payroll', desc: 'Track invoicing, nurse payouts, and agency revenue with fast, accurate reporting.' },
-    { icon: SecurityLockIcon, title: 'HIPAA-Ready Security', desc: 'Role-based controls, encrypted storage, and audit trails keep sensitive data safe.' },
-    { icon: Analytics02Icon, title: 'Real-Time Analytics', desc: 'Turn visit data into actionable insights for care quality, staffing, and growth.' },
-    { icon: UserGroupIcon, title: 'Workforce Management', desc: 'Onboard nurses, track credentials, and manage teams across multiple locations.' },
+    {
+      label: 'Who We Are',
+      title: 'Leading provider of modern homecare operations',
+      image: 'https://images.unsplash.com/photo-1576091160550-2173dba999ef?auto=format&fit=crop&w=900&q=80',
+      tone: 'calm',
+    },
+    {
+      label: 'Recognition',
+      title: 'CareSense recognized for agency-first innovation',
+      image: 'https://images.unsplash.com/photo-1521737604893-d14cc237f11d?auto=format&fit=crop&w=900&q=80',
+      tone: 'accent',
+    },
+    {
+      label: 'Report',
+      title: '2026 Homecare quality and outcomes report',
+      image: 'https://images.unsplash.com/photo-1573497491765-dccce02b29df?auto=format&fit=crop&w=900&q=80',
+      tone: 'calm',
+    },
   ];
 
   const testimonials = [
@@ -178,15 +181,15 @@ export default function LandingPage() {
             if (e.target && e.target.closest && e.target.closest('a')) setNavOpen(false);
           }}
         >
+          <li><a href="#home">Home</a></li>
+          <li><a href="#business">For Business</a></li>
+          <li><a href="#how-it-works">How it works?</a></li>
           <li><a href="#features">Features</a></li>
-          <li><a href="#how-it-works">About</a></li>
-          <li><a href="#pricing">Pricing</a></li>
-          <li><a href="#faq">FAQ</a></li>
         </ul>
         <div className="cf-nav__end">
           <div className="nav-actions">
-            <a href="/login" className="nav-signin">Sign in</a>
-            <motion.a href="/login" className="btn btn-primary" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }}>Get Started</motion.a>
+            <a href="/login" className="nav-store-btn">Download on App Store</a>
+            <motion.a href="/login" className="nav-signin" whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}>Sign Up</motion.a>
           </div>
           <button
             type="button"
@@ -201,38 +204,44 @@ export default function LandingPage() {
       </nav>
 
       {/* ── HERO ── */}
-      <section className="hero">
-        <div className="hero-glow" />
-        <motion.div className="hero-badge" initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
-          <span className="dot" /> Trusted by 10+ homecare agencies
-        </motion.div>
-        <motion.h1 initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.1 }}>
-          Smart Homecare<br />Management for <span className="highlight">Everyone</span>
-        </motion.h1>
-        <motion.p className="hero-desc" initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.2 }}>
-          Take control of your agency operations scheduling, clinical docs, billing, and compliance in one powerful platform designed for modern care teams.
-        </motion.p>
-        <motion.div className="hero-btns" initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.3 }}>
-          <motion.a href="/login" className="btn btn-primary btn-lg" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }}>Get Started →</motion.a>
-          <motion.a href="https://play.google.com/store" target="_blank" rel="noopener noreferrer" className="btn btn-outline btn-lg google-play-btn" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }}>
-            <svg width="20" height="22" viewBox="0 0 512 512" fill="currentColor"><path d="M325.3 234.3L104.6 13l280.8 161.2-60.1 60.1zM47 0C34 6.8 25.3 19.2 25.3 35.3v441.4c0 16.1 8.7 28.5 21.7 35.3l256.6-256L47 0zm425.2 225.6l-58.9-34.1-65.7 64.5 65.7 64.5 60.1-34.1c18-14.3 18-46.5-1.2-60.8zM104.6 499l280.8-161.2-60.1-60.1L104.6 499z"/></svg>
-            Get Nurse App
-          </motion.a>
-        </motion.div>
-
-        {/* Dashboard mockup */}
-        <motion.div className="dashboard-wrap" initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8, delay: 0.4 }}>
-          <img src="/mockups/o1.jpeg" alt="Kulobal Homecare Dashboard" className="hero-mockup" />
+      <section className="hero" id="home">
+        <motion.div
+          className="hero-cinematic hero-cinematic--exact"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.55 }}
+        >
+          <div className="hero-cinematic__overlay" aria-hidden />
+          <div className="hero-cinematic__content hero-cinematic__content--center">
+            <span className="hero-cinematic__tag">Welcome to A Modern Financial Experience</span>
+            <h1 className="hero-exact-title">
+              <span>SAVE</span> YOUR TIME &
+              <br />
+              LESS <span>EXPENSE</span>
+            </h1>
+            <img
+              src="/mockups/o1.jpeg"
+              alt="Hero preview"
+              className="hero-exact-image"
+              onError={(e) => {
+                e.currentTarget.onerror = null;
+                e.currentTarget.src = '/mockups/m1.png';
+              }}
+            />
+            <div className="hero-exact-actions">
+              <a href="/login" className="btn hero-cinematic__cta">Create an Account</a>
+            </div>
+          </div>
         </motion.div>
       </section>
-
-      {/* ── TRUSTED BY ── */}
-      <motion.div className="trusted" initial="hidden" whileInView="show" viewport={{ once: true, amount: 0.3 }} variants={stagger}>
-        <motion.p variants={fadeUp}>Trusted by teams at</motion.p>
-        <motion.div className="logos" variants={fadeUp}>
-          <img src="/Clients/logo.png" alt="Client logo" className="client-logo" />
+      <section className="trusted">
+        <motion.div initial="hidden" whileInView="show" viewport={{ once: true, amount: 0.3 }} variants={stagger}>
+          <motion.p variants={fadeUp}>Trusted by teams at</motion.p>
+          <motion.div className="logos" variants={fadeUp}>
+            <img src="/Clients/logo.png" alt="Client logo" className="client-logo" />
+          </motion.div>
         </motion.div>
-      </motion.div>
+      </section>
 
       {/* ── FEATURES ── */}
       <section id="features">
@@ -243,14 +252,16 @@ export default function LandingPage() {
             <motion.p className="section-sub" variants={fadeUp}>From smart scheduling to seamless billing everything your agency needs in one powerful platform.</motion.p>
           </motion.div>
           <motion.div className="features-grid" initial="hidden" whileInView="show" viewport={{ once: true, amount: 0.1 }} variants={stagger}>
-            {features.map((f, i) => (
+            {features.map((f) => (
               <motion.div className="feat-card" key={f.title} variants={fadeUp} transition={{ duration: 0.5 }}>
-                <div className="feat-top">
-                  <div className="feat-icon"><HugeiconsIcon icon={f.icon} size={24} color={i === 1 || i === 4 ? '#fff' : '#45B6FE'} strokeWidth={1.5} /></div>
-                  <span className="feat-num">0{i + 1}</span>
+                <div className="feat-head">
+                  <span className="feat-label">{f.label}</span>
+                  <span className={`feat-arrow${f.tone === 'accent' ? ' is-accent' : ''}`} aria-hidden>↗</span>
                 </div>
-                <h3>{f.title}</h3>
-                <p>{f.desc}</p>
+                <h3 className="feat-title">{f.title}</h3>
+                <div className={`feat-media${f.tone === 'accent' ? ' is-accent' : ''}`}>
+                  <img src={f.image} alt={f.title} loading="lazy" />
+                </div>
               </motion.div>
             ))}
           </motion.div>
@@ -273,36 +284,26 @@ export default function LandingPage() {
               <motion.a href="/login" className="btn btn-primary split-cta-btn" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }}>Learn more →</motion.a>
             </motion.div>
             <motion.div variants={fadeUp} transition={{ duration: 0.6, delay: 0.15 }}>
-              <div className="visual-card">
-                <div className="balance-display">
-                  <div className="balance-label">Total Active Patients</div>
-                  <div className="balance-amount">1,248</div>
-                  <div className="balance-change">↑ +86 this month</div>
+              <div className="showcase-collage">
+                <div className="showcase-mini-card showcase-mini-card--team">
+                  <div className="showcase-mini-card__kicker">Trusted Care Team</div>
+                  <div className="showcase-mini-list">
+                    {['Ama Mensah', 'Kojo Aidoo', 'Yaa Asantewaa'].map((name, idx) => (
+                      <div key={name} className="showcase-mini-list__item">
+                        <span className="showcase-mini-list__avatar">{name.split(' ').map((n) => n[0]).join('').slice(0, 2)}</span>
+                        <span className="showcase-mini-list__name">{name}</span>
+                        <span className="showcase-mini-list__tag">{idx === 0 ? 'Lead' : 'Field'}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <div className="mini-bars">
-                  {[35, 55, 45, 70, 60, 85, 75].map((h, i) => (
-                    <div className="mini-bar" key={i} style={{ height: `${h}%`, background: i === 5 ? 'var(--accent)' : `rgba(69,182,254,${0.3 + i * 0.05})` }} />
-                  ))}
-                </div>
-                <div className="spending-list">
-                  <div className="spending-item">
-                    <div className="spending-dot" style={{ background: '#45B6FE' }} />
-                    <span className="spending-name">Home Health</span>
-                    <div className="spending-bar-wrap"><div className="spending-bar" style={{ width: '72%', background: '#45B6FE' }} /></div>
-                    <span className="spending-amount">892</span>
+                <div className="showcase-mini-card showcase-mini-card--summary">
+                  <div className="showcase-mini-card__kicker">Account Summary</div>
+                  <div className="showcase-mini-card__amount">$23,300</div>
+                  <div className="showcase-mini-progress">
+                    <span />
                   </div>
-                  <div className="spending-item">
-                    <div className="spending-dot" style={{ background: 'var(--green)' }} />
-                    <span className="spending-name">Private Duty</span>
-                    <div className="spending-bar-wrap"><div className="spending-bar" style={{ width: '45%', background: 'var(--green)' }} /></div>
-                    <span className="spending-amount">246</span>
-                  </div>
-                  <div className="spending-item">
-                    <div className="spending-dot" style={{ background: '#f59e0b' }} />
-                    <span className="spending-name">Hospice</span>
-                    <div className="spending-bar-wrap"><div className="spending-bar" style={{ width: '28%', background: '#f59e0b' }} /></div>
-                    <span className="spending-amount">110</span>
-                  </div>
+                  <button type="button" className="showcase-mini-chip">View Details</button>
                 </div>
               </div>
             </motion.div>
@@ -311,7 +312,7 @@ export default function LandingPage() {
       </section>
 
       {/* ── SHOWCASE: Workforce & Scheduling ── */}
-      <section>
+      <section className="section-split section-split--alt">
         <div className="container">
           <motion.div className="split reverse" initial="hidden" whileInView="show" viewport={{ once: true, amount: 0.2 }} variants={stagger}>
             <motion.div variants={fadeUp} transition={{ duration: 0.6 }}>
@@ -321,28 +322,34 @@ export default function LandingPage() {
               <motion.a href="/login" className="btn btn-primary split-cta-btn" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }}>Explore workforce →</motion.a>
             </motion.div>
             <motion.div variants={fadeUp} transition={{ duration: 0.6, delay: 0.15 }}>
-              <div className="visual-card">
-                <div className="visual-card-title">Workforce Performance</div>
-                <div className="portfolio-grid">
-                  <div className="portfolio-item">
-                    <div className="portfolio-label">On-Time Visits</div>
-                    <div className="portfolio-value">96.4%</div>
-                    <div className="portfolio-change">↑ Excellent</div>
+              <div className="showcase-collage showcase-collage--alt">
+                <div className="showcase-mini-card showcase-mini-card--chart">
+                  <div className="showcase-mini-card__kicker">Workforce Performance</div>
+                  <div className="showcase-mini-card__amount">96.4%</div>
+                  <div className="showcase-mini-card__sub">On-Time Visits</div>
+                  <div className="showcase-chart" aria-hidden>
+                    <span />
                   </div>
-                  <div className="portfolio-item">
-                    <div className="portfolio-label">Staff Retention</div>
-                    <div className="portfolio-value">91.2%</div>
-                    <div className="portfolio-change">↑ Above avg</div>
-                  </div>
-                  <div className="portfolio-item">
-                    <div className="portfolio-label">Credential Compliance</div>
-                    <div className="portfolio-value">98.7%</div>
-                    <div className="portfolio-change">↑ High</div>
-                  </div>
-                  <div className="portfolio-item">
-                    <div className="portfolio-label">Avg Satisfaction</div>
-                    <div className="portfolio-value">4.8★</div>
-                    <div className="portfolio-change stable">→ Stable</div>
+                </div>
+                <div className="showcase-mini-card showcase-mini-card--stats">
+                  <div className="showcase-mini-card__kicker">Credential Compliance</div>
+                  <div className="showcase-stats-grid">
+                    <div>
+                      <strong>91.2%</strong>
+                      <small>Staff Retention</small>
+                    </div>
+                    <div>
+                      <strong>98.7%</strong>
+                      <small>Compliance</small>
+                    </div>
+                    <div>
+                      <strong>4.8★</strong>
+                      <small>Satisfaction</small>
+                    </div>
+                    <div>
+                      <strong>1,540</strong>
+                      <small>Visits / month</small>
+                    </div>
                   </div>
                 </div>
               </div>
