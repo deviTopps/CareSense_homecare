@@ -50,12 +50,11 @@ export default function LandingPage() {
     analytics: true,
     marketing: false,
   });
+  const [scrolled, setScrolled] = useState(false);
 
   useEffect(() => {
-    const nav = document.querySelector('.cf-nav');
     const onScroll = () => {
-      if (!nav) return;
-      nav.classList.toggle('scrolled', window.scrollY > 40);
+      setScrolled(window.scrollY > 40);
     };
     window.addEventListener('scroll', onScroll);
     return () => window.removeEventListener('scroll', onScroll);
@@ -167,7 +166,7 @@ export default function LandingPage() {
   return (
     <div className="lp">
       {/* ── NAV ── */}
-      <nav className={`cf-nav${navOpen ? ' cf-nav--open' : ''}`}>
+      <nav className={`cf-nav${navOpen ? ' cf-nav--open' : ''}${scrolled ? ' scrolled' : ''}`}>
         <a
           href="/"
           className="nav-brand"
@@ -182,13 +181,13 @@ export default function LandingPage() {
           }}
         >
           <li><a href="#home">Home</a></li>
-          <li><a href="#business">For Business</a></li>
-          <li><a href="#how-it-works">How it works?</a></li>
-          <li><a href="#features">Features</a></li>
+          <li><a href="#business">Features</a></li>
+          <li><a href="#how-it-works">Pricing</a></li>
+          <li><a href="#features">FAQ</a></li>
         </ul>
         <div className="cf-nav__end">
           <div className="nav-actions">
-            <a href="/login" className="nav-store-btn">Download on App Store</a>
+            <a href="/login" className="nav-store-btn">Login</a>
             <motion.a href="/login" className="nav-signin" whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}>Sign Up</motion.a>
           </div>
           <button
@@ -213,11 +212,10 @@ export default function LandingPage() {
         >
           <div className="hero-cinematic__overlay" aria-hidden />
           <div className="hero-cinematic__content hero-cinematic__content--center">
-            <span className="hero-cinematic__tag">Welcome to A Modern Financial Experience</span>
+            <span className="hero-cinematic__tag btn-primary">Trusted By 10+ Homecare Agencies</span>
             <h1 className="hero-exact-title">
-              <span>SAVE</span> YOUR TIME &
-              <br />
-              LESS <span>EXPENSE</span>
+              <span>Run</span> your Agency<br />
+              Care for your <span>Clients</span>
             </h1>
             <img
               src="/mockups/o1.jpeg"
