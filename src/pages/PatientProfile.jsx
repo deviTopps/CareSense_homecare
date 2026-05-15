@@ -2353,6 +2353,10 @@ export default function PatientProfile() {
   const [generateReportDone, setGenerateReportDone] = useState(false);
   const [showReportDeathModal, setShowReportDeathModal] = useState(false);
   const [reportDeathSubmitting, setReportDeathSubmitting] = useState(false);
+  const [showDeactivateModal, setShowDeactivateModal] = useState(false);
+  const [deactivatingPatient, setDeactivatingPatient] = useState(false);
+  const [deactivateSuccess, setDeactivateSuccess] = useState('');
+  const [showDeactivateSuccessAlert, setShowDeactivateSuccessAlert] = useState(false);
   const [reportDeathError, setReportDeathError] = useState('');
   const [reportDeathDone, setReportDeathDone] = useState(false);
   const [reportDeathForm, setReportDeathForm] = useState({
@@ -4672,6 +4676,44 @@ export default function PatientProfile() {
     }
   };
 
+  const handleDeactivatePatient = async () => {
+    const pid = String(effectivePatientId || '').trim();
+    if (!pid) {
+      return;
+    }
+
+    setDeactivatingPatient(true);
+    try {
+      const response = await apiFetch(`/patients/${encodeURIComponent(pid)}/deactivate`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+      });
+
+      const responseText = await response.text().catch(() => '');
+      let data = {};
+      if (responseText) {
+        try {
+          data = JSON.parse(responseText);
+        } catch {
+          data = { message: responseText };
+        }
+      }
+
+      if (!response.ok) {
+        throw new Error(data?.message || data?.error || 'Unable to deactivate patient.');
+      }
+
+      setDeactivateSuccess('Patient has been successfully deactivated.');
+      setShowDeactivateSuccessAlert(true);
+      navigate('/patients');
+    } catch (error) {
+      setDeactivateSuccess('An error occurred while deactivating the patient. Please try again.');
+      setShowDeactivateSuccessAlert(true);
+    } finally {
+      setDeactivatingPatient(false);
+    }
+  };
+
   const handleRemoveAssignedNurse = async (nurse) => {
     const assignmentId = String(nurse?.assignmentId || '').trim();
     if (!assignmentId) {
@@ -5230,6 +5272,25 @@ export default function PatientProfile() {
           </button>
         </div>
       )}
+      {showDeactivateSuccessAlert && (
+        <div className="patient-profile-save-alert" role="status" aria-live="polite">
+          <div className="patient-profile-save-alert__icon">
+            <FiCheckCircle size={18} />
+          </div>
+          <div className="patient-profile-save-alert__content">
+            <strong>Patient Deactivated</strong>
+            <span>{deactivateSuccess}</span>
+          </div>
+          <button
+            type="button"
+            className="patient-profile-save-alert__close"
+            onClick={() => setShowDeactivateSuccessAlert(false)}
+            aria-label="Dismiss deactivate alert"
+          >
+            <FiX size={16} />
+          </button>
+        </div>
+      )}
       {carePlanSaveSuccess && (
         <div
           className="patient-profile-save-alert"
@@ -5239,7 +5300,8 @@ export default function PatientProfile() {
             top: `${24
               + (showProfileSaveAlert ? 68 : 0)
               + (showMedicationSaveAlert ? 68 : 0)
-              + (showVitalSaveAlert ? 68 : 0)}px`,
+              + (showVitalSaveAlert ? 68 : 0)
+              + (showDeactivateSuccessAlert ? 68 : 0)}px`,
           }}
         >
           <div className="patient-profile-save-alert__icon">
@@ -5287,6 +5349,15 @@ export default function PatientProfile() {
             >
               Report Death
             </button>
+            <button
+              type="button"
+              className="pp-pharm-btn-yellow pp-pharm-btn-yellow--danger"
+              title="Deactivate patient"
+              onClick={handleDeactivatePatient}
+              disabled={deactivatingPatient}
+            >
+              {deactivatingPatient ? 'Deactivating...' : 'Deactivate'}
+            </button>
             <button type="button" className="pp-pharm-icon-quiet" title="Refresh" onClick={loadPatientProfile}>
               <FiRefreshCw size={16} />
             </button>
@@ -5318,7 +5389,7 @@ export default function PatientProfile() {
                   <dl className="pp-pharm-side-profile__facts">
                     <div><dt>Gender</dt><dd>{p.gender || '—'}</dd></div>
                     <div><dt>Age</dt><dd>{p.age != null && p.age !== '' ? p.age : '—'}</dd></div>
-                    <div><dt>Language</dt><dd>{sidebarLanguage}</dd></div>
+                    <div><dt>Address</dt><dd>{p.address || '—'}</dd></div>
                     <div><dt>Height</dt><dd>{sidebarHeightDisplay}</dd></div>
                   </dl>
                   {(photoUploading || photoUploadSuccess || photoUploadError) && (
@@ -5408,7 +5479,7 @@ export default function PatientProfile() {
               <div className="pp-pharm-panel__section-title pp-pharm-panel__section-title--mt">Care routing</div>
               <div className="pp-pharm-faux-selects">
                 <div><span className="pp-pharm-faux-label">Delivery type</span><div className="pp-pharm-faux-select">Home visit (default)</div></div>
-                <div><span className="pp-pharm-faux-label">Care route</span><div className="pp-pharm-faux-select">{p.region || p.gps || '—'}</div></div>
+<div><span className="pp-pharm-faux-label">Home Address</span><div className="pp-pharm-faux-select">{p.address || p.region || p.gps || '—'}</div></div>
                 <div><span className="pp-pharm-faux-label">Risk level</span><div className="pp-pharm-faux-select">{flags[0]?.label || 'Standard'}</div></div>
                 <div><span className="pp-pharm-faux-label">Service line 1</span><div className="pp-pharm-faux-select">{p.nurse ? 'Assigned RN' : 'Unassigned'}</div></div>
                 <div><span className="pp-pharm-faux-label">Service line 2</span><div className="pp-pharm-faux-select">{String(p.diagnosis || 'General care').slice(0, 42)}{String(p.diagnosis || '').length > 42 ? '…' : ''}</div></div>

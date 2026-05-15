@@ -181,9 +181,9 @@ export default function LandingPage() {
           }}
         >
           <li><a href="#home">Home</a></li>
-          <li><a href="#business">Features</a></li>
-          <li><a href="#how-it-works">Pricing</a></li>
-          <li><a href="#features">FAQ</a></li>
+          <li><a href="#how-it-works">Features</a></li>
+          <li><a href="#pricing">Pricing</a></li>
+          <li><a href="#faq">FAQ</a></li>
         </ul>
         <div className="cf-nav__end">
           <div className="nav-actions">
@@ -204,31 +204,59 @@ export default function LandingPage() {
 
       {/* ── HERO ── */}
       <section className="hero" id="home">
+        <div className="hero-bg-glow" aria-hidden />
         <motion.div
           className="hero-cinematic hero-cinematic--exact"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.55 }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.6 }}
         >
           <div className="hero-cinematic__overlay" aria-hidden />
           <div className="hero-cinematic__content hero-cinematic__content--center">
-            <span className="hero-cinematic__tag btn-primary">Trusted By 10+ Homecare Agencies</span>
-            <h1 className="hero-exact-title">
+            <motion.span 
+              className="hero-cinematic__tag"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.1 }}
+            >
+              Trusted By 10+ Homecare Agencies
+            </motion.span>
+            <motion.h1 
+              className="hero-exact-title"
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.2 }}
+            >
               <span>Run</span> your Agency<br />
               Care for your <span>Clients</span>
-            </h1>
-            <img
+            </motion.h1>
+            <motion.img
               src="/mockups/o1.jpeg"
               alt="Hero preview"
               className="hero-exact-image"
+              initial={{ opacity: 0, y: 40, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ duration: 0.7, delay: 0.35, ease: 'easeOut' }}
               onError={(e) => {
                 e.currentTarget.onerror = null;
                 e.currentTarget.src = '/mockups/m1.png';
               }}
             />
-            <div className="hero-exact-actions">
-              <a href="/login" className="btn hero-cinematic__cta">Create an Account</a>
-            </div>
+            <motion.div 
+              className="hero-exact-actions"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.55 }}
+            >
+              <motion.a 
+                href="/login" 
+                className="btn hero-cinematic__cta"
+                whileHover={{ scale: 1.05, boxShadow: '0 20px 25px -5px rgba(69,182,254,0.3)' }}
+                whileTap={{ scale: 0.97 }}
+              >
+                Create an Account
+              </motion.a>
+            </motion.div>
           </div>
         </motion.div>
       </section>
@@ -241,30 +269,6 @@ export default function LandingPage() {
         </motion.div>
       </section>
 
-      {/* ── FEATURES ── */}
-      <section id="features">
-        <div className="container">
-          <motion.div className="sec-center" initial="hidden" whileInView="show" viewport={{ once: true, amount: 0.3 }} variants={stagger}>
-            <motion.span className="section-label" variants={fadeUp}>Features</motion.span>
-            <motion.h2 className="section-title" variants={fadeUp}>Standout homecare features designed<br />to put you in control</motion.h2>
-            <motion.p className="section-sub" variants={fadeUp}>From smart scheduling to seamless billing everything your agency needs in one powerful platform.</motion.p>
-          </motion.div>
-          <motion.div className="features-grid" initial="hidden" whileInView="show" viewport={{ once: true, amount: 0.1 }} variants={stagger}>
-            {features.map((f) => (
-              <motion.div className="feat-card" key={f.title} variants={fadeUp} transition={{ duration: 0.5 }}>
-                <div className="feat-head">
-                  <span className="feat-label">{f.label}</span>
-                  <span className={`feat-arrow${f.tone === 'accent' ? ' is-accent' : ''}`} aria-hidden>↗</span>
-                </div>
-                <h3 className="feat-title">{f.title}</h3>
-                <div className={`feat-media${f.tone === 'accent' ? ' is-accent' : ''}`}>
-                  <img src={f.image} alt={f.title} loading="lazy" />
-                </div>
-              </motion.div>
-            ))}
-          </motion.div>
-        </div>
-      </section>
 
       {/* ── SHOWCASE: Patient Management ── */}
       <section id="how-it-works" className="section-split">
