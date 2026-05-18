@@ -226,12 +226,12 @@ export default function LandingPage() {
             </motion.span>
             <motion.h1 
               className="hero-exact-title"
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
+              initial={{ y: 24 }}
+              animate={{ y: 0 }}
               transition={{ duration: 0.6, delay: 0.2 }}
             >
-              <span>Run</span> your Agency<br />
-              Care for your <span>Clients</span>
+              Stop Managing Chaos.<br />
+              Start Delivering Results.
             </motion.h1>
             <motion.div
               className="hero-exact-image-wrap"
@@ -240,14 +240,9 @@ export default function LandingPage() {
               transition={{ duration: 0.7, delay: 0.35, ease: 'easeOut' }}
             >
               <img
-                src="/mockups/o1.jpeg"
+                src="/mockups/02.png?v=2"
                 alt="Hero preview"
                 className="hero-exact-image"
-                onError={(e) => {
-                  e.currentTarget.onerror = null;
-                  e.currentTarget.src = '/mockups/m1.png';
-                  e.currentTarget.classList.add('hero-exact-image--png');
-                }}
               />
             </motion.div>
             <motion.div 
@@ -258,7 +253,7 @@ export default function LandingPage() {
             >
               <motion.a 
                 href="/login" 
-                className="btn hero-cinematic__cta"
+                className="lp-btn lp-btn-primary hero-cinematic__cta"
                 whileHover={{ scale: 1.05, boxShadow: '0 20px 25px -5px rgba(69,182,254,0.3)' }}
                 whileTap={{ scale: 0.97 }}
               >
@@ -291,7 +286,7 @@ export default function LandingPage() {
                 <li><span className="check-mark">✓</span><span>Smart care plan templates powered by best practices</span></li>
                 <li><span className="check-mark">✓</span><span>Automated visit reports and compliance tracking</span></li>
               </ul>
-              <motion.a href="/login" className="btn btn-primary split-cta-btn" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }}>Learn more →</motion.a>
+              <motion.a href="/login" className="lp-btn lp-btn-primary split-cta-btn" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }}>Learn more →</motion.a>
             </motion.div>
             <motion.div variants={fadeUp} transition={{ duration: 0.6, delay: 0.15 }}>
               <div className="showcase-collage">
@@ -329,7 +324,7 @@ export default function LandingPage() {
               <span className="section-label">Workforce</span>
               <h2 className="section-title">Taking control of your workforce has never been simpler</h2>
               <p className="section-sub">Manage nurse credentials, scheduling, certifications, and performance — all from a single powerful view.</p>
-              <motion.a href="/login" className="btn btn-primary split-cta-btn" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }}>Explore workforce →</motion.a>
+              <motion.a href="/login" className="lp-btn lp-btn-primary split-cta-btn" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }}>Explore workforce →</motion.a>
             </motion.div>
             <motion.div variants={fadeUp} transition={{ duration: 0.6, delay: 0.15 }}>
               <div className="showcase-collage showcase-collage--alt">
@@ -468,7 +463,7 @@ export default function LandingPage() {
             Pricing may be reviewed for bespoke enterprise arrangements. Questions? Reach out after you sign in or contact our team through your preferred channel.
           </motion.p>
           <motion.div className="pricing-gh-cta" initial="hidden" whileInView="show" viewport={{ once: true }} variants={fadeUp}>
-            <motion.a href="/login" className="btn btn-primary btn-lg" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }}>
+            <motion.a href="/login" className="lp-btn lp-btn-primary lp-btn-lg" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }}>
               Get started →
             </motion.a>
           </motion.div>
@@ -532,8 +527,8 @@ export default function LandingPage() {
         <motion.h2 initial="hidden" whileInView="show" viewport={{ once: true }} variants={fadeUp}>Ready to take control<br />of your agency?</motion.h2>
         <motion.p initial="hidden" whileInView="show" viewport={{ once: true }} variants={fadeUp}>Join over 500 agencies who&rsquo;ve transformed their homecare operations with Kulobal.</motion.p>
         <motion.div className="cta-btns" initial="hidden" whileInView="show" viewport={{ once: true }} variants={fadeUp}>
-          <motion.a href="/login" className="btn btn-primary btn-lg" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }}>Create free account →</motion.a>
-          <motion.a href="#features" className="btn btn-outline btn-lg" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }}>Learn more</motion.a>
+          <motion.a href="/login" className="lp-btn lp-btn-primary lp-btn-lg" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }}>Create free account →</motion.a>
+          <motion.a href="#features" className="lp-btn lp-btn-outline lp-btn-lg" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }}>Learn more</motion.a>
         </motion.div>
       </div>
 
