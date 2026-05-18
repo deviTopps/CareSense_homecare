@@ -20,7 +20,7 @@ import {
   FiSave,
   FiUserPlus,
 } from '../icons/hugeicons-feather';
-import { apiFetch, isTokenValid, createPlatformUser } from '../api';
+import { apiFetch, isTokenValid, createPlatformUser, fetchAuthUsers } from '../api';
 import { resolveStoredMediaUrl } from '../utils/resolveStoredMediaUrl';
 
 const ROLE_LABELS = { head_nurse: 'Head Nurse', supervising_nurse: 'Supervising Nurse', office_nurse: 'Office Nurse', field_nurse: 'Field Nurse' };
@@ -74,6 +74,50 @@ const PLATFORM_USER_ROLE_OPTIONS = [
   { value: 'accountant', label: 'Accountant' },
   { value: 'hr', label: 'HR' },
 ];
+
+const WORKFORCE_FILTER_TABS = ['All', 'Complete', 'In progress', 'Staff'];
+
+const isStaffRole = (role) => {
+  const normalized = String(role || '').trim().toLowerCase();
+  return normalized === 'staff' || normalized === 'stuff';
+};
+
+const extractUserArray = (payload) => {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.users)) return payload.users;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.items)) return payload.items;
+  return [];
+};
+
+const mapPlatformUserToRow = (user) => {
+  const id = user?._id || user?.id || user?.userId;
+  const firstName = user?.firstName || '';
+  const lastName = user?.lastName || '';
+  const fullName = [firstName, lastName].filter(Boolean).join(' ') || user?.name || user?.email || '—';
+  const roleRaw = String(user?.role || '').trim().toLowerCase();
+
+  return {
+    id,
+    name: fullName,
+    initials: fullName !== '—'
+      ? fullName.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase()
+      : '?',
+    profilePhotoUrl: null,
+    license: '—',
+    role: PLATFORM_USER_ROLE_OPTIONS.find((option) => option.value === roleRaw)?.label || 'Staff',
+    roleRaw,
+    isStaff: true,
+    isPlatformUser: true,
+    phone: user?.phone || '—',
+    email: user?.email || '—',
+    gender: '—',
+    joined: user?.createdAt ? new Date(user.createdAt).toISOString().split('T')[0] : '—',
+    address: '—',
+    completedStep: 4,
+    isComplete: true,
+  };
+};
 
 const emptyQualification = { name: '', institution: '', result: '', year: '' };
 const emptyEmployment = { employerName: '', address: '', businessType: '', jobTitle: '', startDate: '', grade: '', reportingOfficer: '', reasonForLeaving: '', descriptionOfDuties: '', contactPerson: '' };
@@ -174,7 +218,7 @@ export default function Workforce() {
     return directUrl || null;
   }, []);
 
-  // ── Fetch nurses from API ──
+  // ── Fetch nurses and staff from API ──
   const fetchNurses = useCallback(async () => {
     if (!NURSE_ENDPOINTS.list) {
       setNurses([]);
@@ -183,15 +227,20 @@ export default function Workforce() {
     }
     try {
       setLoading(true);
-      const res = await apiFetch(NURSE_ENDPOINTS.list);
-      const data = await res.json();
+      const [nursesRes, usersRes] = await Promise.all([
+        apiFetch(NURSE_ENDPOINTS.list),
+        fetchAuthUsers({ limit: 500 }).catch(() => null),
+      ]);
+      const data = await nursesRes.json();
       const list = Array.isArray(data) ? data : data.nurses || data.data || [];
       const completedIds = getCompletedNurseIds();
-      const mapped = await Promise.all(list.map(async (n) => {
+      const mappedNurses = await Promise.all(list.map(async (n) => {
         const id = n._id || n.id;
         const profilePhotoUrl = await resolveNurseProfilePhotoUrl(n);
+        const roleRaw = String(n.role || '').trim().toLowerCase();
+        const staffMember = isStaffRole(roleRaw);
         // Trust API-provided flag first, then localStorage, then assume incomplete
-        const isComplete = n.registrationComplete === true || n.isComplete === true || completedIds.has(id);
+        const isComplete = staffMember || n.registrationComplete === true || n.isComplete === true || completedIds.has(id);
         const completedStep = isComplete ? 4 : (n.registrationStep ?? 1);
         return {
           id,
@@ -201,7 +250,10 @@ export default function Workforce() {
             : '?',
           profilePhotoUrl,
           license: n.mmcPinNo || '—',
-          role: ROLE_LABELS[n.role] || n.role || n.jobTitle || '—',
+          role: staffMember ? 'Staff' : (ROLE_LABELS[n.role] || n.role || n.jobTitle || '—'),
+          roleRaw,
+          isStaff: staffMember,
+          isPlatformUser: false,
           phone: n.phone || '—',
           email: n.email || '—',
           gender: n.gender || '—',
@@ -211,7 +263,31 @@ export default function Workforce() {
           isComplete,
         };
       }));
-      setNurses(mapped);
+
+      let platformStaff = [];
+      if (usersRes?.ok) {
+        const usersPayload = await usersRes.json().catch(() => ({}));
+        const userList = extractUserArray(usersPayload);
+        const knownEmails = new Set(
+          mappedNurses.map((entry) => String(entry.email || '').trim().toLowerCase()).filter(Boolean),
+        );
+        const knownIds = new Set(
+          mappedNurses.map((entry) => String(entry.id || '').trim()).filter(Boolean),
+        );
+        platformStaff = userList
+          .filter((user) => isStaffRole(user?.role))
+          .filter((user) => {
+            const email = String(user?.email || '').trim().toLowerCase();
+            const id = String(user?._id || user?.id || user?.userId || '').trim();
+            if (email && knownEmails.has(email)) return false;
+            if (id && knownIds.has(id)) return false;
+            return true;
+          })
+          .map(mapPlatformUserToRow)
+          .filter((entry) => entry.id);
+      }
+
+      setNurses([...mappedNurses, ...platformStaff]);
       setAvatarLoadErrors({});
     } catch (err) {
       console.error('Failed to fetch nurses:', err);
@@ -223,13 +299,16 @@ export default function Workforce() {
   useEffect(() => { fetchNurses(); }, [fetchNurses]);
 
   const filterCounts = useMemo(() => ({
-    All: nurses.length,
-    Complete: nurses.filter((n) => n.isComplete).length,
-    'In progress': nurses.filter((n) => !n.isComplete).length,
+    All: nurses.filter((n) => !n.isStaff).length,
+    Complete: nurses.filter((n) => !n.isStaff && n.isComplete).length,
+    'In progress': nurses.filter((n) => !n.isStaff && !n.isComplete).length,
+    Staff: nurses.filter((n) => n.isStaff).length,
   }), [nurses]);
 
   // ── Table logic ──
   const filtered = nurses.filter((n) => {
+    if (filter === 'Staff') return n.isStaff;
+    if (n.isStaff) return false;
     if (filter === 'Complete' && !n.isComplete) return false;
     if (filter === 'In progress' && n.isComplete) return false;
     if (!search) return true;
@@ -428,6 +507,11 @@ export default function Workforce() {
       if (!res.ok) throw new Error(data.error || data.message || 'Could not add user.');
       setAddUserForm({ firstName: '', lastName: '', email: '', phone: '', role: addUserForm.role, password: '', confirmPassword: '' });
       setAddUserSuccess({ name: `${fn} ${ln}`.trim() });
+      if (isStaffRole(role)) {
+        setFilter('Staff');
+        setPage(1);
+      }
+      fetchNurses();
     } catch (err) {
       setAddUserError(err.message || 'Could not add user.');
     } finally {
@@ -1069,14 +1153,16 @@ export default function Workforce() {
         <motion.div className="kh-card patients-board-card" initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.28, ease: 'easeOut' }}>
           <div className="patients-topbar">
             <div className="patients-segmented-control">
-              {['All', 'Complete', 'In progress'].map((item) => (
+              {WORKFORCE_FILTER_TABS.map((item) => (
                 <button
                   key={item}
                   type="button"
                   onClick={() => { setFilter(item); setPage(1); }}
                   className={`patients-segmented-control__item${filter === item ? ' is-active' : ''}`}
                 >
-                  <span>{item === 'All' ? 'All Nurses' : item}</span>
+                  <span>
+                    {item === 'All' ? 'All Nurses' : item}
+                  </span>
                   <span className="patients-segmented-control__count">{filterCounts[item]}</span>
                 </button>
               ))}
@@ -1154,14 +1240,23 @@ export default function Workforce() {
                 {!loading && paged.length === 0 && (
                   <tr>
                     <td colSpan={7} className="text-center py-4" style={{ color: 'var(--kh-text-muted)', fontSize: 13 }}>
-                      {nurses.length === 0
-                        ? 'No nurses registered yet. Use Register Nurse to add one.'
-                        : 'No nurses match your filters or search.'}
+                      {filter === 'Staff'
+                        ? (filterCounts.Staff === 0
+                          ? 'No staff users yet. Use Add New User with the Staff role.'
+                          : 'No staff users match your search.')
+                        : (nurses.length === 0
+                          ? 'No nurses registered yet. Use Register Nurse to add one.'
+                          : 'No nurses match your filters or search.')}
                     </td>
                   </tr>
                 )}
                 {!loading && paged.map((n, i) => (
-                  <tr key={n.id} className="patients-row-card" onClick={() => navigate(`/workforce/${n.id}`)} style={{ cursor: 'pointer' }}>
+                  <tr
+                    key={n.id}
+                    className="patients-row-card"
+                    onClick={n.isStaff ? undefined : () => navigate(`/workforce/${n.id}`)}
+                    style={{ cursor: n.isStaff ? 'default' : 'pointer' }}
+                  >
                     <td className="col-num" data-label="#">{startRow + i}</td>
                     <td data-label="Nurse">
                       <div className="d-flex align-items-center gap-2 patients-name-cell">
@@ -1197,22 +1292,26 @@ export default function Workforce() {
                     <td data-label="Phone" className="patients-table-value" style={{ fontVariantNumeric: 'tabular-nums' }}>{n.phone}</td>
                     <td data-label="Action" style={{ textAlign: 'right' }}>
                       <div className="d-inline-flex gap-2 align-items-center justify-content-end">
-                        <button
-                          type="button"
-                          className="patients-row-action"
-                          title="Edit nurse"
-                          onClick={(e) => { e.stopPropagation(); navigate(`/workforce/${n.id}`); }}
-                        >
-                          <FiEdit size={16} aria-hidden />
-                        </button>
-                        <button
-                          type="button"
-                          className="patients-row-action patients-row-action--danger"
-                          title="Delete nurse"
-                          onClick={(e) => handleDeleteNurse(n, e)}
-                        >
-                          <FiTrash2 size={15} aria-hidden />
-                        </button>
+                        {!n.isStaff && (
+                          <>
+                            <button
+                              type="button"
+                              className="patients-row-action"
+                              title="Edit nurse"
+                              onClick={(e) => { e.stopPropagation(); navigate(`/workforce/${n.id}`); }}
+                            >
+                              <FiEdit size={16} aria-hidden />
+                            </button>
+                            <button
+                              type="button"
+                              className="patients-row-action patients-row-action--danger"
+                              title="Delete nurse"
+                              onClick={(e) => handleDeleteNurse(n, e)}
+                            >
+                              <FiTrash2 size={15} aria-hidden />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>

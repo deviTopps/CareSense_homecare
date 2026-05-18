@@ -261,3 +261,54 @@ export async function fetchOtherCareVisits(params = {}, onUnauthorized) {
   const q = qs.toString();
   return apiFetch(`/care-visits/other${q ? `?${q}` : ''}`, { method: 'GET', quiet: true }, onUnauthorized);
 }
+
+/**
+ * Email a medical report PDF (multipart/form-data).
+ * Fields: email, subject, body, patientId, attachmentFile
+ */
+function buildMedicalReportShareFormData({ email, subject, body, patientId, attachmentFile }) {
+  const normalizedPatientId = String(patientId || '').trim();
+  const recipientEmail = String(email || '').trim();
+  const formData = new FormData();
+  // `email` is the external recipient address typed by the user (not a system account).
+  formData.append('email', recipientEmail);
+  formData.append('recipientEmail', recipientEmail);
+  formData.append('subject', subject);
+  formData.append('body', body);
+  formData.append('patientId', normalizedPatientId);
+  formData.append('patient_id', normalizedPatientId);
+  formData.append('attachmentFile', attachmentFile, attachmentFile.name);
+  return formData;
+}
+
+export async function shareMedicalReportByEmail(
+  { email, subject, body, patientId, attachmentFile },
+  onUnauthorized,
+) {
+  const normalizedPatientId = String(patientId || '').trim();
+  const recipientEmail = String(email || '').trim();
+  if (!normalizedPatientId) {
+    throw new Error('Patient ID is missing for this report.');
+  }
+  if (!recipientEmail) {
+    throw new Error('Please enter the external recipient email address.');
+  }
+
+  const response = await apiFetch(
+    '/ai/medical-report/share',
+    {
+      method: 'POST',
+      body: buildMedicalReportShareFormData({
+        email: recipientEmail,
+        subject,
+        body,
+        patientId: normalizedPatientId,
+        attachmentFile,
+      }),
+      quiet: true,
+    },
+    onUnauthorized,
+  );
+  const payload = await response.json().catch(() => ({}));
+  return { response, payload, path: '/ai/medical-report/share' };
+}

@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { FiPlus, FiSearch, FiX, FiChevronRight, FiChevronLeft, FiCheck, FiSave, FiChevronsLeft, FiChevronsRight, FiUserPlus, FiCheckCircle, FiInfo, FiDownload, FiUser } from '../icons/hugeicons-feather';
 import { apiFetch } from '../api';
-import { fetchAllPatients } from '../utils/patients';
+import { extractApiPatientId, fetchAllPatients, isLikelyMongoObjectId } from '../utils/patients';
 
 const patientsData = [
   { id: 'P-1001', name: 'Kwame Boateng', age: 72, gender: 'Male', diagnosis: 'Hypertension, Type 2 Diabetes', phone: '+233 24 111 2222', address: '14 Osu Badu St, Accra', region: 'Accra', nurses: ['Efua Mensah'], emergency: 'Ama Boateng (+233 20 333 4444)', status: 'active', enrolled: '2024-06-01' },
@@ -472,6 +472,9 @@ export default function Patients() {
   const [admissionError, setAdmissionError] = useState('');
   const [partialSaveAlert, setPartialSaveAlert] = useState('');
   const [successModal, setSuccessModal] = useState(null);
+  const [patientStatusConfirm, setPatientStatusConfirm] = useState(null);
+  const [patientStatusSubmitting, setPatientStatusSubmitting] = useState(false);
+  const [patientStatusError, setPatientStatusError] = useState('');
   const [registrationCheck, setRegistrationCheck] = useState({ loading: false, exists: false, checkedValue: '', error: '' });
   const [patientsLoading, setPatientsLoading] = useState(false);
   const [patientsError, setPatientsError] = useState('');
@@ -563,13 +566,15 @@ export default function Patients() {
         ? 'deactivated'
         : 'active';
     const profileImageUrl = extractPatientProfileImageUrl(patient) || getCachedPatientPhotoUrl(patient);
-    const displayId = patient?.registrationNumber || patient?.regNo || patient?.patientId || patient?.id || `P-${String(index + 1).padStart(4, '0')}`;
-    const recordId = patient?._id || patient?.id || patient?.patientId || null;
+    const apiPatientId = extractApiPatientId(patient);
+    const displayId = patient?.registrationNumber || patient?.regNo || apiPatientId || `P-${String(index + 1).padStart(4, '0')}`;
+    const recordId = patient?._id || (isLikelyMongoObjectId(patient?.id) ? patient.id : null) || null;
     const uuid = patient?.uuid || patient?.patientUuid || patient?.patientUUID || patient?.patient?.uuid || null;
 
     return {
       id: displayId,
-      profileRouteId: uuid || recordId || patient?.patientId || patient?.id || displayId,
+      patientId: apiPatientId || null,
+      profileRouteId: apiPatientId || uuid || displayId,
       recordId,
       uuid,
       name: fullName || 'Unknown Patient',
@@ -597,7 +602,7 @@ export default function Patients() {
   };
 
   const patientIdentity = (entry) => String(
-    entry?.profileRouteId || entry?.recordId || entry?.uuid || entry?.id || '',
+    entry?.patientId || entry?.profileRouteId || entry?.uuid || entry?.recordId || entry?.id || '',
   ).trim().toLowerCase();
 
   const samePatient = (left, right) => {
@@ -1034,101 +1039,80 @@ export default function Patients() {
     window.URL.revokeObjectURL(url);
   };
 
-  const handlePatientActionSelect = async (patient, actionValue) => {
-    if (!patient || !actionValue) return;
+  const closePatientStatusConfirm = () => {
+    if (patientStatusSubmitting) return;
+    setPatientStatusConfirm(null);
+    setPatientStatusError('');
+  };
 
-    if (actionValue === 'deactivate') {
-      const patientIdentifierCandidates = Array.from(new Set([
-        patient?.uuid,
-        patient?.recordId,
-        patient?.profileRouteId,
-        patient?.id,
-      ].map((value) => String(value || '').trim()).filter(Boolean)));
+  const confirmPatientStatusAction = async () => {
+    if (!patientStatusConfirm) return;
 
-      if (patientIdentifierCandidates.length === 0) {
-        window.alert('Unable to deactivate this patient because a valid patient ID was not found.');
-        return;
-      }
+    const { patient, action } = patientStatusConfirm;
+    const patientId = String(patient?.patientId || '').trim();
 
-      let lastError = 'Unable to deactivate this patient right now.';
-      for (const patientId of patientIdentifierCandidates) {
-        try {
-          const response = await apiFetch(`/patients/${encodeURIComponent(patientId)}/deactivate`, {
-            method: 'POST',
-            quiet: true,
-          });
-          const payload = await response.json().catch(() => ({}));
-          if (!response.ok) {
-            lastError = payload?.message || payload?.error || lastError;
-            continue;
-          }
-
-          const updatedPatient = { ...patient, status: 'deactivated' };
-          setPatients((prev) =>
-            prev.map((entry) => (samePatient(entry, patient) ? { ...entry, status: 'deactivated' } : entry)),
-          );
-          setDeactivatedPatients((prev) => {
-            if (prev.some((entry) => samePatient(entry, patient))) {
-              return prev.map((entry) => (samePatient(entry, patient) ? { ...entry, status: 'deactivated' } : entry));
-            }
-            return dedupePatientsByIdentity([...prev, updatedPatient]);
-          });
-          setDeceasedPatients((prev) => prev.filter((entry) => !samePatient(entry, patient)));
-          loadPatients();
-          return;
-        } catch (error) {
-          lastError = error?.message || lastError;
-        }
-      }
-
-      window.alert(lastError);
+    if (!patientId) {
+      setPatientStatusError(`Unable to ${action} this patient because a valid patient ID was not found.`);
       return;
     }
 
-    if (actionValue === 'reactivate') {
-      const patientIdentifierCandidates = Array.from(new Set([
-        patient?.uuid,
-        patient?.recordId,
-        patient?.profileRouteId,
-        patient?.id,
-      ].map((value) => String(value || '').trim()).filter(Boolean)));
+    setPatientStatusSubmitting(true);
+    setPatientStatusError('');
 
-      if (patientIdentifierCandidates.length === 0) {
-        window.alert('Unable to reactivate this patient because a valid patient ID was not found.');
-        return;
+    try {
+      const response = await apiFetch(`/patients/${encodeURIComponent(patientId)}/${action}`, {
+        method: 'PATCH',
+        quiet: true,
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(
+          payload?.message
+          || payload?.error
+          || `Unable to ${action} this patient right now.`,
+        );
       }
 
-      let lastError = 'Unable to reactivate this patient right now.';
-      for (const patientId of patientIdentifierCandidates) {
-        try {
-          const response = await apiFetch(`/patients/${encodeURIComponent(patientId)}/reactivate`, {
-            method: 'POST',
-            quiet: true,
-          });
-          const payload = await response.json().catch(() => ({}));
-          if (!response.ok) {
-            lastError = payload?.message || payload?.error || lastError;
-            continue;
+      if (action === 'deactivate') {
+        const updatedPatient = { ...patient, status: 'deactivated' };
+        setPatients((prev) =>
+          prev.map((entry) => (samePatient(entry, patient) ? { ...entry, status: 'deactivated' } : entry)),
+        );
+        setDeactivatedPatients((prev) => {
+          if (prev.some((entry) => samePatient(entry, patient))) {
+            return prev.map((entry) => (samePatient(entry, patient) ? { ...entry, status: 'deactivated' } : entry));
           }
-
-          setPatients((prev) =>
-            prev.map((entry) => (samePatient(entry, patient) ? { ...entry, status: 'active' } : entry)),
-          );
-          setDeceasedPatients((prev) => prev.filter((entry) => !samePatient(entry, patient)));
-          setDeactivatedPatients((prev) => prev.filter((entry) => !samePatient(entry, patient)));
-          loadPatients();
-          return;
-        } catch (error) {
-          lastError = error?.message || lastError;
-        }
+          return dedupePatientsByIdentity([...prev, updatedPatient]);
+        });
+        setDeceasedPatients((prev) => prev.filter((entry) => !samePatient(entry, patient)));
+      } else {
+        setPatients((prev) =>
+          prev.map((entry) => (samePatient(entry, patient) ? { ...entry, status: 'active' } : entry)),
+        );
+        setDeceasedPatients((prev) => prev.filter((entry) => !samePatient(entry, patient)));
+        setDeactivatedPatients((prev) => prev.filter((entry) => !samePatient(entry, patient)));
       }
 
-      window.alert(lastError);
+      setPatientStatusConfirm(null);
+      loadPatients();
+    } catch (error) {
+      setPatientStatusError(error?.message || `Unable to ${action} this patient right now.`);
+    } finally {
+      setPatientStatusSubmitting(false);
+    }
+  };
+
+  const handlePatientActionSelect = async (patient, actionValue) => {
+    if (!patient || !actionValue) return;
+
+    if (actionValue === 'deactivate' || actionValue === 'reactivate') {
+      setPatientStatusError('');
+      setPatientStatusConfirm({ patient, action: actionValue });
       return;
     }
 
     if (actionValue === 'report_dead') {
-      navigate(`/patients/${patient.profileRouteId || patient.id}?reportDeath=1`);
+      navigate(`/patients/${patient.patientId || patient.profileRouteId || patient.id}?reportDeath=1`);
       return;
     }
 
@@ -1141,13 +1125,7 @@ export default function Patients() {
     }
   };
 
-  const extractPatientId = (data) => (
-    data?.patientId
-    || data?.id
-    || data?.patient?.id
-    || data?.patient?.patientId
-    || null
-  );
+  const extractPatientId = (data) => extractApiPatientId(data) || extractApiPatientId(data?.patient) || null;
 
   const createPatientAdmission = async () => {
     setSavingAdmission(true);
@@ -1525,7 +1503,7 @@ export default function Patients() {
                 <tr><td colSpan={9} className="text-center py-4" style={{ color: '#dc2626', fontSize: 13, fontWeight: 600 }}>{patientsError}</td></tr>
               )}
               {!patientsLoading && !patientsError && paged.map((p, i) => (
-                <tr key={p.id} className="patients-row-card" onClick={() => navigate(`/patients/${p.profileRouteId || p.id}`)} style={{ cursor: 'pointer' }}>
+                <tr key={p.id} className="patients-row-card" onClick={() => navigate(`/patients/${p.patientId || p.profileRouteId || p.id}`)} style={{ cursor: 'pointer' }}>
                   <td className="col-num">{startRow + i}</td>
                   <td>
                     <div className="d-flex align-items-center gap-2 patients-name-cell">
@@ -1864,6 +1842,96 @@ export default function Patients() {
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {patientStatusConfirm && (
+        <div
+          className="destructive-confirm-overlay"
+          role="presentation"
+          onClick={closePatientStatusConfirm}
+        >
+          <div
+            className="destructive-confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="patients-status-confirm-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="destructive-confirm-dialog__header">
+              <h2 id="patients-status-confirm-title" className="destructive-confirm-dialog__title">
+                {patientStatusConfirm.action === 'deactivate' ? 'Deactivate patient' : 'Reactivate patient'}
+              </h2>
+              <button
+                type="button"
+                className="destructive-confirm-dialog__close"
+                aria-label="Close"
+                disabled={patientStatusSubmitting}
+                onClick={closePatientStatusConfirm}
+              >
+                <FiX size={18} />
+              </button>
+            </div>
+
+            <div className="destructive-confirm-dialog__body">
+              <p className="destructive-confirm-dialog__lead">
+                {patientStatusConfirm.action === 'deactivate'
+                  ? 'Are you sure you want to deactivate this patient? They will be moved out of the active patient list.'
+                  : 'Are you sure you want to reactivate this patient? They will return to the active patient list.'}
+              </p>
+              <div className="destructive-confirm-dialog__warning">
+                <div className="destructive-confirm-dialog__warning-bar" aria-hidden />
+                <div className="destructive-confirm-dialog__warning-text">
+                  {patientStatusConfirm.action === 'deactivate' ? (
+                    <>
+                      <strong>Warning:</strong> Deactivated patients cannot receive new care assignments until reactivated.
+                    </>
+                  ) : (
+                    <>
+                      <strong>Note:</strong> Reactivating restores this patient to active status for care and scheduling.
+                    </>
+                  )}
+                </div>
+              </div>
+              {patientStatusError && (
+                <div className="destructive-confirm-dialog__banner-error">{patientStatusError}</div>
+              )}
+              <div className="destructive-confirm-dialog__card">
+                <div className="destructive-confirm-dialog__card-icon destructive-confirm-dialog__card-icon--brand" aria-hidden>
+                  <FiUser size={16} />
+                </div>
+                <div className="destructive-confirm-dialog__card-body">
+                  <div className="destructive-confirm-dialog__card-title">{patientStatusConfirm.patient?.name || 'Patient'}</div>
+                  <div className="destructive-confirm-dialog__card-meta">
+                    {patientStatusConfirm.patient?.patientId || patientStatusConfirm.patient?.id || 'Patient ID unavailable'}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="destructive-confirm-dialog__footer">
+              <button
+                type="button"
+                className="destructive-confirm-dialog__btn-cancel"
+                disabled={patientStatusSubmitting}
+                onClick={closePatientStatusConfirm}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className={patientStatusConfirm.action === 'deactivate'
+                  ? 'destructive-confirm-dialog__btn-danger'
+                  : 'btn btn-kh-primary'}
+                disabled={patientStatusSubmitting}
+                onClick={confirmPatientStatusAction}
+              >
+                {patientStatusSubmitting
+                  ? (patientStatusConfirm.action === 'deactivate' ? 'Deactivating…' : 'Reactivating…')
+                  : (patientStatusConfirm.action === 'deactivate' ? 'Deactivate Patient' : 'Reactivate Patient')}
+              </button>
             </div>
           </div>
         </div>

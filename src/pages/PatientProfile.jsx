@@ -18,6 +18,7 @@ import {
   VITAL_RISK_COLORS,
 } from '../utils/vitalMetricsCheck';
 import { API_BASE, apiFetch, getToken, getUser } from '../api';
+import { extractApiPatientId, isLikelyMongoObjectId, isUuidV4ish } from '../utils/patients';
 
 const DEFAULT_PROFILE_PLACEHOLDER = '/images/default-profile-avatar.svg';
 
@@ -835,8 +836,11 @@ function normalizePatientProfile(rawPatient, fallbackId) {
     return fallback;
   };
 
+  const apiPatientId = extractApiPatientId(rawPatient);
+
   return {
-    id: rawPatient?.id || rawPatient?.patientId || fallbackId || '',
+    id: rawPatient?.registrationNumber || rawPatient?.regNo || apiPatientId || fallbackId || '',
+    patientId: apiPatientId,
     agencyId: resolveAgencyId(rawPatient),
     name: fullName || '',
     preferredName: rawPatient?.preferredName || firstName || '',
@@ -1906,12 +1910,15 @@ function sortIncidents(items) {
   });
 }
 
-function isUuidV4ish(s) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(s || '').trim());
+function isPatientDeactivatedStatus(status) {
+  const normalized = String(status || '').toLowerCase();
+  return normalized.includes('deactiv')
+    || normalized.includes('inactive')
+    || normalized.includes('discharg');
 }
 
-function isLikelyMongoObjectId(s) {
-  return /^[a-f\d]{24}$/i.test(String(s || '').trim());
+function resolvePatientApiId(rawApi, profile) {
+  return extractApiPatientId(rawApi) || extractApiPatientId(profile);
 }
 
 function collectNurseIdCandidates(raw) {
@@ -2105,8 +2112,14 @@ export default function PatientProfile() {
 
       const rawPatient = data?.patient || data?.data || data;
       rawPatientApiRef.current = rawPatient && typeof rawPatient === 'object' ? rawPatient : null;
-      const hydratedProfile = await hydratePatientProfile(rawPatient, effectivePatientId);
+      const apiPatientId = extractApiPatientId(rawPatient);
+      const hydratedProfile = await hydratePatientProfile(rawPatient, apiPatientId || effectivePatientId);
       setRemotePatient(hydratedProfile);
+
+      const routeId = String(effectivePatientId || '').trim();
+      if (apiPatientId && apiPatientId !== routeId) {
+        navigate(`/patients/${encodeURIComponent(apiPatientId)}`, { replace: true });
+      }
     } catch (error) {
       setProfileError(error?.message || 'Unable to load patient profile.');
       rawPatientApiRef.current = null;
@@ -2114,7 +2127,7 @@ export default function PatientProfile() {
       setProfileLoading(false);
       setPatientApiSyncVersion((n) => n + 1);
     }
-  }, [effectivePatientId]);
+  }, [effectivePatientId, navigate]);
 
   useEffect(() => {
     loadPatientProfile();
@@ -2353,7 +2366,8 @@ export default function PatientProfile() {
   const [generateReportDone, setGenerateReportDone] = useState(false);
   const [showReportDeathModal, setShowReportDeathModal] = useState(false);
   const [reportDeathSubmitting, setReportDeathSubmitting] = useState(false);
-  const [showDeactivateModal, setShowDeactivateModal] = useState(false);
+  const [patientStatusConfirm, setPatientStatusConfirm] = useState(null);
+  const [patientStatusConfirmError, setPatientStatusConfirmError] = useState('');
   const [deactivatingPatient, setDeactivatingPatient] = useState(false);
   const [deactivateSuccess, setDeactivateSuccess] = useState('');
   const [showDeactivateSuccessAlert, setShowDeactivateSuccessAlert] = useState(false);
@@ -4676,58 +4690,60 @@ export default function PatientProfile() {
     }
   };
 
-  const handleDeactivatePatient = async () => {
-    const pid = String(effectivePatientId || '').trim();
-    if (!pid) return;
+  const closePatientStatusConfirm = () => {
+    if (deactivatingPatient) return;
+    setPatientStatusConfirm(null);
+    setPatientStatusConfirmError('');
+  };
+
+  const runPatientStatusAction = async (action, successMessage, failureMessage) => {
+    const patientId = resolvePatientApiId(rawPatientApiRef.current, remotePatient);
+
+    if (!patientId) {
+      setPatientStatusConfirmError(`Unable to ${action} this patient because a valid patient ID was not found.`);
+      return;
+    }
 
     setDeactivatingPatient(true);
     setDeactivateSuccess('');
+    setPatientStatusConfirmError('');
 
     try {
-      const response = await apiFetch(`/patients/${encodeURIComponent(pid)}/deactivate`, {
+      const response = await apiFetch(`/patients/${encodeURIComponent(patientId)}/${action}`, {
         method: 'PATCH',
-        body: JSON.stringify({ status: 'inactive' }),
         quiet: true,
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(payload?.message || payload?.error || 'Unable to deactivate patient.');
+        throw new Error(payload?.message || payload?.error || failureMessage);
       }
-      setDeactivateSuccess(payload?.message || 'Patient has been deactivated successfully.');
+
+      setPatientStatusConfirm(null);
+      setDeactivateSuccess(payload?.message || successMessage);
       setShowDeactivateSuccessAlert(true);
       loadPatientProfile();
     } catch (error) {
-      setDeactivateSuccess('');
+      setPatientStatusConfirmError(error?.message || failureMessage);
     } finally {
       setDeactivatingPatient(false);
     }
   };
 
-  const handleReactivatePatient = async () => {
-    const pid = String(effectivePatientId || '').trim();
-    if (!pid) return;
-
-    setDeactivatingPatient(true);
-    setDeactivateSuccess('');
-
-    try {
-      const response = await apiFetch(`/patients/${encodeURIComponent(pid)}/reactivate`, {
-        method: 'PATCH',
-        body: JSON.stringify({ status: 'active' }),
-        quiet: true,
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(payload?.message || payload?.error || 'Unable to reactivate patient.');
-      }
-      setDeactivateSuccess(payload?.message || 'Patient has been reactivated successfully.');
-      setShowDeactivateSuccessAlert(true);
-      loadPatientProfile();
-    } catch (error) {
-      setDeactivateSuccess('');
-    } finally {
-      setDeactivatingPatient(false);
+  const confirmPatientStatusAction = async () => {
+    if (!patientStatusConfirm) return;
+    if (patientStatusConfirm.action === 'deactivate') {
+      await runPatientStatusAction(
+        'deactivate',
+        'Patient has been deactivated successfully.',
+        'Unable to deactivate patient.',
+      );
+      return;
     }
+    await runPatientStatusAction(
+      'reactivate',
+      'Patient has been reactivated successfully.',
+      'Unable to reactivate patient.',
+    );
   };
 
   const handleRemoveAssignedNurse = async (nurse) => {
@@ -4850,6 +4866,7 @@ export default function PatientProfile() {
     return candidateIds.includes(String(patientId || ''));
   });
   const p = remotePatient || localPatient;
+  const isPatientDeactivated = isPatientDeactivatedStatus(p?.status);
   const assignedNursesForProfile = Array.isArray(p?.assignedNurses) ? p.assignedNurses : [];
   const assignedNurseMatchKeys = useMemo(() => {
     const keys = new Set();
@@ -5365,25 +5382,31 @@ export default function PatientProfile() {
             >
               Report Death
             </button>
-            {String(p?.status || '').toLowerCase() === 'inactive' ? (
+            {isPatientDeactivated ? (
               <button
                 type="button"
                 className="pp-pharm-btn-yellow"
                 title="Reactivate patient"
-                onClick={handleReactivatePatient}
+                onClick={() => {
+                  setPatientStatusConfirmError('');
+                  setPatientStatusConfirm({ action: 'reactivate' });
+                }}
                 disabled={deactivatingPatient}
               >
-                {deactivatingPatient ? 'Reactivating...' : 'Reactivate'}
+                Reactivate
               </button>
             ) : (
               <button
                 type="button"
                 className="pp-pharm-btn-yellow pp-pharm-btn-yellow--danger"
                 title="Deactivate patient"
-                onClick={handleDeactivatePatient}
+                onClick={() => {
+                  setPatientStatusConfirmError('');
+                  setPatientStatusConfirm({ action: 'deactivate' });
+                }}
                 disabled={deactivatingPatient}
               >
-                {deactivatingPatient ? 'Deactivating...' : 'Deactivate'}
+                Deactivate
               </button>
             )}
             <button type="button" className="pp-pharm-icon-quiet" title="Refresh" onClick={loadPatientProfile}>
@@ -5979,6 +6002,97 @@ export default function PatientProfile() {
             </Panel>
           </div>
         </div>
+      )}
+
+      {/* ── Deactivate / Reactivate Patient Confirmation Modal ── */}
+      {patientStatusConfirm && (
+        <motion.div
+          className="destructive-confirm-overlay"
+          role="presentation"
+          onClick={closePatientStatusConfirm}
+        >
+          <motion.div
+            className="destructive-confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="patient-status-confirm-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="destructive-confirm-dialog__header">
+              <h2 id="patient-status-confirm-title" className="destructive-confirm-dialog__title">
+                {patientStatusConfirm.action === 'deactivate' ? 'Deactivate patient' : 'Reactivate patient'}
+              </h2>
+              <button
+                type="button"
+                className="destructive-confirm-dialog__close"
+                aria-label="Close"
+                disabled={deactivatingPatient}
+                onClick={closePatientStatusConfirm}
+              >
+                <FiX size={20} strokeWidth={1.75} />
+              </button>
+            </div>
+
+            <div className="destructive-confirm-dialog__body">
+              <p className="destructive-confirm-dialog__lead">
+                {patientStatusConfirm.action === 'deactivate'
+                  ? 'Are you sure you want to deactivate this patient? They will be moved out of the active patient list.'
+                  : 'Are you sure you want to reactivate this patient? They will return to the active patient list.'}
+              </p>
+              <div className="destructive-confirm-dialog__warning">
+                <div className="destructive-confirm-dialog__warning-bar" aria-hidden />
+                <div className="destructive-confirm-dialog__warning-text">
+                  {patientStatusConfirm.action === 'deactivate' ? (
+                    <>
+                      <strong>Warning:</strong> Deactivated patients cannot receive new care assignments until reactivated.
+                    </>
+                  ) : (
+                    <>
+                      <strong>Note:</strong> Reactivating restores this patient to active status for care and scheduling.
+                    </>
+                  )}
+                </div>
+              </div>
+              {patientStatusConfirmError && (
+                <div className="destructive-confirm-dialog__banner-error">{patientStatusConfirmError}</div>
+              )}
+              <div className="destructive-confirm-dialog__card">
+                <div className="destructive-confirm-dialog__card-icon destructive-confirm-dialog__card-icon--brand" aria-hidden>
+                  <FiUser size={18} />
+                </div>
+                <div className="destructive-confirm-dialog__card-body">
+                  <div className="destructive-confirm-dialog__card-title">{p?.name || 'Patient'}</div>
+                  <div className="destructive-confirm-dialog__card-meta">
+                    {p?.patientId || p?.id || 'Patient ID unavailable'}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="destructive-confirm-dialog__footer">
+              <button
+                type="button"
+                className="destructive-confirm-dialog__btn-cancel"
+                disabled={deactivatingPatient}
+                onClick={closePatientStatusConfirm}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className={patientStatusConfirm.action === 'deactivate'
+                  ? 'destructive-confirm-dialog__btn-danger'
+                  : 'btn btn-kh-primary'}
+                disabled={deactivatingPatient}
+                onClick={confirmPatientStatusAction}
+              >
+                {deactivatingPatient
+                  ? (patientStatusConfirm.action === 'deactivate' ? 'Deactivating…' : 'Reactivating…')
+                  : (patientStatusConfirm.action === 'deactivate' ? 'Deactivate Patient' : 'Reactivate Patient')}
+              </button>
+            </div>
+          </motion.div>
+        </motion.div>
       )}
 
       {/* ── Remove Assigned Nurse Confirmation Modal ── */}

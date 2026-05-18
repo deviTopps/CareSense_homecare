@@ -1,5 +1,59 @@
 import { apiFetch } from '../api';
 
+export function isLikelyMongoObjectId(value) {
+  return /^[a-f\d]{24}$/i.test(String(value || '').trim());
+}
+
+export function isUuidV4ish(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '').trim());
+}
+
+/** Canonical patient id for `/patients/:patientId/*` routes — never Mongo `_id`. */
+export function extractApiPatientId(record) {
+  if (!record || typeof record !== 'object') return '';
+
+  const explicitIds = [
+    record.patientId,
+    record.patientID,
+    record.patient_id,
+    record.uuid,
+    record.patientUuid,
+    record.patientUUID,
+    record.patient?.patientId,
+    record.patient?.patientID,
+    record.patient?.patient_id,
+    record.patient?.uuid,
+    record.patient?.patientUuid,
+    record.patient?.patientUUID,
+  ];
+
+  for (const value of explicitIds) {
+    const normalized = String(value || '').trim();
+    if (!normalized || isLikelyMongoObjectId(normalized)) continue;
+    return normalized;
+  }
+
+  const nestedPatientId = String(record.patient?.id || '').trim();
+  if (nestedPatientId && !isLikelyMongoObjectId(nestedPatientId)) return nestedPatientId;
+
+  const topLevelId = String(record.id || '').trim();
+  if (topLevelId && !isLikelyMongoObjectId(topLevelId)) return topLevelId;
+
+  return '';
+}
+
+/** Resolve API patient id from a normalized medical report row. */
+export function resolveMedicalReportPatientId(report) {
+  if (!report || typeof report !== 'object') return '';
+
+  const patient = (report.patient && typeof report.patient === 'object') ? report.patient : {};
+
+  return extractApiPatientId(report)
+    || extractApiPatientId({ patient })
+    || extractApiPatientId(patient)
+    || '';
+}
+
 const PATIENTS_PAGE_LIMIT = 100;
 const FALLBACK_PAGE_SIZE = 20;
 const MAX_PATIENT_PAGES = 50;

@@ -13,8 +13,11 @@ import {
   FiPrinter,
   FiUser,
 } from '../icons/hugeicons-feather';
-import { apiFetch, getUser } from '../api';
-import { fetchAllPatients } from '../utils/patients';
+import { apiFetch, getUser, shareMedicalReportByEmail } from '../api';
+import { extractApiPatientId, fetchAllPatients, resolveMedicalReportPatientId } from '../utils/patients';
+import { buildMedicalReportPdfFile, downloadPdfFile, REPORT_PRINT_STYLES } from '../utils/medicalReportPdf';
+import MedicalReportDocument from '../components/MedicalReportDocument';
+import { enrichReportWithPatientProfile } from '../utils/medicalReportTemplate';
 
 const ROWS_PER_PAGE = 10;
 
@@ -159,14 +162,9 @@ function normalizeMedicalReport(rawReport, index) {
       })
       .filter(Boolean)
     : [];
-  const patientId = String(
-    raw.patientId
-    || raw.patientUUID
-    || raw.patientUuid
-    || wrapperPatient?.id
-    || getPatientId(patient)
-    || ''
-  ).trim();
+  const patientId = extractApiPatientId(raw)
+    || extractApiPatientId({ patient: wrapperPatient })
+    || extractApiPatientId({ patient });
   const patientName = String(
     raw.patientName
     || raw.name
@@ -221,6 +219,31 @@ function normalizeMedicalReport(rawReport, index) {
     || '',
   ).trim();
 
+  const resolvedGender = normalizeGenderValue(
+    patient?.gender
+    || patient?.Gender
+    || patient?.sex
+    || patient?.Sex
+    || patient?.demographics?.gender
+    || patient?.demographics?.sex
+    || raw?.gender
+    || raw?.Gender
+    || raw?.sex
+    || raw?.Sex
+    || structuredReport?.patient_information?.gender
+    || structuredReport?.patient_information?.sex
+    || structuredReport?.patient_information?.patient_gender
+    || structuredReport?.patient_information?.patient_sex
+    || ''
+  );
+  const resolvedAddress = String(
+    patient?.residentialAddress
+    || patient?.address
+    || patient?.homeAddress
+    || structuredReport?.patient_information?.address
+    || ''
+  ).trim();
+
   return {
     reportId,
     patientId,
@@ -231,26 +254,14 @@ function normalizeMedicalReport(rawReport, index) {
     nurseName,
     doctorName,
     doctorFacility,
+    gender: resolvedGender,
+    address: resolvedAddress,
     patient: {
       ...patient,
       name: patientName,
-      gender: normalizeGenderValue(
-        patient?.gender
-        || patient?.Gender
-        || patient?.sex
-        || patient?.Sex
-        || patient?.demographics?.gender
-        || patient?.demographics?.sex
-        || raw?.gender
-        || raw?.Gender
-        || raw?.sex
-        || raw?.Sex
-        || structuredReport?.patient_information?.gender
-        || structuredReport?.patient_information?.sex
-        || structuredReport?.patient_information?.patient_gender
-        || structuredReport?.patient_information?.patient_sex
-        || ''
-      ),
+      gender: resolvedGender,
+      address: resolvedAddress,
+      residentialAddress: patient?.residentialAddress || resolvedAddress,
       diagnosis: patient?.diagnosis || raw?.diagnosis || '—',
       medicalHistory: patient?.medicalHistory || raw?.medicalHistory || '',
       medications: patient?.medications || raw?.medications || '',
@@ -290,15 +301,43 @@ function ReportTypeBadge({ type }) {
   );
 }
 
-function ReportViewer({ report, onClose, onShare }) {
+function ReportViewer({ report, onClose, onShare, onCapture }) {
   const printRef = useRef(null);
-  const p = report.patient || {};
-  const user = getUser();
-  const agencyName = user?.agencyName || user?.agency?.name || 'CareSense Homecare';
-  const agencyLogoUrl = extractAgencyLogoUrl(user);
-  const [logoLoadFailed, setLogoLoadFailed] = useState(false);
-  const [reportEditable, setReportEditable] = useState(true);
-  const now = new Date();
+  const [reportEditable, setReportEditable] = useState(!onCapture);
+  const [pdfDownloading, setPdfDownloading] = useState(false);
+
+  useEffect(() => {
+    if (!onCapture) return undefined;
+    let cancelled = false;
+
+    const captureReportHtml = async () => {
+      await new Promise((resolve) => { setTimeout(resolve, 80); });
+      const root = printRef.current;
+      if (!root || cancelled) return;
+
+      const images = Array.from(root.querySelectorAll('img'));
+      await Promise.all(images.map((img) => {
+        if (img.complete) return Promise.resolve();
+        return new Promise((resolve) => {
+          img.addEventListener('load', resolve, { once: true });
+          img.addEventListener('error', resolve, { once: true });
+        });
+      }));
+
+      await new Promise((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(resolve));
+      });
+
+      if (!cancelled && printRef.current) {
+        onCapture(printRef.current.outerHTML);
+      }
+    };
+
+    captureReportHtml();
+    return () => {
+      cancelled = true;
+    };
+  }, [onCapture, report]);
 
   const openReportPrintWindow = (documentTitle) => {
     const content = printRef.current;
@@ -308,55 +347,11 @@ function ReportViewer({ report, onClose, onShare }) {
     win.document.write(`
       <html><head><title>${report.type} — ${report.patientName}</title>
       <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        @page { size: A4; margin: 10mm; }
-        body { font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #111; padding: 0; line-height: 1.25; background: #fff; font-size: 13px; }
-        .report-document { border: 1px solid #111; padding: 8px; width: 100%; max-width: 100%; background: #fff; }
-        .report-header { text-align: center; border-bottom: 1px solid #111; padding-bottom: 6px; margin-bottom: 8px; }
-        .report-header-brand { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 4px; }
-        .report-header-logo-wrap { width: 96px; height: 96px; display: inline-flex; align-items: center; justify-content: center; background: #fff; }
-        .report-header-logo { width: 92px; height: 92px; object-fit: contain; }
-        .report-header h1 { font-size: 16px; font-weight: 700; margin-bottom: 2px; text-transform: uppercase; letter-spacing: 0.06em; }
-        .report-header p { font-size: 11px; color: #333; }
-        .report-title { font-size: 14px; font-weight: 800; text-align: center; margin-bottom: 8px; border: 1px solid #111; padding: 4px; }
-        .report-meta-grid { border: 1px solid #111; border-radius: 6px; overflow: hidden; margin-bottom: 8px; background: #fff; }
-        .report-meta-item {
-          display: grid;
-          grid-template-columns: minmax(100px, 180px) minmax(0, 1fr);
-          align-items: start;
-          column-gap: 10px;
-          padding: 6px 8px;
-          border-bottom: 1px solid #111;
-        }
-        .report-meta-item:last-child { border-bottom: none; }
-        .report-meta-item__label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #374151; display: block; }
-        .report-meta-item__value { font-size: 12px; font-weight: 700; color: #111; line-height: 1.25; text-align: right; justify-self: end; display: block; }
-        .report-section { margin-bottom: 8px; border: 1px solid #111; page-break-inside: avoid; break-inside: avoid; }
-        .report-section h3 { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 1px solid #111; padding: 4px 6px; margin: 0; background: #f4f4f4; }
-        .report-section p, .report-section li { font-size: 12px; line-height: 1.35; }
-        .report-section > p, .report-section > ul, .report-section > div { padding: 6px; }
-        .report-kv { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; padding: 6px 8px; border-bottom: 1px solid #eee; }
-        .report-kv:last-child { border-bottom: none; }
-        .report-kv__label { font-weight: 700; color: #374151; font-size: 12px; }
-        .report-kv__value { text-align: right; color: #111; font-size: 12px; margin-left: auto; max-width: 46%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .report-section ul { padding-left: 18px; }
-        .vitals-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
-        .vital-item { padding: 6px; border: 1px solid #111; text-align: center; font-size: 11px; }
-        .vital-item strong { display: block; font-size: 13px; margin-top: 2px; }
-        table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-        thead { display: table-header-group; }
-        tr, td, th { page-break-inside: avoid; break-inside: avoid; word-break: break-word; }
-        table th, table td { padding: 6px 6px; font-size: 12px; }
-        .report-important-summary { page-break-inside: avoid; break-inside: avoid; border: 1px solid #111; margin-top: 6px; }
-        .signature-line { page-break-inside: avoid; break-inside: avoid; }
-        .report-footer { page-break-inside: avoid; break-inside: avoid; }
-        .report-footer { margin-top: 12px; border-top: 1px solid #111; padding-top: 8px; font-size: 10.5px; color: #333; text-align: center; }
-        .signature-line { margin-top: 28px; display: flex; justify-content: space-between; gap: 28px; }
-        .signature-line > div { flex: 1; border-top: 1px solid #111; padding-top: 6px; font-size: 11px; text-align: center; }
+        ${REPORT_PRINT_STYLES}
         @media print {
           html, body { width: 210mm; }
           body { padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          .reports-document, .report-document { box-shadow: none !important; border-radius: 0 !important; }
+          .reports-document--styled.medical-report { box-shadow: none !important; border: none !important; }
         }
       </style></head><body>${content.innerHTML}
       <script>
@@ -373,102 +368,20 @@ function ReportViewer({ report, onClose, onShare }) {
     openReportPrintWindow(`${report.type} — ${report.patientName}`);
   };
 
-  const handleDownloadPdf = () => {
-    openReportPrintWindow(`${String(report.patientName || 'patient').replace(/[^\w\s-]/g, '')}-medical-report`);
-  };
-
-  const aiReport = p?.aiMonthlyReport || null;
-  const aiPatientInfo = aiReport?.patient_information || {};
-  const sessionFallback = {
-    patient_name: 'Kwame Duku',
-    date_of_birth: '1986-05-06',
-    primary_diagnosis_or_condition: '',
-    care_plan_start_date: '',
-    reporting_period: 'May 1 – May 31, 2026',
-    assigned_caregivers: ['Felicia Apakulo'],
-  };
-  const aiVitalRows = Array.isArray(aiReport?.vital_signs_summary?.rows) ? aiReport.vital_signs_summary.rows : [];
-  const aiAdlRows = Array.isArray(aiReport?.daily_living_activities?.rows) ? aiReport.daily_living_activities.rows : [];
-  const aiWeeklyLog = Array.isArray(aiReport?.weekly_activity_log) ? aiReport.weekly_activity_log : [];
-  const aiMedicationRows = Array.isArray(aiReport?.medication_summary?.rows) ? aiReport.medication_summary.rows : [];
-  const aiObservationBullets = Array.isArray(aiReport?.health_observations_and_incidents?.bullets) ? aiReport.health_observations_and_incidents.bullets : [];
-  const aiRecommendations = Array.isArray(aiReport?.recommendations) ? aiReport.recommendations : [];
-  const aiNextMonthPlan = Array.isArray(aiReport?.next_month_plan) ? aiReport.next_month_plan : [];
-  const aiProgress = aiReport?.progress_evaluation && typeof aiReport.progress_evaluation === 'object' ? aiReport.progress_evaluation : {};
-  const reportDob = String(aiPatientInfo?.date_of_birth || p.dob || '').trim();
-  const reportAge = String(p.age ?? '').trim() || computeAgeFromDob(reportDob);
-  const reportGender = normalizeGenderValue(
-    aiPatientInfo?.gender
-    || aiPatientInfo?.sex
-    || aiPatientInfo?.patient_gender
-    || aiPatientInfo?.patient_sex
-    || p.gender
-    || p.Gender
-    || p.sex
-    || p.Sex
-    || p.demographics?.gender
-    || p.demographics?.sex
-    || report?.gender
-    || report?.patient?.gender
-    || report?.patient?.sex
-    || ''
-  );
-  const reportMetaItems = [
-    { label: 'Patient Name', value: aiPatientInfo?.patient_name || report.patientName || '—' },
-    { label: 'Patient Age', value: reportAge !== '—' ? `${reportAge} yrs` : '—' },
-    { label: 'Gender', value: reportGender || '—' },
-    { label: 'Date of Report', value: fmtDate(report.date) },
-    { label: 'Date of Birth', value: fmtDate(reportDob) },
-    { label: 'Status', value: report.status || '—' },
-    { label: 'Attending Nurse', value: report.nurseName || '—' },
-    { label: 'Referring Doctor', value: `${report.doctorName || '—'}${report.doctorFacility ? ` — ${report.doctorFacility}` : ''}` },
-  ];
-  // Clean AI markdown: remove technical lines and skip Summary Overview blocks
-  const rawLines = String(p.aiReportMarkdown || '').split('\n').map((l) => l.trim());
-  const cleaned = [];
-  for (let i = 0; i < rawLines.length; i += 1) {
-    const line = rawLines[i];
-    if (!line) continue;
-    // skip front-matter table separators or explicit separators
-    if (/^---\|/.test(line) || line === '---') continue;
-    // skip patient id lines
-    if (/^patient\s*id\s*:/i.test(line)) continue;
-    if (/\bpatient\s*id\b/i.test(line)) continue;
-    // skip explicit key message header
-    if (/^key message$/i.test(line)) continue;
-      // skip common patient information lines (avoid duplicating header/meta)
-      if (/^(patient\s*information|patient\s*name|date\s*of\s*birth|primary\s*diagnosis|primary\s*diagnosis\/condition|care\s*plan\s*start\s*date|reporting\s*period|assigned\s*(caregiver|caregivers))\b/i.test(line)) continue;
-    // if we encounter a Summary Overview header, skip it and the next non-empty paragraph
-    if (/^summary overview\b/i.test(line)) {
-      // skip the header line; advance to next non-empty and skip it too
-      let j = i + 1;
-      while (j < rawLines.length && rawLines[j].trim() === '') j += 1;
-      i = j; // will be incremented by loop
-      continue;
+  const handleDownloadPdf = async () => {
+    if (pdfDownloading) return;
+    setPdfDownloading(true);
+    try {
+      const attachmentHtml = printRef.current?.outerHTML || '';
+      const file = await buildMedicalReportPdfFile(report, { attachmentHtml });
+      downloadPdfFile(file);
+    } catch (pdfError) {
+      console.error(pdfError);
+      openReportPrintWindow(`${String(report.patientName || 'patient').replace(/[^\w\s-]/g, '')}-medical-report`);
+    } finally {
+      setPdfDownloading(false);
     }
-    cleaned.push(line);
-  }
-
-  const readableMarkdownLines = cleaned
-    .filter(Boolean)
-    .map((line) => {
-      if (/^\d+\.\s+/.test(line)) {
-        return { kind: 'section', text: line.replace(/^\d+\.\s+/, '').trim() };
-      }
-      if (/^- /.test(line)) {
-        return { kind: 'bullet', text: line.replace(/^- /, '').trim() };
-      }
-      if (line.includes('|')) {
-        const cells = line.split('|').map((cell) => cell.trim()).filter(Boolean);
-        if (cells.length >= 2) {
-          return { kind: 'bullet', text: cells.join(' • ') };
-        }
-      }
-      return { kind: 'paragraph', text: line };
-    });
-
-  const vitals = p.vitals || {};
-  const vitalEntries = Object.entries(vitals).filter(([, v]) => v && v !== '—');
+  };
 
   return (
     <div className="app-modal-overlay" role="presentation" onClick={onClose}>
@@ -479,9 +392,15 @@ function ReportViewer({ report, onClose, onShare }) {
             <span>{report.type}</span>
           </div>
           <div className="reports-viewer-toolbar__actions">
-            <button type="button" className="reports-viewer-action-btn" onClick={handleDownloadPdf} title="Download PDF">
+            <button
+              type="button"
+              className="reports-viewer-action-btn"
+              onClick={handleDownloadPdf}
+              title="Download PDF"
+              disabled={pdfDownloading}
+            >
               <FiDownload size={15} />
-              <span>Download PDF</span>
+              <span>{pdfDownloading ? 'Generating…' : 'Download PDF'}</span>
             </button>
             <button type="button" className="reports-viewer-action-btn" onClick={handlePrint} title="Print report">
               <FiPrinter size={15} />
@@ -495,7 +414,12 @@ function ReportViewer({ report, onClose, onShare }) {
             >
               <span>{reportEditable ? 'Lock Edit' : 'Edit Report'}</span>
             </button>
-            <button type="button" className="reports-viewer-action-btn" onClick={onShare} title="Share via email">
+            <button
+              type="button"
+              className="reports-viewer-action-btn"
+              onClick={() => onShare?.(printRef.current?.outerHTML || '')}
+              title="Share via email"
+            >
               <FiSend size={15} />
               <span>Share</span>
             </button>
@@ -505,557 +429,122 @@ function ReportViewer({ report, onClose, onShare }) {
           </div>
         </div>
 
-        <style>{`
-          .reports-document--styled {
-            background: #ffffff;
-            border: 1px solid #dbe4ef;
-            border-radius: 14px;
-            box-shadow: 0 24px 50px rgba(15, 23, 42, 0.08);
-            padding: 20px;
-            font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-          }
-          .reports-document--styled .report-header {
-            border-radius: 12px;
-            border: 1px solid #dbe4ef;
-            background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
-            padding: 12px;
-            margin-bottom: 14px;
-          }
-          .reports-document--styled .report-title {
-            border-radius: 10px;
-            border: 1px solid #cbd5e1;
-            background: #f8fafc;
-            color: #0f172a;
-          }
-          .reports-document--styled .report-meta {
-            border-radius: 10px;
-            overflow: hidden;
-            border-color: #dbe4ef !important;
-            margin-bottom: 14px !important;
-          }
-          .reports-document--styled .report-meta-grid {
-            border-color: #dbe4ef;
-            border-radius: 10px;
-            margin-bottom: 14px;
-            box-shadow: 0 8px 22px rgba(15, 23, 42, 0.05);
-          }
-          .reports-document--styled .report-meta-item {
-            border-color: #e2e8f0;
-            background: #fff;
-            min-height: 52px;
-            padding: 9px 12px;
-            display: grid;
-            grid-template-columns: minmax(120px, 220px) minmax(0, 1fr);
-            align-items: start;
-            column-gap: 14px;
-          }
-          .reports-document--styled .report-meta-item__label {
-            color: #64748b;
-            display: block;
-          }
-          .reports-document--styled .report-meta-item__value {
-            color: #0f172a;
-            justify-self: end;
-            text-align: right;
-            display: block;
-          }
-          .reports-document--styled .report-section {
-            border: 1px solid #e2e8f0;
-            border-radius: 10px;
-            margin-bottom: 12px;
-            background: #fff;
-            overflow: hidden;
-          }
-          .reports-document--styled .report-section h3 {
-            background: #f8fafc;
-            border-bottom: 1px solid #dbe4ef;
-            color: #0f172a;
-            font-size: 12px;
-            font-weight: 800;
-            letter-spacing: 0.04em;
-            padding: 8px 10px;
-          }
-          .reports-document--styled .report-section > p,
-          .reports-document--styled .report-section > ul,
-          .reports-document--styled .report-section > div {
-            padding: 12px;
-          }
-          .reports-document--styled table {
-            border-collapse: collapse;
-            border: 1px solid #dbe4ef;
-            table-layout: fixed;
-            width: 100%;
-          }
-          .reports-document--styled table th {
-            background: #f8fafc;
-            color: #334155;
-            font-weight: 700;
-          }
-          .reports-document--styled table th,
-          .reports-document--styled table td {
-            border: 1px solid #dbe4ef !important;
-            padding: 6px 6px;
-          }
-          .reports-document--styled .report-important-summary {
-            border: 2px solid #93c5fd;
-            border-radius: 12px;
-            background: linear-gradient(180deg, #eff6ff 0%, #f8fbff 100%);
-            padding: 14px;
-            margin-bottom: 12px;
-          }
-          .reports-document--styled .report-important-summary__label {
-            font-size: 11px;
-            font-weight: 800;
-            letter-spacing: 0.06em;
-            text-transform: uppercase;
-            color: #1d4ed8;
-            margin-bottom: 6px;
-          }
-          .reports-document--styled .report-important-summary__title {
-            font-size: 16px;
-            font-weight: 800;
-            color: #0f172a;
-            margin-bottom: 8px;
-            line-height: 1.3;
-          }
-          .reports-document--styled .report-important-summary__text {
-            font-size: 13px;
-            color: #1e293b;
-            line-height: 1.7;
-            margin: 0;
-          }
-        `}</style>
-
         <div className="reports-viewer-body">
-          <div
-            ref={printRef}
-            className="reports-document reports-document--styled"
+          <MedicalReportDocument
+            report={report}
+            innerRef={printRef}
             contentEditable={reportEditable}
-            suppressContentEditableWarning
-          >
-              <div className="report-heading" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 12, width: '100%', textAlign: 'center' }}>
-                <div className="report-heading-logo" style={{ width: 64, height: 64, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#fff', borderRadius: 8, flexShrink: 0 }}>
-                  {agencyLogoUrl && !logoLoadFailed ? (
-                    <img
-                      src={agencyLogoUrl}
-                      alt={`${agencyName} logo`}
-                      style={{ width: 60, height: 60, objectFit: 'contain' }}
-                      onError={() => setLogoLoadFailed(true)}
-                    />
-                  ) : (
-                    <span style={{ fontSize: 14, fontWeight: 800 }}>{String(agencyName || 'AG').slice(0, 2).toUpperCase()}</span>
-                  )}
-                </div>
-                <div>
-                  <div style={{ fontSize: 16, fontWeight: 800, textAlign: 'center' }}>{agencyName}</div>
-                  <div style={{ fontSize: 12, color: '#64748b', textAlign: 'center' }}>Licensed Healthcare Provider</div>
-                </div>
-              </div>
-            {!aiReport && (
-              <>
-                <div className="report-header">
-                  <div className="report-header-brand">
-                    <span className="report-header-logo-wrap" style={{ width: 96, height: 96, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#fff' }}>
-                      {agencyLogoUrl && !logoLoadFailed ? (
-                        <img
-                          src={agencyLogoUrl}
-                          alt={`${agencyName} logo`}
-                          className="report-header-logo"
-                          style={{ width: 92, height: 92, objectFit: 'contain' }}
-                          onError={() => setLogoLoadFailed(true)}
-                        />
-                      ) : (
-                        <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '0.04em' }}>
-                          {String(agencyName || 'AG').slice(0, 2).toUpperCase()}
-                        </span>
-                      )}
-                    </span>
-                    <h1 style={{ marginBottom: 0 }}>{agencyName}</h1>
-                  </div>
-                  <p>Homecare Medical Report</p>
-                  <p>Licensed Healthcare Provider</p>
-                </div>
-
-                <div className="report-title">{report.type}</div>
-
-                <div className="report-meta-grid">
-                  {reportMetaItems.map((item) => (
-                    <div className="report-meta-item" key={item.label}>
-                      <span className="report-meta-item__label">{item.label}</span>
-                      <span className="report-meta-item__value">{item.value || '—'}</span>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-
-            {aiReport ? (
-              <>
-                <div className="report-section">
-                  <h3>Patient Information</h3>
-                  <div>
-                    <div className="report-kv"><div className="report-kv__label">Patient Name</div><div className="report-kv__value">{aiPatientInfo?.patient_name || report.patientName || '—'}</div></div>
-                    <div className="report-kv"><div className="report-kv__label">Date of Birth</div><div className="report-kv__value">{fmtDate(aiPatientInfo?.date_of_birth || reportDob || '—')}</div></div>
-                    <div className="report-kv"><div className="report-kv__label">Primary Diagnosis/Condition</div><div className="report-kv__value">{aiPatientInfo?.primary_diagnosis_or_condition || p.diagnosis || '—'}</div></div>
-                    <div className="report-kv"><div className="report-kv__label">Care Plan Start Date</div><div className="report-kv__value">{fmtDate(aiPatientInfo?.care_plan_start_date || '')}</div></div>
-                    <div className="report-kv"><div className="report-kv__label">Reporting Period</div><div className="report-kv__value">{aiPatientInfo?.reporting_period || '—'}</div></div>
-                    <div className="report-kv"><div className="report-kv__label">Assigned Caregiver(s)</div><div className="report-kv__value">{(Array.isArray(aiPatientInfo?.assigned_caregivers) && aiPatientInfo.assigned_caregivers.length)
-                      ? aiPatientInfo.assigned_caregivers.map((entry) => (typeof entry === 'string' ? entry : entry?.name)).filter(Boolean).join(', ')
-                      : '—'}
-                    </div></div>
-                  </div>
-                </div>
-                <div className="report-section">
-                  <h3>Easy to Read Report</h3>
-                  <div
-                    style={{
-                      background: '#f8fafc',
-                      border: '1px solid #dbeafe',
-                      borderRadius: 10,
-                      padding: 12,
-                    }}
-                  >
-                    <p style={{ fontSize: 12.5, marginBottom: 10, color: '#334155' }}>
-                      This simplified version is written for family members and non-medical readers.
-                    </p>
-                    <div style={{ display: 'grid', gap: 8 }}>
-                      {readableMarkdownLines.map((row, idx) => {
-                        if (row.kind === 'section') {
-                          return (
-                            <div key={`md-${idx}`} style={{ fontSize: 12.5, fontWeight: 700, color: '#0f172a', marginTop: idx === 0 ? 0 : 6 }}>
-                              {row.text}
-                            </div>
-                          );
-                        }
-                        if (row.kind === 'bullet') {
-                          const cells = row.text.split('•').map((part) => part.trim()).filter(Boolean);
-                          const isTabularLine = cells.length >= 3;
-                          const isHeaderLine = isTabularLine && cells.every((cell) => /[a-z]/i.test(cell)) && cells.some((cell) => /medication|dosage|frequency|compliance|notes|metric|average|activity|status/i.test(cell));
-                          if (isTabularLine) {
-                            return (
-                              <div
-                                key={`md-${idx}`}
-                                style={{
-                                  display: 'grid',
-                                  gridTemplateColumns: `repeat(${cells.length}, minmax(0, 1fr))`,
-                                  gap: 8,
-                                  border: '1px solid #dbe4ef',
-                                  borderRadius: 8,
-                                  padding: '8px 10px',
-                                  background: isHeaderLine ? '#eff6ff' : '#ffffff',
-                                }}
-                              >
-                                {cells.map((cell, cellIdx) => (
-                                  <div
-                                    key={`md-${idx}-cell-${cellIdx}`}
-                                    style={{
-                                      fontSize: 12,
-                                      color: isHeaderLine ? '#1e3a8a' : '#334155',
-                                      fontWeight: isHeaderLine ? 700 : 500,
-                                      lineHeight: 1.45,
-                                    }}
-                                  >
-                                    {cell}
-                                  </div>
-                                ))}
-                              </div>
-                            );
-                          }
-                          return (
-                            <div key={`md-${idx}`} style={{ fontSize: 12.5, color: '#334155' }}>
-                              {row.text}
-                            </div>
-                          );
-                        }
-                        return (
-                          <p
-                            key={`md-${idx}`}
-                            style={{
-                              fontSize: 12.5,
-                              color: '#334155',
-                              margin: 0,
-                              border: '1px solid #dbe4ef',
-                              borderRadius: 8,
-                              padding: '8px 10px',
-                              background: '#ffffff',
-                              lineHeight: 1.5,
-                            }}
-                          >
-                            {row.text}
-                          </p>
-                        );
-                      })}
-                    </div>
-                  </div>
-                    <div className="report-section">
-                      <h3>Weekly Activity Log (Simplified)</h3>
-                      <div style={{ display: 'grid', gap: 10 }}>
-                        {(aiWeeklyLog.length > 0 ? aiWeeklyLog : [
-                          { week: 'Week 1', bullets: ['Patient needs more rest.', 'Constant communication is required.'] },
-                        ]).map((week, idx) => (
-                          <div key={`week-${idx}`} style={{ border: '1px solid #dbe4ef', borderRadius: 8, padding: 10, background: '#fff' }}>
-                            <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a' }}>{week?.week || `Week ${idx + 1}`}</div>
-                            <ul style={{ marginTop: 8, paddingLeft: 18, marginBottom: 0 }}>
-                              {(Array.isArray(week?.bullets) ? week.bullets : (Array.isArray(week?.items) ? week.items : [])).map((bullet, bi) => (
-                                <li key={`week-${idx}-b-${bi}`} style={{ fontSize: 13, color: '#334155', lineHeight: 1.45 }}>{bullet}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                      <div className="report-section">
-                        <h3>Progress Evaluation</h3>
-                        <div style={{ display: 'grid', gap: 6 }}>
-                          {[
-                            ['Physical Health', aiProgress?.physical_health || 'Declining'],
-                            ['Mental Health', aiProgress?.mental_health || 'Stable'],
-                            ['Mobility', aiProgress?.mobility || 'Unknown'],
-                            ['Appetite', aiProgress?.appetite || 'Unknown'],
-                          ].map(([label, value], idx) => (
-                            <div key={`progress-${idx}`} style={{ display: 'grid', gridTemplateColumns: '1fr 160px', alignItems: 'start', gap: 12, padding: '6px 8px', borderBottom: '1px solid #eee' }}>
-                              <div style={{ fontWeight: 700, color: '#374151', fontSize: 12 }}>{label}</div>
-                              <div style={{ textAlign: 'right', fontSize: 12.5, color: '#111', justifySelf: 'end' }}>{value}</div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-
-                      {aiNextMonthPlan.length > 0 ? (
-                      <div className="report-section">
-                        <h3>Next Month Plan</h3>
-                        <ul>
-                          {aiNextMonthPlan.map((item, idx) => (
-                            <li key={`next-${idx}`}>{item}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    ) : null}
-
-                    {aiReport?.summary_overview ? (
-                      <div className="report-important-summary">
-                        <div className="report-important-summary__label">Key Message</div>
-                        <div className="report-important-summary__title">Summary Overview (Very Important)</div>
-                        <p className="report-important-summary__text">{aiReport.summary_overview}</p>
-                      </div>
-                    ) : null}
-                  </div>
-              </>
-            ) : (
-              <>
-                {(p.diagnosis && p.diagnosis !== '—') && (
-                  <div className="report-section">
-                    <h3>Diagnosis / Presenting Condition</h3>
-                    <p>{p.diagnosis}</p>
-                  </div>
-                )}
-
-                {(p.medicalHistory && p.medicalHistory !== '—') && (
-                  <div className="report-section">
-                    <h3>Medical History</h3>
-                    <p>{p.medicalHistory}</p>
-                  </div>
-                )}
-
-                {vitalEntries.length > 0 && (
-                  <div className="report-section">
-                    <h3>Vital Signs</h3>
-                    <div className="vitals-grid">
-                      {vitalEntries.map(([key, val]) => (
-                        <div className="vital-item" key={key}>
-                          {key.replace(/([A-Z])/g, ' $1').replace(/^./, c => c.toUpperCase()).replace('Spo2', 'SpO₂').replace('Bp', 'Blood Pressure')}
-                          <strong>{val}</strong>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {(p.medications && p.medications !== '—') && (
-                  <div className="report-section">
-                    <h3>Current Medications</h3>
-                    <ul>
-                      {String(p.medications).split(',').map((med, i) => (
-                        <li key={i}>{med.trim()}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </>
-            )}
-
-            {(!aiReport && p.aiReportMarkdown) ? (
-              <div className="report-section">
-                <h3>Easy to Read Report</h3>
-                <div
-                  style={{
-                    background: '#f8fafc',
-                    border: '1px solid #dbeafe',
-                    borderRadius: 10,
-                    padding: 12,
-                  }}
-                >
-                  <p style={{ fontSize: 12.5, marginBottom: 10, color: '#334155' }}>
-                    This simplified version is written for family members and non-medical readers.
-                  </p>
-                  <div style={{ display: 'grid', gap: 8 }}>
-                    {readableMarkdownLines.map((row, idx) => {
-                      if (row.kind === 'section') {
-                        return (
-                          <div key={`md-${idx}`} style={{ fontSize: 12.5, fontWeight: 700, color: '#0f172a', marginTop: idx === 0 ? 0 : 6 }}>
-                            {row.text}
-                          </div>
-                        );
-                      }
-                      if (row.kind === 'bullet') {
-                        const cells = row.text.split('•').map((part) => part.trim()).filter(Boolean);
-                        const isTabularLine = cells.length >= 3;
-                        const isHeaderLine = isTabularLine && cells.every((cell) => /[a-z]/i.test(cell)) && cells.some((cell) => /medication|dosage|frequency|compliance|notes|metric|average|activity|status/i.test(cell));
-                        if (isTabularLine) {
-                          return (
-                            <div
-                              key={`md-${idx}`}
-                              style={{
-                                display: 'grid',
-                                gridTemplateColumns: `repeat(${cells.length}, minmax(0, 1fr))`,
-                                gap: 8,
-                                border: '1px solid #dbe4ef',
-                                borderRadius: 8,
-                                padding: '8px 10px',
-                                background: isHeaderLine ? '#eff6ff' : '#ffffff',
-                              }}
-                            >
-                              {cells.map((cell, cellIdx) => (
-                                <div
-                                  key={`md-${idx}-cell-${cellIdx}`}
-                                  style={{
-                                    fontSize: 12,
-                                    color: isHeaderLine ? '#1e3a8a' : '#334155',
-                                    fontWeight: isHeaderLine ? 700 : 500,
-                                    lineHeight: 1.45,
-                                  }}
-                                >
-                                  {cell}
-                                </div>
-                              ))}
-                            </div>
-                          );
-                        }
-                        return (
-                          <div
-                            key={`md-${idx}`}
-                            style={{
-                              fontSize: 12.5,
-                              color: '#334155',
-                              border: '1px solid #dbe4ef',
-                              borderRadius: 8,
-                              padding: '8px 10px',
-                              background: '#ffffff',
-                              lineHeight: 1.5,
-                            }}
-                          >
-                            • {row.text}
-                          </div>
-                        );
-                      }
-                      const kvMatch = row.text.match(/^([A-Za-z][A-Za-z\s/&-]{1,40}):\s*(.+)$/);
-                      if (kvMatch) {
-                        return (
-                          <div
-                            key={`md-${idx}`}
-                            style={{
-                              display: 'grid',
-                              gridTemplateColumns: '180px minmax(0, 1fr)',
-                              gap: 10,
-                              border: '1px solid #dbe4ef',
-                              borderRadius: 8,
-                              padding: '8px 10px',
-                              background: '#ffffff',
-                              alignItems: 'start',
-                            }}
-                          >
-                            <div style={{ fontSize: 12, color: '#334155', fontWeight: 700 }}>
-                              {kvMatch[1]}
-                            </div>
-                            <div style={{ fontSize: 12.5, color: '#0f172a', lineHeight: 1.45 }}>
-                              {kvMatch[2]}
-                            </div>
-                          </div>
-                        );
-                      }
-                      return (
-                        <p
-                          key={`md-${idx}`}
-                          style={{
-                            fontSize: 12.5,
-                            color: '#334155',
-                            margin: 0,
-                            border: '1px solid #dbe4ef',
-                            borderRadius: 8,
-                            padding: '8px 10px',
-                            background: '#ffffff',
-                            lineHeight: 1.5,
-                          }}
-                        >
-                          {row.text}
-                        </p>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            ) : null}
-
-            {/* Summary overview intentionally omitted from the medical report view */}
-
-            <div className="signature-line">
-              <div>
-                <br />Attending Nurse: {report.nurseName}
-              </div>
-              <div>
-                <br />Date: {now.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
-              </div>
-            </div>
-
-            <div className="report-footer">
-              Generated by {agencyName} on {fmtDateTime(now)} — Confidential medical document
-            </div>
-          </div>
+          />
         </div>
       </div>
     </div>
   );
 }
 
-function ShareEmailModal({ report, onClose }) {
-  const [email, setEmail] = useState('');
-  const [message, setMessage] = useState(`Please find attached the ${report.type} for ${report.patientName}.`);
+function ShareEmailModal({ report, attachmentHtml, onClose }) {
+  const defaultSubject = `${report.type} — ${report.patientName}`;
+  const defaultBody = `Please find attached the ${report.type} for ${report.patientName}.`;
+  const [recipientEmail, setRecipientEmail] = useState('');
+  const [subject, setSubject] = useState(defaultSubject);
+  const [body, setBody] = useState(defaultBody);
+  const [attachmentFile, setAttachmentFile] = useState(null);
+  const [attachmentLoading, setAttachmentLoading] = useState(true);
+  const [attachmentError, setAttachmentError] = useState('');
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState('');
 
+  useEffect(() => {
+    if (!String(attachmentHtml || '').trim()) {
+      setAttachmentLoading(true);
+      setAttachmentError('');
+      setAttachmentFile(null);
+      return undefined;
+    }
+
+    let cancelled = false;
+    setAttachmentLoading(true);
+    setAttachmentError('');
+    setAttachmentFile(null);
+
+    buildMedicalReportPdfFile(report, { attachmentHtml })
+      .then((file) => {
+        if (!cancelled) {
+          setAttachmentFile(file);
+          setAttachmentLoading(false);
+        }
+      })
+      .catch((pdfError) => {
+        if (!cancelled) {
+          setAttachmentError(pdfError?.message || 'Unable to generate PDF attachment.');
+          setAttachmentLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [report, attachmentHtml]);
+
   const handleSend = async () => {
     setError('');
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      setError('Please enter a valid email address.');
+    const toEmail = recipientEmail.trim();
+    const emailSubject = subject.trim();
+    const emailBody = body.trim();
+    const patientId = resolveMedicalReportPatientId(report);
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(toEmail)) {
+      setError('Please enter a valid external recipient email address.');
       return;
     }
+    if (!emailSubject) {
+      setError('Please enter an email subject.');
+      return;
+    }
+    if (!emailBody) {
+      setError('Please enter an email message.');
+      return;
+    }
+    if (!patientId) {
+      setError('Patient ID is missing for this report.');
+      return;
+    }
+    if (attachmentLoading) {
+      setError('PDF attachment is still being generated. Please wait a moment.');
+      return;
+    }
+    if (attachmentError) {
+      setError(attachmentError);
+      return;
+    }
+    if (!attachmentFile) {
+      setError('Please attach a report PDF to send.');
+      return;
+    }
+
     setSending(true);
     try {
-      await apiFetch('/reports/share', {
-        method: 'POST',
-        body: JSON.stringify({
-          reportId: report.reportId,
-          patientId: report.patientId,
-          recipientEmail: email.trim(),
-          message: message.trim(),
-          reportType: report.type,
-        }),
+      const { response, payload } = await shareMedicalReportByEmail({
+        email: toEmail,
+        subject: emailSubject,
+        body: emailBody,
+        patientId,
+        attachmentFile,
       });
+
+      if (!response?.ok) {
+        const apiError = String(payload?.message || payload?.error || '').trim();
+        if (response?.status === 404) {
+          throw new Error(
+            apiError
+            || 'Medical report share is not available on the server. Ensure POST /ai/medical-report/share is deployed.',
+          );
+        }
+        throw new Error(apiError || 'Unable to send medical report email.');
+      }
       setSent(true);
-    } catch {
-      setSent(true);
+    } catch (sendError) {
+      setError(sendError?.message || 'Unable to send medical report email.');
     } finally {
       setSending(false);
     }
@@ -1063,7 +552,7 @@ function ShareEmailModal({ report, onClose }) {
 
   return (
     <div className="app-modal-overlay" role="presentation" onClick={onClose} style={{ zIndex: 10001 }}>
-      <div className="app-modal-dialog app-modal-dialog--md" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
+      <div className="app-modal-dialog app-modal-dialog--md" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 520 }}>
         <div className="app-modal-dialog__header">
           <h2 className="app-modal-dialog__title">{sent ? 'Report shared' : 'Share report via email'}</h2>
           <button type="button" className="app-modal-dialog__close" aria-label="Close" onClick={onClose}>
@@ -1076,7 +565,7 @@ function ShareEmailModal({ report, onClose }) {
               <FiSend size={32} style={{ color: '#45b6fe', marginBottom: 12 }} />
               <p style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>Email sent successfully</p>
               <p style={{ fontSize: 13, color: '#64748b', margin: 0 }}>
-                The {report.type} for <strong>{report.patientName}</strong> has been shared to <strong>{email}</strong>.
+                The {report.type} for <strong>{report.patientName}</strong> has been sent to <strong>{recipientEmail}</strong>.
               </p>
             </div>
           ) : (
@@ -1096,24 +585,72 @@ function ShareEmailModal({ report, onClose }) {
                 </div>
               </div>
               <div style={{ marginBottom: 14 }}>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#415463', marginBottom: 6 }}>Recipient email *</label>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#415463', marginBottom: 6 }}>
+                  External recipient email *
+                </label>
+                <p style={{ fontSize: 11.5, color: '#64748b', margin: '0 0 8px', lineHeight: 1.45 }}>
+                  Enter any email address outside your system (e.g. doctor, hospital, or family member).
+                </p>
                 <input
                   type="email"
+                  name="medical-report-recipient-email"
                   className="form-control form-control-kh workforce-form-input"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  value={recipientEmail}
+                  onChange={(e) => setRecipientEmail(e.target.value)}
                   placeholder="doctor@hospital.com"
-                  autoComplete="email"
+                  autoComplete="off"
+                  autoCorrect="off"
+                  spellCheck={false}
+                />
+              </div>
+              <div style={{ marginBottom: 14 }}>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#415463', marginBottom: 6 }}>Subject *</label>
+                <input
+                  type="text"
+                  className="form-control form-control-kh workforce-form-input"
+                  value={subject}
+                  onChange={(e) => setSubject(e.target.value)}
+                  placeholder="Medical report for patient"
+                />
+              </div>
+              <div style={{ marginBottom: 14 }}>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#415463', marginBottom: 6 }}>Message *</label>
+                <textarea
+                  className="form-control form-control-kh workforce-form-input"
+                  value={body}
+                  onChange={(e) => setBody(e.target.value)}
+                  rows={4}
+                  style={{ resize: 'vertical' }}
                 />
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#415463', marginBottom: 6 }}>Message (optional)</label>
-                <textarea
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#415463', marginBottom: 6 }}>Attachment (PDF) *</label>
+                {!attachmentHtml?.trim() ? (
+                  <p style={{ fontSize: 12, color: '#64748b', margin: 0 }}>Preparing report layout for PDF…</p>
+                ) : attachmentLoading ? (
+                  <p style={{ fontSize: 12, color: '#64748b', margin: 0 }}>Generating PDF from medical report…</p>
+                ) : attachmentError ? (
+                  <p style={{ fontSize: 12, color: '#b91c1c', margin: 0 }}>{attachmentError}</p>
+                ) : attachmentFile ? (
+                  <p style={{ fontSize: 12, color: '#64748b', margin: 0 }}>
+                    Attached: <strong>{attachmentFile.name}</strong> ({Math.max(1, Math.round(attachmentFile.size / 1024))} KB)
+                  </p>
+                ) : null}
+                <input
+                  type="file"
                   className="form-control form-control-kh workforce-form-input"
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  rows={3}
-                  style={{ resize: 'vertical' }}
+                  accept=".pdf,application/pdf"
+                  style={{ marginTop: 10 }}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file && file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+                      setAttachmentError('Please choose a PDF file.');
+                      setAttachmentFile(null);
+                      return;
+                    }
+                    setAttachmentError('');
+                    setAttachmentFile(file || null);
+                  }}
                 />
               </div>
             </>
@@ -1125,8 +662,8 @@ function ShareEmailModal({ report, onClose }) {
           </div>
         ) : (
           <div className="app-modal-dialog__footer">
-            <button type="button" className="app-modal-dialog__btn-cancel" onClick={onClose}>Cancel</button>
-            <button type="button" className="app-modal-dialog__btn-primary" disabled={sending} onClick={handleSend} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <button type="button" className="app-modal-dialog__btn-cancel" onClick={onClose} disabled={sending}>Cancel</button>
+            <button type="button" className="app-modal-dialog__btn-primary" disabled={sending || attachmentLoading || !attachmentHtml?.trim()} onClick={handleSend} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <FiSend size={13} />
               {sending ? 'Sending…' : 'Send email'}
             </button>
@@ -1147,6 +684,14 @@ export default function Billing() {
   const [page, setPage] = useState(1);
   const [viewReport, setViewReport] = useState(null);
   const [shareReport, setShareReport] = useState(null);
+  const [shareAttachmentHtml, setShareAttachmentHtml] = useState('');
+  const [patientProfilesById, setPatientProfilesById] = useState({});
+
+  const enrichReport = useCallback((report) => {
+    const patientId = String(report?.patientId || extractApiPatientId(report) || '').trim();
+    const profile = patientProfilesById[patientId];
+    return enrichReportWithPatientProfile(report, profile);
+  }, [patientProfilesById]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1174,7 +719,7 @@ export default function Billing() {
           const patients = await fetchAllPatients();
           const patientReports = await Promise.allSettled(
             (Array.isArray(patients) ? patients : [])
-              .map((patient) => ({ patient, patientId: getPatientId(patient) }))
+              .map((patient) => ({ patient, patientId: extractApiPatientId(patient) }))
               .filter(({ patientId }) => Boolean(patientId))
               .map(async ({ patient, patientId }) => {
                 const reportResponse = await apiFetch('/ai/medical-report', {
@@ -1195,7 +740,7 @@ export default function Billing() {
                     {
                       ...entry,
                       patient: entry?.patient || patient,
-                      patientId: entry?.patientId || patientId,
+                      patientId: extractApiPatientId(entry) || extractApiPatientId({ patient: entry?.patient || patient }) || patientId,
                       patientName: entry?.patientName || getPatientName(patient),
                     },
                     index,
@@ -1214,6 +759,18 @@ export default function Billing() {
         );
 
         if (!cancelled) setReports(uniqueByReportId);
+
+        try {
+          const patients = await fetchAllPatients();
+          const profileMap = {};
+          (Array.isArray(patients) ? patients : []).forEach((patient) => {
+            const id = extractApiPatientId(patient);
+            if (id) profileMap[id] = patient;
+          });
+          if (!cancelled) setPatientProfilesById(profileMap);
+        } catch {
+          if (!cancelled) setPatientProfilesById({});
+        }
       } catch (error) {
         if (!cancelled) {
           setReports([]);
@@ -1417,7 +974,7 @@ export default function Billing() {
                           type="button"
                           className="patients-row-action"
                           title="Share via email"
-                          onClick={(e) => { e.stopPropagation(); setShareReport(r); }}
+                          onClick={(e) => { e.stopPropagation(); setShareAttachmentHtml(''); setShareReport(r); }}
                         >
                           <FiSend size={15} aria-hidden />
                         </button>
@@ -1460,16 +1017,42 @@ export default function Billing() {
 
       {viewReport && (
         <ReportViewer
-          report={viewReport}
+          report={enrichReport(viewReport)}
           onClose={() => setViewReport(null)}
-          onShare={() => { setShareReport(viewReport); }}
+          onShare={(html) => {
+            setShareAttachmentHtml(html || '');
+            setShareReport(enrichReport(viewReport));
+          }}
         />
+      )}
+
+      {shareReport && !shareAttachmentHtml && (
+        <div
+          className="report-viewer-capture-host"
+          aria-hidden
+          style={{
+            position: 'fixed',
+            left: -10000,
+            top: 0,
+            width: 794,
+            opacity: 0,
+            pointerEvents: 'none',
+            zIndex: -1,
+          }}
+        >
+          <ReportViewer
+            report={shareReport}
+            onClose={() => {}}
+            onCapture={(html) => setShareAttachmentHtml(html || '')}
+          />
+        </div>
       )}
 
       {shareReport && (
         <ShareEmailModal
           report={shareReport}
-          onClose={() => setShareReport(null)}
+          attachmentHtml={shareAttachmentHtml}
+          onClose={() => { setShareReport(null); setShareAttachmentHtml(''); }}
         />
       )}
     </motion.div>

@@ -204,7 +204,10 @@ export default function LandingPage() {
 
       {/* ── HERO ── */}
       <section className="hero" id="home">
-        <div className="hero-bg-glow" aria-hidden />
+        <motion.div className="hero-bg-pattern hero-bg-pattern--grid" aria-hidden />
+        <motion.div className="hero-bg-pattern hero-bg-pattern--dots" aria-hidden />
+        <motion.div className="hero-bg-pattern hero-bg-pattern--diagonal" aria-hidden />
+        <motion.div className="hero-bg-glow" aria-hidden />
         <motion.div
           className="hero-cinematic hero-cinematic--exact"
           initial={{ opacity: 0 }}
@@ -230,18 +233,23 @@ export default function LandingPage() {
               <span>Run</span> your Agency<br />
               Care for your <span>Clients</span>
             </motion.h1>
-            <motion.img
-              src="/mockups/o1.jpeg"
-              alt="Hero preview"
-              className="hero-exact-image"
+            <motion.div
+              className="hero-exact-image-wrap"
               initial={{ opacity: 0, y: 40, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               transition={{ duration: 0.7, delay: 0.35, ease: 'easeOut' }}
-              onError={(e) => {
-                e.currentTarget.onerror = null;
-                e.currentTarget.src = '/mockups/m1.png';
-              }}
-            />
+            >
+              <img
+                src="/mockups/o1.jpeg"
+                alt="Hero preview"
+                className="hero-exact-image"
+                onError={(e) => {
+                  e.currentTarget.onerror = null;
+                  e.currentTarget.src = '/mockups/m1.png';
+                  e.currentTarget.classList.add('hero-exact-image--png');
+                }}
+              />
+            </motion.div>
             <motion.div 
               className="hero-exact-actions"
               initial={{ opacity: 0, y: 20 }}
