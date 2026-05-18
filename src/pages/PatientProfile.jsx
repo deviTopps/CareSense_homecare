@@ -4678,37 +4678,53 @@ export default function PatientProfile() {
 
   const handleDeactivatePatient = async () => {
     const pid = String(effectivePatientId || '').trim();
-    if (!pid) {
-      return;
-    }
+    if (!pid) return;
 
     setDeactivatingPatient(true);
+    setDeactivateSuccess('');
+
     try {
       const response = await apiFetch(`/patients/${encodeURIComponent(pid)}/deactivate`, {
-        method: 'POST',
-        body: JSON.stringify({}),
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'inactive' }),
+        quiet: true,
       });
-
-      const responseText = await response.text().catch(() => '');
-      let data = {};
-      if (responseText) {
-        try {
-          data = JSON.parse(responseText);
-        } catch {
-          data = { message: responseText };
-        }
-      }
-
+      const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(data?.message || data?.error || 'Unable to deactivate patient.');
+        throw new Error(payload?.message || payload?.error || 'Unable to deactivate patient.');
       }
-
-      setDeactivateSuccess('Patient has been successfully deactivated.');
+      setDeactivateSuccess(payload?.message || 'Patient has been deactivated successfully.');
       setShowDeactivateSuccessAlert(true);
-      navigate('/patients');
+      loadPatientProfile();
     } catch (error) {
-      setDeactivateSuccess('An error occurred while deactivating the patient. Please try again.');
+      setDeactivateSuccess('');
+    } finally {
+      setDeactivatingPatient(false);
+    }
+  };
+
+  const handleReactivatePatient = async () => {
+    const pid = String(effectivePatientId || '').trim();
+    if (!pid) return;
+
+    setDeactivatingPatient(true);
+    setDeactivateSuccess('');
+
+    try {
+      const response = await apiFetch(`/patients/${encodeURIComponent(pid)}/reactivate`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'active' }),
+        quiet: true,
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.message || payload?.error || 'Unable to reactivate patient.');
+      }
+      setDeactivateSuccess(payload?.message || 'Patient has been reactivated successfully.');
       setShowDeactivateSuccessAlert(true);
+      loadPatientProfile();
+    } catch (error) {
+      setDeactivateSuccess('');
     } finally {
       setDeactivatingPatient(false);
     }
@@ -5278,7 +5294,7 @@ export default function PatientProfile() {
             <FiCheckCircle size={18} />
           </div>
           <div className="patient-profile-save-alert__content">
-            <strong>Patient Deactivated</strong>
+            <strong>{deactivateSuccess.toLowerCase().includes('reactivat') ? 'Patient Reactivated' : 'Patient Deactivated'}</strong>
             <span>{deactivateSuccess}</span>
           </div>
           <button
@@ -5349,15 +5365,27 @@ export default function PatientProfile() {
             >
               Report Death
             </button>
-            <button
-              type="button"
-              className="pp-pharm-btn-yellow pp-pharm-btn-yellow--danger"
-              title="Deactivate patient"
-              onClick={handleDeactivatePatient}
-              disabled={deactivatingPatient}
-            >
-              {deactivatingPatient ? 'Deactivating...' : 'Deactivate'}
-            </button>
+            {String(p?.status || '').toLowerCase() === 'inactive' ? (
+              <button
+                type="button"
+                className="pp-pharm-btn-yellow"
+                title="Reactivate patient"
+                onClick={handleReactivatePatient}
+                disabled={deactivatingPatient}
+              >
+                {deactivatingPatient ? 'Reactivating...' : 'Reactivate'}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="pp-pharm-btn-yellow pp-pharm-btn-yellow--danger"
+                title="Deactivate patient"
+                onClick={handleDeactivatePatient}
+                disabled={deactivatingPatient}
+              >
+                {deactivatingPatient ? 'Deactivating...' : 'Deactivate'}
+              </button>
+            )}
             <button type="button" className="pp-pharm-icon-quiet" title="Refresh" onClick={loadPatientProfile}>
               <FiRefreshCw size={16} />
             </button>
