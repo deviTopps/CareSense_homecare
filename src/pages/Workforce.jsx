@@ -20,7 +20,7 @@ import {
   FiSave,
   FiUserPlus,
 } from '../icons/hugeicons-feather';
-import { apiFetch, isTokenValid, createPlatformUser, fetchAuthUsers } from '../api';
+import { apiFetch, isTokenValid, createPlatformUser, fetchAuthUsers, updatePlatformUser, deletePlatformUser } from '../api';
 import { resolveStoredMediaUrl } from '../utils/resolveStoredMediaUrl';
 
 const ROLE_LABELS = { head_nurse: 'Head Nurse', supervising_nurse: 'Supervising Nurse', office_nurse: 'Office Nurse', field_nurse: 'Field Nurse' };
@@ -100,13 +100,15 @@ const mapPlatformUserToRow = (user) => {
   return {
     id,
     name: fullName,
+    firstName,
+    lastName,
     initials: fullName !== '—'
       ? fullName.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase()
       : '?',
     profilePhotoUrl: null,
     license: '—',
     role: PLATFORM_USER_ROLE_OPTIONS.find((option) => option.value === roleRaw)?.label || 'Staff',
-    roleRaw,
+    roleRaw: roleRaw || 'staff',
     isStaff: true,
     isPlatformUser: true,
     phone: user?.phone || '—',
@@ -202,6 +204,7 @@ export default function Workforce() {
 
   const [showAddUserModal, setShowAddUserModal] = useState(false);
   const [addUserForm, setAddUserForm] = useState({ firstName: '', lastName: '', email: '', phone: '', role: 'staff', password: '', confirmPassword: '' });
+  const [editingPlatformUserId, setEditingPlatformUserId] = useState(null);
   const [addUserLoading, setAddUserLoading] = useState(false);
   const [addUserError, setAddUserError] = useState('');
   const [addUserSuccess, setAddUserSuccess] = useState(null);
@@ -457,29 +460,65 @@ export default function Workforce() {
     setNurseId(null); setCompletedSteps([]); setSaving(false); setApiError(''); setDebugInfo(null);
   };
 
-  const handleDeleteNurse = async (nurse, e) => {
+  const handleDeleteNurse = (nurse, e) => {
     e.stopPropagation();
     setDeleteTarget(nurse);
   };
 
-  const confirmDelete = async () => {
-    if (!deleteTarget) return;
-    if (!NURSE_ENDPOINTS.deleteById) {
-      setApiError('Nurse delete endpoint is cleared. Reconnect endpoints before deleting records.');
-      setDeleteTarget(null);
+  const handleEditRow = (row, e) => {
+    e.stopPropagation();
+    if (row.isPlatformUser || row.isStaff) {
+      const nameParts = String(row.name || '—').trim().split(/\s+/).filter(Boolean);
+      const firstName = row.firstName || nameParts[0] || '';
+      const lastName = row.lastName || nameParts.slice(1).join(' ') || '';
+      setEditingPlatformUserId(row.id);
+      setAddUserForm({
+        firstName,
+        lastName,
+        email: row.email !== '—' ? row.email : '',
+        phone: row.phone !== '—' ? row.phone : '',
+        role: row.roleRaw || 'staff',
+        password: '',
+        confirmPassword: '',
+      });
+      setAddUserError('');
+      setAddUserSuccess(null);
+      setShowAddUserModal(true);
       return;
     }
+    if (!row.isComplete) {
+      continueRegistration(row, e);
+      return;
+    }
+    navigate(`/workforce/${row.id}`);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
     setDeleting(true);
     try {
-      const res = await apiFetch(`${NURSE_ENDPOINTS.deleteById}/${deleteTarget.id}`, { method: 'DELETE' });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || data.message || `Delete failed (HTTP ${res.status})`);
+      if (deleteTarget.isPlatformUser || deleteTarget.isStaff) {
+        const res = await deletePlatformUser(deleteTarget.id);
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || data.message || `Delete failed (HTTP ${res.status})`);
+        }
+      } else {
+        if (!NURSE_ENDPOINTS.deleteById) {
+          setApiError('Nurse delete endpoint is cleared. Reconnect endpoints before deleting records.');
+          setDeleteTarget(null);
+          return;
+        }
+        const res = await apiFetch(`${NURSE_ENDPOINTS.deleteById}/${deleteTarget.id}`, { method: 'DELETE' });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || data.message || `Delete failed (HTTP ${res.status})`);
+        }
       }
-      setNurses(prev => prev.filter(n => n.id !== deleteTarget.id));
+      setNurses((prev) => prev.filter((n) => n.id !== deleteTarget.id));
       setDeleteTarget(null);
     } catch (err) {
-      alert('Failed to delete nurse. Please try again.');
+      alert(err?.message || (deleteTarget.isStaff ? 'Failed to delete staff user.' : 'Failed to delete nurse.'));
     } finally {
       setDeleting(false);
     }
@@ -493,27 +532,39 @@ export default function Workforce() {
     const ln = lastName.trim();
     const em = email.trim();
     const ph = phone.trim();
+    const isEditing = Boolean(editingPlatformUserId);
     if (!fn || !ln) { setAddUserError('Please enter first and last name.'); return; }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) { setAddUserError('Please enter a valid email address.'); return; }
     if (!ph) { setAddUserError('Please enter a phone number.'); return; }
-    if (!password.trim()) { setAddUserError('Please set an initial password.'); return; }
-    if (password.length < 8) { setAddUserError('Password must be at least 8 characters.'); return; }
-    if (password !== confirmPassword) { setAddUserError('Passwords do not match.'); return; }
+    if (!isEditing && !password.trim()) { setAddUserError('Please set an initial password.'); return; }
+    if (password && password.length < 8) { setAddUserError('Password must be at least 8 characters.'); return; }
+    if (password && password !== confirmPassword) { setAddUserError('Passwords do not match.'); return; }
     setAddUserLoading(true);
     try {
-      const res = await createPlatformUser({ firstName: fn, lastName: ln, email: em, phone: ph, role, password });
-      const text = await res.text();
-      const data = text ? JSON.parse(text) : {};
-      if (!res.ok) throw new Error(data.error || data.message || 'Could not add user.');
-      setAddUserForm({ firstName: '', lastName: '', email: '', phone: '', role: addUserForm.role, password: '', confirmPassword: '' });
-      setAddUserSuccess({ name: `${fn} ${ln}`.trim() });
-      if (isStaffRole(role)) {
-        setFilter('Staff');
-        setPage(1);
+      if (isEditing) {
+        const payload = { firstName: fn, lastName: ln, email: em, phone: ph, role };
+        if (password.trim()) payload.password = password;
+        const res = await updatePlatformUser(editingPlatformUserId, payload);
+        const text = await res.text();
+        const data = text ? JSON.parse(text) : {};
+        if (!res.ok) throw new Error(data.error || data.message || 'Could not update user.');
+        setAddUserSuccess({ name: `${fn} ${ln}`.trim(), updated: true });
+      } else {
+        const res = await createPlatformUser({ firstName: fn, lastName: ln, email: em, phone: ph, role, password });
+        const text = await res.text();
+        const data = text ? JSON.parse(text) : {};
+        if (!res.ok) throw new Error(data.error || data.message || 'Could not add user.');
+        setAddUserSuccess({ name: `${fn} ${ln}`.trim() });
+        if (isStaffRole(role)) {
+          setFilter('Staff');
+          setPage(1);
+        }
       }
+      setAddUserForm({ firstName: '', lastName: '', email: '', phone: '', role: 'staff', password: '', confirmPassword: '' });
+      setEditingPlatformUserId(null);
       fetchNurses();
     } catch (err) {
-      setAddUserError(err.message || 'Could not add user.');
+      setAddUserError(err.message || (isEditing ? 'Could not update user.' : 'Could not add user.'));
     } finally {
       setAddUserLoading(false);
     }
@@ -523,6 +574,7 @@ export default function Workforce() {
     setShowAddUserModal(false);
     setAddUserError('');
     setAddUserSuccess(null);
+    setEditingPlatformUserId(null);
     setAddUserForm({ firstName: '', lastName: '', email: '', phone: '', role: 'staff', password: '', confirmPassword: '' });
   };
 
@@ -1228,7 +1280,7 @@ export default function Workforce() {
                   <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('license')}>License <SortIcon col="license" /></th>
                   <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('joined')}>Joined <SortIcon col="joined" /></th>
                   <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('phone')}>Phone <SortIcon col="phone" /></th>
-                  <th style={{ width: 104, textAlign: 'right' }}>Action</th>
+                  <th style={{ width: 168, textAlign: 'center' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -1290,28 +1342,28 @@ export default function Workforce() {
                     <td data-label="License" className="patients-table-value"><span className="patients-license-code">{n.license}</span></td>
                     <td data-label="Joined" className="patients-table-date">{n.joined}</td>
                     <td data-label="Phone" className="patients-table-value" style={{ fontVariantNumeric: 'tabular-nums' }}>{n.phone}</td>
-                    <td data-label="Action" style={{ textAlign: 'right' }}>
-                      <div className="d-inline-flex gap-2 align-items-center justify-content-end">
-                        {!n.isStaff && (
-                          <>
-                            <button
-                              type="button"
-                              className="patients-row-action"
-                              title="Edit nurse"
-                              onClick={(e) => { e.stopPropagation(); navigate(`/workforce/${n.id}`); }}
-                            >
-                              <FiEdit size={16} aria-hidden />
-                            </button>
-                            <button
-                              type="button"
-                              className="patients-row-action patients-row-action--danger"
-                              title="Delete nurse"
-                              onClick={(e) => handleDeleteNurse(n, e)}
-                            >
-                              <FiTrash2 size={15} aria-hidden />
-                            </button>
-                          </>
-                        )}
+                    <td data-label="Actions" className="workforce-actions-cell" onClick={(e) => e.stopPropagation()}>
+                      <div className="workforce-row-actions">
+                        <button
+                          type="button"
+                          className="workforce-row-btn workforce-row-btn--edit"
+                          title={n.isStaff ? 'Edit staff' : (n.isComplete ? 'Edit nurse' : 'Continue registration')}
+                          aria-label={n.isStaff ? `Edit ${n.name}` : (n.isComplete ? `Edit ${n.name}` : `Continue registration for ${n.name}`)}
+                          onClick={(e) => handleEditRow(n, e)}
+                        >
+                          <FiEdit size={14} aria-hidden />
+                          <span>Edit</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="workforce-row-btn workforce-row-btn--delete"
+                          title={n.isStaff ? 'Delete staff' : 'Delete nurse'}
+                          aria-label={`Delete ${n.name}`}
+                          onClick={(e) => handleDeleteNurse(n, e)}
+                        >
+                          <FiTrash2 size={14} aria-hidden />
+                          <span>Delete</span>
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -1356,7 +1408,9 @@ export default function Workforce() {
         >
           <div className="app-modal-dialog app-modal-dialog--md" role="dialog" aria-modal="true" aria-labelledby="workforce-delete-title" onClick={(e) => e.stopPropagation()}>
             <div className="app-modal-dialog__header">
-              <h2 id="workforce-delete-title" className="app-modal-dialog__title">Delete nurse</h2>
+              <h2 id="workforce-delete-title" className="app-modal-dialog__title">
+                {deleteTarget?.isStaff ? 'Delete staff user' : 'Delete nurse'}
+              </h2>
               <button
                 type="button"
                 className="app-modal-dialog__close"
@@ -1376,7 +1430,7 @@ export default function Workforce() {
                 <div className="destructive-confirm-dialog__warning-bar" aria-hidden />
                 <div className="destructive-confirm-dialog__warning-text">
                   <strong>Warning: This action cannot be undone.</strong> All associated onboarding data and references
-                  for this nurse may be <strong>permanently lost</strong>.
+                  for this {deleteTarget?.isStaff ? 'user' : 'nurse'} may be <strong>permanently lost</strong>.
                 </div>
               </div>
               <div className="destructive-confirm-dialog__card">
@@ -1398,7 +1452,7 @@ export default function Workforce() {
                 Cancel
               </button>
               <button type="button" className="app-modal-dialog__btn-danger" disabled={deleting} onClick={confirmDelete}>
-                <FiTrash2 size={13} /> {deleting ? 'Deleting…' : 'Delete nurse'}
+                <FiTrash2 size={13} /> {deleting ? 'Deleting…' : (deleteTarget?.isStaff ? 'Delete staff' : 'Delete nurse')}
               </button>
             </div>
           </div>
@@ -1411,7 +1465,9 @@ export default function Workforce() {
           <div className="app-modal-dialog app-modal-dialog--md" role="dialog" aria-modal="true" aria-labelledby="add-user-title" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 520 }}>
             <div className="app-modal-dialog__header">
               <h2 id="add-user-title" className="app-modal-dialog__title">
-                {addUserSuccess ? 'User created' : 'Add new platform user'}
+                {addUserSuccess
+                  ? (addUserSuccess.updated ? 'User updated' : 'User created')
+                  : (editingPlatformUserId ? 'Edit platform user' : 'Add new platform user')}
               </h2>
               <button type="button" className="app-modal-dialog__close" aria-label="Close" onClick={closeAddUserModal}>
                 <FiX size={20} strokeWidth={1.75} />
@@ -1423,9 +1479,15 @@ export default function Workforce() {
                   <div className="workforce-modal-success__icon">
                     <FiCheck size={28} style={{ color: '#fff', strokeWidth: 3 }} />
                   </div>
-                  <div className="workforce-modal-success__title">User created successfully</div>
+                  <div className="workforce-modal-success__title">
+                    {addUserSuccess.updated ? 'User updated successfully' : 'User created successfully'}
+                  </div>
                   <div className="workforce-modal-success__text">
-                    <strong>{addUserSuccess.name}</strong> can now sign in with the email and initial password you set.
+                    {addUserSuccess.updated ? (
+                      <><strong>{addUserSuccess.name}</strong> has been updated.</>
+                    ) : (
+                      <><strong>{addUserSuccess.name}</strong> can now sign in with the email and initial password you set.</>
+                    )}
                   </div>
                   <button type="button" className="btn btn-primary workforce-modal-primary-btn" onClick={closeAddUserModal}>Done</button>
                 </div>
@@ -1462,11 +1524,15 @@ export default function Workforce() {
                       </select>
                     </div>
                     <div className="col-md-6">
-                      <label className="form-label" style={{ fontSize: 12, fontWeight: 700, color: '#415463', marginBottom: 7 }}>Initial password *</label>
-                      <input type="password" className="form-control form-control-kh workforce-form-input" value={addUserForm.password} onChange={(e) => setAddUserField('password', e.target.value)} placeholder="Min 8 characters" autoComplete="new-password" />
+                      <label className="form-label" style={{ fontSize: 12, fontWeight: 700, color: '#415463', marginBottom: 7 }}>
+                        {editingPlatformUserId ? 'New password (optional)' : 'Initial password *'}
+                      </label>
+                      <input type="password" className="form-control form-control-kh workforce-form-input" value={addUserForm.password} onChange={(e) => setAddUserField('password', e.target.value)} placeholder={editingPlatformUserId ? 'Leave blank to keep current' : 'Min 8 characters'} autoComplete="new-password" />
                     </div>
                     <div className="col-md-6">
-                      <label className="form-label" style={{ fontSize: 12, fontWeight: 700, color: '#415463', marginBottom: 7 }}>Confirm password *</label>
+                      <label className="form-label" style={{ fontSize: 12, fontWeight: 700, color: '#415463', marginBottom: 7 }}>
+                        {editingPlatformUserId ? 'Confirm new password' : 'Confirm password *'}
+                      </label>
                       <input type="password" className="form-control form-control-kh workforce-form-input" value={addUserForm.confirmPassword} onChange={(e) => setAddUserField('confirmPassword', e.target.value)} placeholder="Repeat password" autoComplete="new-password" />
                     </div>
                   </div>
@@ -1478,7 +1544,7 @@ export default function Workforce() {
                 <button type="button" className="app-modal-dialog__btn-cancel" onClick={closeAddUserModal}>Cancel</button>
                 <button type="button" className="btn btn-primary workforce-modal-primary-btn" disabled={addUserLoading} onClick={handleAddUser} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <FiUserPlus size={14} />
-                  {addUserLoading ? 'Adding…' : 'Add user'}
+                  {addUserLoading ? (editingPlatformUserId ? 'Saving…' : 'Adding…') : (editingPlatformUserId ? 'Save changes' : 'Add user')}
                 </button>
               </div>
             )}

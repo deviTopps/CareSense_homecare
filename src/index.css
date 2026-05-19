@@ -1694,6 +1694,15 @@ body.sidebar-resizing {
   font-size: 11.75px;
 }
 
+.workforce-page .patients-table .workforce-actions-cell {
+  min-width: 168px;
+  vertical-align: middle;
+}
+
+.workforce-page .patients-table thead th:last-child {
+  text-align: center;
+}
+
 .workforce-row-actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1701,6 +1710,7 @@ body.sidebar-resizing {
   justify-content: center;
   gap: 6px;
   width: 100%;
+  min-width: 152px;
 }
 
 .workforce-row-btn {
@@ -2281,6 +2291,7 @@ body.sidebar-resizing {
   .workforce-page .patients-table tbody td[data-label="Actions"]::before {
     margin-bottom: 2px;
   }
+  .workforce-page .patients-table tbody td[data-label="Actions"] .workforce-row-actions,
   .workforce-page .patients-table tbody td[data-label="Actions"] .d-inline-flex {
     width: 100%;
     justify-content: flex-start;

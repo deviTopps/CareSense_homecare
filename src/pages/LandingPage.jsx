@@ -136,27 +136,6 @@ export default function LandingPage() {
     }));
   };
 
-  const features = [
-    {
-      label: 'Who We Are',
-      title: 'Leading provider of modern homecare operations',
-      image: 'https://images.unsplash.com/photo-1576091160550-2173dba999ef?auto=format&fit=crop&w=900&q=80',
-      tone: 'calm',
-    },
-    {
-      label: 'Recognition',
-      title: 'CareSense recognized for agency-first innovation',
-      image: 'https://images.unsplash.com/photo-1521737604893-d14cc237f11d?auto=format&fit=crop&w=900&q=80',
-      tone: 'accent',
-    },
-    {
-      label: 'Report',
-      title: '2026 Homecare quality and outcomes report',
-      image: 'https://images.unsplash.com/photo-1573497491765-dccce02b29df?auto=format&fit=crop&w=900&q=80',
-      tone: 'calm',
-    },
-  ];
-
   const testimonials = [
     { name: 'Sandra Johnson', role: 'Director of Nursing', initials: 'SJ', color: 'rgba(69,182,254,0.15)', textColor: '#2596d1', quote: 'We reduced admin overhead and improved patient response time in under one month. The platform feels thoughtfully built for real teams.' },
     { name: 'Marcus Adeyemi', role: 'Operations Lead', initials: 'MA', color: 'rgba(34,201,122,0.12)', textColor: '#16a361', quote: 'Scheduling and documentation are now predictable and auditable. Our supervisors finally have clear visibility without extra calls.' },
@@ -181,7 +160,8 @@ export default function LandingPage() {
           }}
         >
           <li><a href="#home">Home</a></li>
-          <li><a href="#how-it-works">Features</a></li>
+          <li><a href="#features">Features</a></li>
+          <li><a href="#medical-reports">Reports</a></li>
           <li><a href="#pricing">Pricing</a></li>
           <li><a href="#faq">FAQ</a></li>
         </ul>
@@ -231,8 +211,16 @@ export default function LandingPage() {
               transition={{ duration: 0.6, delay: 0.2 }}
             >
               Stop Managing Chaos.<br />
-              Start Delivering Results.
+              Start <span className="hero-exact-title__accent">Delivering Results.</span>
             </motion.h1>
+            <motion.p
+              className="hero-exact-lead"
+              initial={{ y: 16 }}
+              animate={{ y: 0 }}
+              transition={{ duration: 0.55, delay: 0.28 }}
+            >
+              One platform for patients, workforce, scheduling, and monthly medical reports — built for homecare agencies.
+            </motion.p>
             <motion.div
               className="hero-exact-image-wrap"
               initial={{ opacity: 0, y: 40, scale: 0.95 }}
@@ -247,14 +235,14 @@ export default function LandingPage() {
             </motion.div>
             <motion.div 
               className="hero-exact-actions"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
+              initial={{ y: 16 }}
+              animate={{ y: 0 }}
               transition={{ duration: 0.5, delay: 0.55 }}
             >
               <motion.a 
                 href="/login" 
                 className="lp-btn lp-btn-primary hero-cinematic__cta"
-                whileHover={{ scale: 1.05, boxShadow: '0 20px 25px -5px rgba(69,182,254,0.3)' }}
+                whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.97 }}
               >
                 Create an Account
@@ -274,7 +262,7 @@ export default function LandingPage() {
 
 
       {/* ── SHOWCASE: Patient Management ── */}
-      <section id="how-it-works" className="section-split">
+      <section id="features" className="section-split">
         <div className="container">
           <motion.div className="split" initial="hidden" whileInView="show" viewport={{ once: true, amount: 0.2 }} variants={stagger}>
             <motion.div variants={fadeUp} transition={{ duration: 0.6 }}>
@@ -324,6 +312,11 @@ export default function LandingPage() {
               <span className="section-label">Workforce</span>
               <h2 className="section-title">Taking control of your workforce has never been simpler</h2>
               <p className="section-sub">Manage nurse credentials, scheduling, certifications, and performance — all from a single powerful view.</p>
+              <ul className="split-checks">
+                <li><span className="check-mark">✓</span><span>Credential and compliance tracking at a glance</span></li>
+                <li><span className="check-mark">✓</span><span>Scheduling aligned with patient census and coverage</span></li>
+                <li><span className="check-mark">✓</span><span>Performance metrics for on-time visits and retention</span></li>
+              </ul>
               <motion.a href="/login" className="lp-btn lp-btn-primary split-cta-btn" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }}>Explore workforce →</motion.a>
             </motion.div>
             <motion.div variants={fadeUp} transition={{ duration: 0.6, delay: 0.15 }}>
@@ -363,18 +356,71 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ── SHOWCASE: Automated Monthly Medical Report ── */}
+      <section id="medical-reports" className="section-split">
+        <div className="container">
+          <motion.div className="split" initial="hidden" whileInView="show" viewport={{ once: true, amount: 0.2 }} variants={stagger}>
+            <motion.div variants={fadeUp} transition={{ duration: 0.6 }}>
+              <span className="section-label">Medical Reports</span>
+              <h2 className="section-title">Automated Monthly Medical Report</h2>
+              <p className="section-sub">
+                Generate professional, structured monthly reports for every patient — with visit details, assessments, and an overall summary ready to share.
+              </p>
+              <ul className="split-checks">
+                <li><span className="check-mark">✓</span><span>AI-assisted summaries from visit and care data</span></li>
+                <li><span className="check-mark">✓</span><span>Clear sections: patient info, assessment, diagnosis &amp; prescription</span></li>
+                <li><span className="check-mark">✓</span><span>Download PDF or email reports to doctors and families</span></li>
+              </ul>
+              <motion.a href="/login" className="lp-btn lp-btn-primary split-cta-btn" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }}>View reports →</motion.a>
+            </motion.div>
+            <motion.div variants={fadeUp} transition={{ duration: 0.6, delay: 0.15 }}>
+              <div className="showcase-collage showcase-collage--reports">
+                <div className="showcase-report-card showcase-report-card--main">
+                  <div className="showcase-report-card__header">
+                    <span className="showcase-report-card__badge">Monthly</span>
+                    <span className="showcase-report-card__title">Medical Report</span>
+                  </div>
+                  <div className="showcase-report-card__patient">
+                    <strong>Kwame Boateng</strong>
+                    <span>March 2026 · Vitals Assessment</span>
+                  </div>
+                  <div className="showcase-report-sections">
+                    <motion.div className="showcase-report-section" variants={fadeUp}>
+                      <span className="showcase-report-section__label">Overall Summary</span>
+                      <p>Stable vitals and consistent ADL support. Care plan on track for the month.</p>
+                    </motion.div>
+                    <div className="showcase-report-section showcase-report-section--muted">
+                      <span className="showcase-report-section__label">Assessment</span>
+                      <p>Vital signs, medications, weekly activity, and caregiver notes included.</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="showcase-report-card showcase-report-card--actions">
+                  <div className="showcase-report-card__kicker">Export &amp; share</div>
+                  <div className="showcase-report-actions">
+                    <span className="showcase-report-action">Download PDF</span>
+                    <span className="showcase-report-action showcase-report-action--primary">Email report</span>
+                  </div>
+                  <p className="showcase-report-card__note">Formatted for clinicians and external recipients</p>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        </div>
+      </section>
+
       {/* ── STATS ── */}
       <div className="section-stats">
         <div className="container">
           <motion.div className="stats-grid" initial="hidden" whileInView="show" viewport={{ once: true, amount: 0.2 }} variants={stagger}>
             {[
-              { n: '500+', l: 'Active Agencies', c: 'var(--accent)' },
-              { n: '1.2M', l: 'Visits Tracked', c: 'var(--green)' },
-              { n: '60+', l: 'Integrations', c: '#f59e0b' },
-              { n: '4.9★', l: 'Average Rating', c: '#ec4899' },
+              { n: '500+', l: 'Active Agencies', tone: 'accent' },
+              { n: '1.2M', l: 'Visits Tracked', tone: 'green' },
+              { n: '60+', l: 'Integrations', tone: 'gold' },
+              { n: '4.9★', l: 'Average Rating', tone: 'pink' },
             ].map((s) => (
               <motion.div className="stat-item" key={s.l} variants={fadeUp}>
-                <div className="stat-number" style={{ color: s.c }}>{s.n}</div>
+                <div className={`stat-number stat-number--${s.tone}`}>{s.n}</div>
                 <div className="stat-label">{s.l}</div>
               </motion.div>
             ))}
@@ -388,7 +434,7 @@ export default function LandingPage() {
           <motion.div className="sec-center" initial="hidden" whileInView="show" viewport={{ once: true, amount: 0.3 }} variants={stagger}>
             <motion.span className="section-label" variants={fadeUp}>Testimonials</motion.span>
             <motion.h2 className="section-title" variants={fadeUp}>Loved by care operators</motion.h2>
-            <motion.p className="section-sub" variants={fadeUp}>Real stories from agencies who&rsquo;ve transformed their operations with Kulobal Homecare.</motion.p>
+            <motion.p className="section-sub" variants={fadeUp}>Real stories from agencies who&rsquo;ve transformed their operations with CareSense.</motion.p>
           </motion.div>
           <motion.div className="testimonials-grid" initial="hidden" whileInView="show" viewport={{ once: true, amount: 0.1 }} variants={stagger}>
             {testimonials.map((t) => (
@@ -433,7 +479,7 @@ export default function LandingPage() {
                 <span className="pricing-gh-amount">50</span>
               </div>
               <p className="pricing-gh-copy">
-                We charge <strong>GHS&nbsp;50</strong> for each patient you manage on Kulobal. Scale admissions up or down &mdash; you only pay for the patients on your roster.
+                We charge <strong>GHS&nbsp;50</strong> for each patient you manage on CareSense. Scale admissions up or down &mdash; you only pay for the patients on your roster.
               </p>
               <ul className="pricing-gh-bullets">
                 <li><span className="pricing-gh-tick">✓</span> Predictable cost per enrolment</li>
@@ -525,10 +571,10 @@ export default function LandingPage() {
       <div className="section-cta">
         <motion.span className="section-label" initial="hidden" whileInView="show" viewport={{ once: true }} variants={fadeUp}>Get started</motion.span>
         <motion.h2 initial="hidden" whileInView="show" viewport={{ once: true }} variants={fadeUp}>Ready to take control<br />of your agency?</motion.h2>
-        <motion.p initial="hidden" whileInView="show" viewport={{ once: true }} variants={fadeUp}>Join over 500 agencies who&rsquo;ve transformed their homecare operations with Kulobal.</motion.p>
+        <motion.p initial="hidden" whileInView="show" viewport={{ once: true }} variants={fadeUp}>Join over 500 agencies who&rsquo;ve transformed their homecare operations with CareSense.</motion.p>
         <motion.div className="cta-btns" initial="hidden" whileInView="show" viewport={{ once: true }} variants={fadeUp}>
           <motion.a href="/login" className="lp-btn lp-btn-primary lp-btn-lg" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }}>Create free account →</motion.a>
-          <motion.a href="#features" className="lp-btn lp-btn-outline lp-btn-lg" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }}>Learn more</motion.a>
+          <motion.a href="#features" className="lp-btn lp-btn-outline lp-btn-lg" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }}>Explore features</motion.a>
         </motion.div>
       </div>
 
@@ -536,12 +582,13 @@ export default function LandingPage() {
       <footer className="lp-footer">
         <div className="footer-grid">
           <div className="footer-brand">
-            <a href="/"><img src="/Blue_Logo.png" alt="Kulobal Homecare" className="nav-logo" /></a>
+            <a href="/"><img src="/Blue_Logo.png" alt="CareSense" className="nav-logo" /></a>
             <p>Smart homecare management for agencies, care teams, and healthcare operators.</p>
           </div>
           <div className="footer-col">
             <h4>Product</h4>
             <a href="#features">Features</a>
+            <a href="#medical-reports">Reports</a>
             <a href="#pricing">Pricing</a>
             <a href="#faq">FAQ</a>
             <a href="#">Security</a>

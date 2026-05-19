@@ -144,6 +144,27 @@ export async function fetchAuthUsers(params = {}, onUnauthorized) {
   return apiFetch(`/users?${qs}`, { method: 'GET', quiet: true }, onUnauthorized);
 }
 
+/** PATCH `/users/:id` — update a platform user (staff, manager, etc.). */
+export async function updatePlatformUser(userId, payload, onUnauthorized) {
+  return apiFetch(
+    `/users/${encodeURIComponent(userId)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    },
+    onUnauthorized,
+  );
+}
+
+/** DELETE `/users/:id` — remove a platform user. */
+export async function deletePlatformUser(userId, onUnauthorized) {
+  return apiFetch(
+    `/users/${encodeURIComponent(userId)}`,
+    { method: 'DELETE' },
+    onUnauthorized,
+  );
+}
+
 function unwrapDashboardSummaryPayload(json) {
   if (json == null || typeof json !== 'object') return {};
   const layered = [json.data, json.summary, json.stats, json.counts, json.totals, json.dashboard];
