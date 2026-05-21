@@ -12,6 +12,7 @@ import { apiFetch, API_BASE } from '../api';
 import { fetchAllPatients } from '../utils/patients';
 import { extractUrlFromPayload, resolveStoredMediaUrl } from '../utils/resolveStoredMediaUrl';
 import compressImage, { createThumbnailURL } from '../utils/compressImage';
+import './NurseProfile.css';
 
 const ROLE_LABELS = {
   head_nurse: 'Head Nurse',
@@ -22,26 +23,23 @@ const ROLE_LABELS = {
 
 /* ── Tiny shared components ── */
 const DataRow = ({ label, children, missing }) => (
-  <div className={`nurse-profile-data-row${missing ? ' nurse-profile-data-row--missing' : ''}`}>
-    <span className="nurse-profile-data-row__label">{label}</span>
-    <span className="nurse-profile-data-row__value">{children || (missing ? 'Not provided' : '—')}</span>
-  </div>
+  <dl className={`np-field${missing ? ' np-field--missing' : ''}`}>
+    <dt>{label}</dt>
+    <dd>{children || (missing ? 'Not provided' : '—')}</dd>
+  </dl>
 );
 
-const Panel = ({ title, icon, accent, children, action, style, variant }) => (
-  <div
-    className={`nurse-profile-panel${variant === 'warm' ? ' nurse-profile-panel--warm' : ''}`}
-    style={{ '--nurse-panel-accent': accent || '#45B6FE', ...style }}
-  >
-    <div className="nurse-profile-panel__head">
+const Panel = ({ title, icon, accent, children, action, style }) => (
+  <section className="np-panel" style={{ '--np-panel-accent': accent || '#45B6FE', ...style }}>
+    <header className="np-panel__head">
       <div className="d-flex align-items-center gap-2">
-        {icon && <span className="nurse-profile-panel__icon">{icon}</span>}
-        <span className="nurse-profile-panel__title">{title}</span>
+        {icon && <span className="np-panel__icon">{icon}</span>}
+        <span className="np-panel__title">{title}</span>
       </div>
       {action && action}
-    </div>
-    <div className="nurse-profile-panel__body">{children}</div>
-  </div>
+    </header>
+    <div className="np-panel__body">{children}</div>
+  </section>
 );
 
 const Spinner = () => (
@@ -52,11 +50,11 @@ const Spinner = () => (
 );
 
 const TABS = [
-  { key: 'overview',   label: 'Overview',           icon: <FiUser size={14} /> },
-  { key: 'diversity',  label: 'Diversity & Health',  icon: <FiShield size={14} /> },
-  { key: 'education',  label: 'Education',           icon: <FiAward size={14} /> },
-  { key: 'supporting', label: 'Supporting Info',     icon: <FiClipboard size={14} /> },
-  { key: 'documents',  label: 'Documents',           icon: <FiFileText size={14} /> },
+  { key: 'overview', label: 'Overview', icon: <FiUser size={14} /> },
+  { key: 'diversity', label: 'Diversity', icon: <FiShield size={14} /> },
+  { key: 'education', label: 'Education', icon: <FiAward size={14} /> },
+  { key: 'supporting', label: 'Supporting', icon: <FiClipboard size={14} /> },
+  { key: 'documents', label: 'Documents', icon: <FiFileText size={14} /> },
 ];
 
 const DOCUMENT_TYPE_MAP = {
@@ -304,15 +302,27 @@ export default function NurseProfile() {
   const ef = (field) => editForm[field] ?? '';
   const uf = (field, value) => setEditForm(prev => ({ ...prev, [field]: value }));
 
-  const SECTION_ENDPOINTS = {
-    personal:       '/nurses/update/personal-info',
-    professional:   '/nurses/update/personal-info',
-    diversity:      '/nurses/update/diversity-info',
-    education:      '/nurses/update/education-info',
+  const EDIT_ENDPOINT_BY_SECTION = {
+    personal: '/nurses/update/personal-info',
+    professional: '/nurses/update/personal-info',
+    diversity: '/nurses/update/diversity-info',
     qualifications: '/nurses/update/education-info',
-    training:       '/nurses/update/education-info',
-    employment:     '/nurses/update/education-info',
-    supporting:     '/nurses/update/supporting-info',
+    training: '/nurses/update/education-info',
+    employment: '/nurses/update/education-info',
+    supporting: '/nurses/update/supporting-info',
+    'supporting-staff': '/nurses/update/supporting-info',
+    'supporting-referees': '/nurses/update/supporting-info',
+  };
+
+  const EDIT_MODAL_TITLES = {
+    personal: 'Edit personal details',
+    diversity: 'Edit diversity & health',
+    qualifications: 'Edit qualifications',
+    training: 'Edit training courses',
+    employment: 'Edit employment history',
+    supporting: 'Edit supporting information',
+    'supporting-staff': 'Edit staff relationship',
+    'supporting-referees': 'Edit referees',
   };
 
   const startEditing = (section, data) => {
@@ -327,10 +337,39 @@ export default function NurseProfile() {
     setEditError('');
   };
 
+  const resolveNurseIdForUpdate = () => {
+    const candidates = [
+      nurse?._id,
+      nurse?.id,
+      nurse?.uuid,
+      nurse?.nurseId,
+      nurseId,
+    ]
+      .map((value) => String(value || '').trim())
+      .filter(Boolean);
+
+    const mongoId = candidates.find((id) => /^[a-f\d]{24}$/i.test(id));
+    if (mongoId) return mongoId;
+
+    const uuid = candidates.find((id) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id));
+    if (uuid) return uuid;
+
+    return candidates[0] || '';
+  };
+
   const handleSaveSection = async () => {
-    const endpoint = SECTION_ENDPOINTS[editingSection];
-    if (!endpoint) return;
-    const resolvedId = nurse?._id || nurse?.id || nurseId;
+    const endpoint = EDIT_ENDPOINT_BY_SECTION[editingSection];
+    if (!endpoint) {
+      setEditError('This section cannot be saved. Please close and try again.');
+      return;
+    }
+
+    const resolvedId = resolveNurseIdForUpdate();
+    if (!resolvedId) {
+      setEditError('Nurse ID is missing. Refresh the page and try again.');
+      return;
+    }
+
     setSavingEdit(true);
     setEditError('');
     try {
@@ -338,52 +377,63 @@ export default function NurseProfile() {
         method: 'PATCH',
         body: JSON.stringify({ nurseId: resolvedId, ...editForm }),
       });
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        throw new Error(d.error || d.message || `Update failed (HTTP ${res.status})`);
+
+      const responseText = await res.text().catch(() => '');
+      let data = {};
+      if (responseText) {
+        try {
+          data = JSON.parse(responseText);
+        } catch {
+          data = { message: responseText };
+        }
       }
-      // Refresh profile data from server
+
+      if (!res.ok) {
+        throw new Error(data?.error || data?.message || `Update failed (HTTP ${res.status})`);
+      }
+
       await fetchProfile();
       setEditingSection(null);
       setEditForm({});
     } catch (err) {
-      setEditError(err.message || 'Failed to save changes.');
+      setEditError(err?.message || 'Failed to save changes.');
     } finally {
       setSavingEdit(false);
     }
   };
 
-  const editInputStyle = { width: '100%', padding: '7px 10px', fontSize: 12.5, border: '1px solid #d1d5db', borderRadius: 4, background: '#fff', color: 'var(--kh-text)', outline: 'none' };
-  const editSelectStyle = { ...editInputStyle, appearance: 'auto' };
-  const EditRow = ({ label, field, type = 'text', options, children }) => (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #f3f4f6', fontSize: 12.5, gap: 12 }}>
-      <span style={{ flexShrink: 0, color: 'var(--kh-text-muted)', fontWeight: 500, minWidth: 110 }}>{label}</span>
-      {children || (
-        options ? (
-          <select style={editSelectStyle} value={ef(field)} onChange={e => uf(field, e.target.value)}>
-            <option value="">Select...</option>
-            {options.map(o => <option key={o} value={o}>{o}</option>)}
-          </select>
-        ) : (
-          <input type={type} style={editInputStyle} value={ef(field)} onChange={e => uf(field, e.target.value)} />
-        )
-      )}
+  const editInputClass = 'form-control form-control-kh np-edit-input';
+  const EditRow = ({ label, field, type = 'text', options, children, wide }) => (
+    <div className={`np-edit-field${wide ? ' np-edit-field--wide' : ''}`}>
+      <label className="np-edit-field__label">{label}</label>
+      <div className="np-edit-field__control">
+        {children || (
+          options ? (
+            <select className={editInputClass} value={ef(field)} onChange={(e) => uf(field, e.target.value)}>
+              <option value="">Select...</option>
+              {options.map((o) => <option key={o} value={o}>{o}</option>)}
+            </select>
+          ) : (
+            <input type={type} className={editInputClass} value={ef(field)} onChange={(e) => uf(field, e.target.value)} />
+          )
+        )}
+      </div>
     </div>
   );
 
-
-
-  const EditActions = () => (
-    <div style={{ display: 'flex', gap: 8, marginTop: 14, justifyContent: 'flex-end' }}>
-      {editError && <div style={{ flex: 1, fontSize: 12, color: '#dc2626', display: 'flex', alignItems: 'center', gap: 4 }}><FiAlertCircle size={12} />{editError}</div>}
-      <button onClick={cancelEditing} disabled={savingEdit} style={{ padding: '7px 16px', fontSize: 12, fontWeight: 600, border: '1px solid #d1d5db', borderRadius: 6, background: '#fff', color: '#374151', cursor: 'pointer' }}>
-        Cancel
-      </button>
-      <button onClick={handleSaveSection} disabled={savingEdit} style={{ padding: '7px 16px', fontSize: 12, fontWeight: 700, border: 'none', borderRadius: 6, background: '#45B6FE', color: '#fff', cursor: savingEdit ? 'not-allowed' : 'pointer', opacity: savingEdit ? 0.7 : 1, display: 'flex', alignItems: 'center', gap: 5 }}>
-        <FiSave size={12} /> {savingEdit ? 'Saving…' : 'Save Changes'}
-      </button>
-    </div>
-  );
+  const panelEditBtnStyle = {
+    background: 'none',
+    border: '1px solid #e2e8f0',
+    borderRadius: 8,
+    padding: '5px 12px',
+    cursor: 'pointer',
+    fontSize: 12,
+    fontWeight: 600,
+    color: '#45B6FE',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 4,
+  };
   const avatarInputRef = useRef(null);
 
   const uploadNurseDocument = useCallback(async (file, key, { registerEndpoint } = {}) => {
@@ -410,7 +460,7 @@ export default function NurseProfile() {
           body: formData,
         },
       );
-    } catch (requestError) {ms
+    } catch (requestError) {
       if (requestError instanceof TypeError) {
         throw new Error('Could not reach upload endpoint. Check backend URL, CORS, and network connectivity.');
       }
@@ -805,247 +855,374 @@ export default function NurseProfile() {
     { label: 'Citizenship', value: n.citizenship || '—' },
     { label: 'License', value: n.mmcPinNo || '—' },
   ];
-  const profileNotes = [
-    supporting?.staffRelation === 'Yes' ? `Related to staff: ${supporting?.staffRelationDetail || 'Yes'}` : 'No staff relationship disclosed',
-    supporting?.vacancyAdvertised ? `Vacancy source: ${supporting.vacancyAdvertised}` : 'Vacancy source not recorded',
-    education?.trainingCourses?.filter(Boolean)?.length ? `${education.trainingCourses.filter(Boolean).length} training course(s) recorded` : 'No training courses recorded',
-    supporting?.referees?.length ? `${supporting.referees.length} referee(s) on file` : 'No referees added yet',
-  ].filter(Boolean);
-  const documentsPreview = Object.entries(kycDocs)
-    .filter(([, doc]) => !!doc)
-    .slice(0, 4)
-    .map(([key, doc]) => ({ key, ...doc }));
-  const overviewRoster = (currentPatients.length ? currentPatients : assignedPatients).slice(0, 4);
-  const snapshotItems = [
-    { label: 'Current Patients', value: currentPatients.length },
-    { label: 'Documents Uploaded', value: Object.values(kycDocs).filter(Boolean).length },
-    { label: 'Qualifications', value: education?.qualifications?.filter(q => q?.name || q?.institution)?.length || 0 },
-    { label: 'Referees', value: supporting?.referees?.length || 0 },
-  ];
+  const overviewRoster = (currentPatients.length ? currentPatients : assignedPatients).slice(0, 8);
+  const docCount = Object.values(kycDocs).filter(Boolean).length;
+  const qualCount = education?.qualifications?.filter(q => q?.name || q?.institution)?.length || 0;
+
+  const buildPersonalEditForm = () => ({
+    firstName: n.firstName || '',
+    lastName: n.lastName || '',
+    email: n.email || '',
+    phone: n.phone || '',
+    homeTelephone: n.homeTelephone || '',
+    gender: n.gender || '',
+    address: n.address || '',
+    citizenship: n.citizenship || '',
+    title: n.title || '',
+  });
+
+  const openPersonalEdit = () => startEditing('personal', buildPersonalEditForm());
+
+  const openDiversityEdit = () => startEditing('diversity', {
+    race: diversity?.race || '',
+    religion: diversity?.religion || '',
+    disability: diversity?.disability || 'No',
+    disability_detail: diversity?.disability_detail || '',
+    criminal_records: diversity?.criminal_records || 'No',
+    criminal_record_detail: diversity?.criminal_record_detail || '',
+  });
+
+  const renderEditModalForm = () => {
+    switch (editingSection) {
+      case 'personal':
+        return (
+          <div className="np-edit-form np-edit-form--grid">
+            <EditRow label="Title" field="title" />
+            <EditRow label="First name" field="firstName" />
+            <EditRow label="Last name" field="lastName" />
+            <EditRow label="Email" field="email" type="email" />
+            <EditRow label="Phone" field="phone" />
+            <EditRow label="Home telephone" field="homeTelephone" />
+            <EditRow label="Gender" field="gender" options={['Male', 'Female', 'Other']} />
+            <EditRow label="Citizenship" field="citizenship" />
+            <EditRow label="Address" field="address" wide />
+          </div>
+        );
+      case 'diversity':
+        return (
+          <div className="np-edit-form np-edit-form--grid">
+            <EditRow label="Race / ethnicity" field="race" />
+            <EditRow label="Religion" field="religion" />
+            <EditRow label="Disability" field="disability" options={['No', 'Yes']} />
+            {ef('disability') === 'Yes' && <EditRow label="Disability detail" field="disability_detail" wide />}
+            <EditRow label="Criminal records" field="criminal_records" options={['No', 'Yes']} />
+            {ef('criminal_records') === 'Yes' && <EditRow label="Criminal record detail" field="criminal_record_detail" wide />}
+          </div>
+        );
+      case 'qualifications':
+        return (
+          <div className="np-edit-form">
+            {(editForm.qualifications || []).map((q, i) => (
+              <div key={i} className="np-edit-block">
+                <div className="np-edit-block__head">
+                  <span>Qualification {i + 1}</span>
+                  {editForm.qualifications.length > 1 && (
+                    <button type="button" className="np-edit-block__remove" onClick={() => uf('qualifications', editForm.qualifications.filter((_, j) => j !== i))}>
+                      <FiTrash2 size={12} /> Remove
+                    </button>
+                  )}
+                </div>
+                <div className="np-edit-form np-edit-form--grid">
+                  <EditRow label="Qualification" field={`q-${i}-name`} children={
+                    <input className={editInputClass} value={q.name} onChange={(e) => { const arr = [...editForm.qualifications]; arr[i] = { ...arr[i], name: e.target.value }; uf('qualifications', arr); }} />
+                  } />
+                  <EditRow label="Institution" field={`q-${i}-inst`} children={
+                    <input className={editInputClass} value={q.institution} onChange={(e) => { const arr = [...editForm.qualifications]; arr[i] = { ...arr[i], institution: e.target.value }; uf('qualifications', arr); }} />
+                  } />
+                  <EditRow label="Result / grade" field={`q-${i}-result`} children={
+                    <input className={editInputClass} value={q.result} onChange={(e) => { const arr = [...editForm.qualifications]; arr[i] = { ...arr[i], result: e.target.value }; uf('qualifications', arr); }} />
+                  } />
+                  <EditRow label="Year" field={`q-${i}-year`} children={
+                    <input className={editInputClass} value={q.year} onChange={(e) => { const arr = [...editForm.qualifications]; arr[i] = { ...arr[i], year: e.target.value }; uf('qualifications', arr); }} />
+                  } />
+                </div>
+              </div>
+            ))}
+            <button type="button" className="np-edit-add-btn" onClick={() => uf('qualifications', [...(editForm.qualifications || []), { name: '', institution: '', result: '', year: '' }])}>
+              <FiPlus size={14} /> Add qualification
+            </button>
+          </div>
+        );
+      case 'training':
+        return (
+          <div className="np-edit-form">
+            {(editForm.trainingCourses || []).map((course, i) => (
+              <div key={i} className="np-edit-inline-row">
+                <input className={editInputClass} value={course} onChange={(e) => { const arr = [...editForm.trainingCourses]; arr[i] = e.target.value; uf('trainingCourses', arr); }} placeholder="Course name" />
+                {editForm.trainingCourses.length > 1 && (
+                  <button type="button" className="np-edit-block__remove" onClick={() => uf('trainingCourses', editForm.trainingCourses.filter((_, j) => j !== i))}>
+                    <FiTrash2 size={14} />
+                  </button>
+                )}
+              </div>
+            ))}
+            <button type="button" className="np-edit-add-btn" onClick={() => uf('trainingCourses', [...(editForm.trainingCourses || []), ''])}>
+              <FiPlus size={14} /> Add course
+            </button>
+          </div>
+        );
+      case 'employment':
+        return (
+          <div className="np-edit-form">
+            {(editForm.employmentHistory || []).map((emp, i) => (
+              <div key={i} className="np-edit-block">
+                <div className="np-edit-block__head">
+                  <span>Employment {i + 1}</span>
+                  {editForm.employmentHistory.length > 1 && (
+                    <button type="button" className="np-edit-block__remove" onClick={() => uf('employmentHistory', editForm.employmentHistory.filter((_, j) => j !== i))}>
+                      <FiTrash2 size={12} /> Remove
+                    </button>
+                  )}
+                </div>
+                <div className="np-edit-form np-edit-form--grid">
+                  <EditRow label="Job title" field={`emp-${i}-title`} children={<input className={editInputClass} value={emp.jobTitle} onChange={(e) => { const arr = [...editForm.employmentHistory]; arr[i] = { ...arr[i], jobTitle: e.target.value }; uf('employmentHistory', arr); }} />} />
+                  <EditRow label="Employer" field={`emp-${i}-emp`} children={<input className={editInputClass} value={emp.employerName} onChange={(e) => { const arr = [...editForm.employmentHistory]; arr[i] = { ...arr[i], employerName: e.target.value }; uf('employmentHistory', arr); }} />} />
+                  <EditRow label="Business type" field={`emp-${i}-biz`} children={<input className={editInputClass} value={emp.businessType} onChange={(e) => { const arr = [...editForm.employmentHistory]; arr[i] = { ...arr[i], businessType: e.target.value }; uf('employmentHistory', arr); }} />} />
+                  <EditRow label="Start date" field={`emp-${i}-date`} children={<input type="date" className={editInputClass} value={emp.startDate} onChange={(e) => { const arr = [...editForm.employmentHistory]; arr[i] = { ...arr[i], startDate: e.target.value }; uf('employmentHistory', arr); }} />} />
+                  <EditRow label="Grade" field={`emp-${i}-grade`} children={<input className={editInputClass} value={emp.grade} onChange={(e) => { const arr = [...editForm.employmentHistory]; arr[i] = { ...arr[i], grade: e.target.value }; uf('employmentHistory', arr); }} />} />
+                  <EditRow label="Reporting officer" field={`emp-${i}-ro`} children={<input className={editInputClass} value={emp.reportingOfficer} onChange={(e) => { const arr = [...editForm.employmentHistory]; arr[i] = { ...arr[i], reportingOfficer: e.target.value }; uf('employmentHistory', arr); }} />} />
+                  <EditRow label="Contact person" field={`emp-${i}-cp`} children={<input className={editInputClass} value={emp.contactPerson} onChange={(e) => { const arr = [...editForm.employmentHistory]; arr[i] = { ...arr[i], contactPerson: e.target.value }; uf('employmentHistory', arr); }} />} />
+                  <EditRow label="Address" field={`emp-${i}-addr`} children={<input className={editInputClass} value={emp.address} onChange={(e) => { const arr = [...editForm.employmentHistory]; arr[i] = { ...arr[i], address: e.target.value }; uf('employmentHistory', arr); }} />} />
+                  <EditRow label="Description of duties" field={`emp-${i}-duties`} wide children={<textarea className={editInputClass} rows={3} value={emp.descriptionOfDuties} onChange={(e) => { const arr = [...editForm.employmentHistory]; arr[i] = { ...arr[i], descriptionOfDuties: e.target.value }; uf('employmentHistory', arr); }} />} />
+                  <EditRow label="Reason for leaving" field={`emp-${i}-leave`} wide children={<input className={editInputClass} value={emp.reasonForLeaving} onChange={(e) => { const arr = [...editForm.employmentHistory]; arr[i] = { ...arr[i], reasonForLeaving: e.target.value }; uf('employmentHistory', arr); }} />} />
+                </div>
+              </div>
+            ))}
+            <button type="button" className="np-edit-add-btn" onClick={() => uf('employmentHistory', [...(editForm.employmentHistory || []), { jobTitle: '', employerName: '', businessType: '', startDate: '', grade: '', reportingOfficer: '', contactPerson: '', address: '', descriptionOfDuties: '', reasonForLeaving: '' }])}>
+              <FiPlus size={14} /> Add employment
+            </button>
+          </div>
+        );
+      case 'supporting-staff':
+        return (
+          <div className="np-edit-form np-edit-form--grid">
+            <EditRow label="Has staff relation" field="staffRelation" options={['No', 'Yes']} />
+            {ef('staffRelation') === 'Yes' && <EditRow label="Relation detail" field="staffRelationDetail" wide />}
+            <EditRow label="How applied" field="vacancyAdvertised" wide />
+          </div>
+        );
+      case 'supporting-referees':
+        return (
+          <div className="np-edit-form">
+            {(editForm.referees || []).map((ref, i) => (
+              <div key={i} className="np-edit-block">
+                <div className="np-edit-block__head"><span>Referee {i + 1}</span></div>
+                <div className="np-edit-form np-edit-form--grid">
+                  <EditRow label="Name" field={`ref-${i}-name`} children={<input className={editInputClass} value={ref.name} onChange={(e) => { const refs = [...editForm.referees]; refs[i] = { ...refs[i], name: e.target.value }; uf('referees', refs); }} />} />
+                  <EditRow label="Address" field={`ref-${i}-addr`} children={<input className={editInputClass} value={ref.address} onChange={(e) => { const refs = [...editForm.referees]; refs[i] = { ...refs[i], address: e.target.value }; uf('referees', refs); }} />} />
+                  <EditRow label="Phone" field={`ref-${i}-tel`} children={<input className={editInputClass} value={ref.telephone} onChange={(e) => { const refs = [...editForm.referees]; refs[i] = { ...refs[i], telephone: e.target.value }; uf('referees', refs); }} />} />
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+      default:
+        return null;
+    }
+  };
 
   /* ── RENDER ── */
   return (
-    <div className="page-wrapper nurse-profile-page">
+    <div className="page-wrapper nurse-profile-page nurse-profile-page--simple">
 
-      {/* Incomplete banner */}
       {!isFullyComplete && (
-        <div className="nurse-profile-banner">
-          <FiClock size={15} style={{ color: '#d97706', flexShrink: 0 }} />
-          <span style={{ fontSize: 13, color: '#92400e', fontWeight: 600 }}>
-            Registration incomplete — {stepsComplete}/4 steps completed.
-          </span>
-          <button
-            onClick={() => navigate('/workforce')}
-            className="nurse-profile-banner__btn"
-          >
-            Complete Registration
+        <div className="np-alert">
+          <FiClock size={15} style={{ flexShrink: 0 }} />
+          <span>Registration incomplete — {stepsComplete} of 4 steps done.</span>
+          <button type="button" onClick={() => navigate('/workforce')} className="np-alert__btn">
+            Complete registration
           </button>
         </div>
       )}
 
       <div className="nurse-profile-shell">
-      <div className="nurse-profile-topbar">
-        <div className="nurse-profile-topbar__left">
-          <button onClick={() => navigate('/workforce')} className="nurse-profile-icon-btn"><FiArrowLeft size={15} /></button>
-          <div className="nurse-profile-breadcrumbs">
-            <span>Nurses</span>
-            <FiChevronRight size={12} />
-            <span className="is-current">{fullName}</span>
-          </div>
-        </div>
-        <div className="nurse-profile-topbar__actions">
-          <button title="Print" className="nurse-profile-icon-btn"><FiPrinter size={14} /></button>
-          <button title="Edit" onClick={() => { setTab('overview'); startEditing('personal', { firstName: n.firstName || '', lastName: n.lastName || '', email: n.email || '', phone: n.phone || '', homeTelephone: n.homeTelephone || '', gender: n.gender || '', address: n.address || '', citizenship: n.citizenship || '', title: n.title || '' }); }} className="nurse-profile-icon-btn"><FiEdit2 size={14} /></button>
-          <button title="Refresh" onClick={fetchProfile} className="nurse-profile-icon-btn"><FiRefreshCw size={14} /></button>
-        </div>
-      </div>
-
-      <div className="nurse-profile-header-card">
-        <div className="nurse-profile-header-card__meta">
-          <div className="nurse-profile-kicker">Medical staff profile</div>
-          <h2>{fullName}</h2>
-          <p>{roleLabel} profile overview with registration progress, documents, patient roster, and onboarding notes.</p>
-        </div>
-        <div className="nurse-profile-header-card__actions">
-          <button
-            type="button"
-            className="nurse-profile-primary-btn"
-            onClick={() => {
-              if (n.email) window.location.href = `mailto:${n.email}`;
-            }}
-          >
-            <span className="nurse-profile-primary-btn__icon"><FiMail size={14} /></span>
-            Send Message
+        <nav className="np-nav">
+          <button type="button" onClick={() => navigate('/workforce')} className="np-back">
+            <FiArrowLeft size={15} />
+            Nurses
           </button>
-        </div>
-      </div>
+          <div className="np-nav__actions">
+            <button
+              type="button"
+              title="Edit profile"
+              className="np-icon-btn"
+              onClick={openPersonalEdit}
+            >
+              <FiEdit2 size={15} />
+            </button>
+            <button type="button" title="Refresh" onClick={fetchProfile} className="np-icon-btn">
+              <FiRefreshCw size={15} />
+            </button>
+          </div>
+        </nav>
 
-      {/* Header bar */}
-      <div className="nurse-profile-summary-shell">
-        <div className="nurse-profile-summary-grid">
-          <div className="nurse-profile-card nurse-profile-card--hero">
-            <input
-              ref={avatarInputRef}
-              type="file"
-              accept="image/*"
-              style={{ display: 'none' }}
-              onChange={handleAvatarChange}
-            />
-
+        <header className="np-hero">
+          <input
+            ref={avatarInputRef}
+            type="file"
+            accept="image/*"
+            style={{ display: 'none' }}
+            onChange={handleAvatarChange}
+          />
+          <div className="np-hero__main">
             <div
+              className="np-avatar"
               onClick={() => avatarInputRef.current?.click()}
-              title="Click to upload photo"
-              className="nurse-profile-avatar"
-              style={{
-                background: avatarUrl ? 'transparent' : 'linear-gradient(135deg, #45B6FE, #2E8FD4)',
-              }}
+              onKeyDown={(e) => { if (e.key === 'Enter') avatarInputRef.current?.click(); }}
+              role="button"
+              tabIndex={0}
+              title="Upload photo"
+              style={{ background: avatarUrl ? 'transparent' : undefined }}
             >
               {avatarUrl
-                ? <img src={avatarUrl} alt="Profile" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                : <span style={{ color: '#fff', fontSize: 22, fontWeight: 800 }}>{initials}</span>
-              }
-              <div className="nurse-profile-avatar__overlay">
-                <FiCamera size={16} color="#fff" />
-                <span>Photo</span>
-              </div>
+                ? <img src={avatarUrl} alt="" loading="lazy" />
+                : initials}
+              <span className="np-avatar__hint">
+                <FiCamera size={14} />
+                Photo
+              </span>
             </div>
-
-            <div className="nurse-profile-card__title">{fullName}</div>
-            <div className="nurse-profile-card__subtitle">{n.email || 'No email provided'}</div>
-            <div className="nurse-profile-status-row">
-              <span className={`nurse-profile-status-badge${status === 'active' ? ' is-active' : ' is-pending'}`}>{status === 'active' ? 'Active' : status}</span>
-              {!isFullyComplete && <span className="nurse-profile-status-badge is-warning">Step {stepsComplete}/4</span>}
-            </div>
-            <div className="nurse-profile-mini-stats">
-              <div>
-                <strong>{currentPatients.length}</strong>
-                <span>Patients</span>
-              </div>
-              <div>
-                <strong>{Object.values(kycDocs).filter(Boolean).length}</strong>
-                <span>Files</span>
+            <div>
+              <h1 className="np-hero__name">{fullName}</h1>
+              <p className="np-hero__role">{roleLabel}</p>
+              <div className="np-hero__badges">
+                <span className={`np-badge${status === 'active' ? ' np-badge--active' : ' np-badge--pending'}`}>
+                  {status === 'active' ? 'Active' : status}
+                </span>
+                {!isFullyComplete && (
+                  <span className="np-badge np-badge--warn">Step {stepsComplete}/4</span>
+                )}
               </div>
             </div>
           </div>
-
-          <div className="nurse-profile-card nurse-profile-card--details">
-            <div className="nurse-profile-card-heading">Profile Details</div>
-            <div className="nurse-profile-info-grid">
-              {profileDetails.map((item) => (
-                <div key={item.label} className="nurse-profile-info-item">
-                  <span>{item.label}</span>
-                  <strong>{item.value}</strong>
-                </div>
-              ))}
-            </div>
+          <div className="np-hero__contact">
+            {n.phone && n.phone !== '—' && (
+              <a href={`tel:${n.phone}`} className="np-contact-link">
+                <FiPhone size={14} />
+                {n.phone}
+              </a>
+            )}
+            {n.email && (
+              <a href={`mailto:${n.email}`} className="np-contact-link">
+                <FiMail size={14} />
+                {n.email}
+              </a>
+            )}
+            {n.address && n.address !== '—' && (
+              <span className="np-contact-link" style={{ cursor: 'default' }}>
+                <FiMapPin size={14} />
+                {n.address}
+              </span>
+            )}
           </div>
+        </header>
 
-          <div className="nurse-profile-card nurse-profile-card--notes">
-            <div className="nurse-profile-card-heading nurse-profile-card-heading--with-action">
-              <span>Notes</span>
-              <button type="button" className="nurse-profile-link-btn" onClick={() => setTab('supporting')}>See all</button>
-            </div>
-            <div className="nurse-profile-note-list">
-              {profileNotes.map((note, index) => (
-                <div key={`${note}-${index}`} className="nurse-profile-note-item">• {note}</div>
-              ))}
-            </div>
-            <button type="button" className="nurse-profile-inline-btn" onClick={() => setTab('supporting')}>Open supporting info</button>
+        <div className="np-stats">
+          <div className="np-stat">
+            <strong>{currentPatients.length}</strong>
+            <span>Patients</span>
           </div>
+          <div className="np-stat">
+            <strong>{docCount}</strong>
+            <span>Documents</span>
+          </div>
+          <div className="np-stat">
+            <strong>{qualCount}</strong>
+            <span>Qualifications</span>
+          </div>
+          <div className={`np-stat${isFullyComplete ? ' np-stat--complete' : ''}`}>
+            <strong>{isFullyComplete ? 'Completed' : `${stepsComplete}/4`}</strong>
+            <span>{isFullyComplete ? 'Registration completed' : 'Registration'}</span>
+          </div>
+        </div>
 
-          <div className="nurse-profile-card nurse-profile-card--files">
-            <div className="nurse-profile-card-heading nurse-profile-card-heading--with-action">
-              <span>Files / Documents</span>
-              <button type="button" className="nurse-profile-link-btn" onClick={() => setTab('documents')}>
-                <FiUpload size={12} /> Add files
-              </button>
+        <dl className="np-details">
+          {profileDetails.map((item) => (
+            <div key={item.label} className="np-detail">
+              <dt>{item.label}</dt>
+              <dd>{item.value}</dd>
             </div>
-            <div className="nurse-profile-doc-list">
-              {documentsPreview.length > 0 ? documentsPreview.map((doc) => (
-                <button key={doc.key} type="button" className="nurse-profile-doc-item" onClick={() => setTab('documents')}>
-                  <span className="nurse-profile-doc-item__icon"><FiFileText size={14} /></span>
-                  <span className="nurse-profile-doc-item__content">
-                    <strong>{doc.fileName || doc.key}</strong>
-                    <small>{doc.uploadedAt || 'Uploaded'}</small>
-                  </span>
+          ))}
+        </dl>
+
+        <div className="np-board">
+          <div className="np-tabs">
+            {TABS.map((t) => {
+              const tabHasData = t.key === 'overview'
+                ? true
+                : t.key === 'diversity'
+                  ? hasDiversity
+                  : t.key === 'education'
+                    ? hasEducation
+                    : t.key === 'supporting'
+                      ? hasSupporting
+                      : true;
+              return (
+                <button
+                  key={t.key}
+                  type="button"
+                  onClick={() => setTab(t.key)}
+                  className={`np-tab${tab === t.key ? ' active' : ''}`}
+                >
+                  {t.icon}
+                  {t.label}
+                  {t.key !== 'overview' && t.key !== 'documents' && (
+                    <span className={`np-tab__dot${tabHasData ? ' is-ready' : ''}`} />
+                  )}
                 </button>
-              )) : (
-                <div className="nurse-profile-empty-note">No documents uploaded yet.</div>
-              )}
-            </div>
+              );
+            })}
           </div>
-        </div>
-      </div>
 
-      {/* Tab card */}
-      <div className="kh-card nurse-profile-board">
-        <div className="nurse-profile-tabs">
-          {TABS.map(t => {
-            const tabHasData = t.key === 'overview' ? true
-              : t.key === 'diversity'  ? hasDiversity
-              : t.key === 'education'  ? hasEducation
-              : t.key === 'supporting' ? hasSupporting
-              : true;
-            return (
-              <button key={t.key} onClick={() => setTab(t.key)} className={`nurse-profile-tab${tab === t.key ? ' active' : ''}`}>
-                {t.icon} {t.label}
-                {t.key !== 'overview' && t.key !== 'documents' && (
-                  <span className={`nurse-profile-tab__dot${tabHasData ? ' is-ready' : ''}`} />
-                )}
-              </button>
-            );
-          })}
-        </div>
+          <div className="np-content">
 
-        {/* Tab content */}
-        <div className="nurse-profile-board__content">
-
-          {/* ═══ OVERVIEW ═══ */}
           {tab === 'overview' && (
-            <div className="nurse-profile-overview-grid">
-              <div className="nurse-profile-card nurse-profile-card--timeline">
-                <div className="nurse-profile-card-heading nurse-profile-card-heading--with-action">
-                  <span>Assigned Care Roster</span>
-                  <button type="button" className="nurse-profile-inline-btn" onClick={() => setTab('overview')}>Current patients</button>
-                </div>
-                {overviewRoster.length === 0 ? (
-                  <div className="nurse-profile-empty-note">No patients assigned to this nurse yet.</div>
-                ) : (
-                  <div className="nurse-profile-timeline-table">
-                    <div className="nurse-profile-timeline-head">
-                      <span>Patient</span>
-                      <span>Care Focus</span>
-                      <span>Region</span>
-                      <span>Status</span>
-                    </div>
-                    {overviewRoster.map((patient) => (
-                      <button key={patient.id} type="button" className="nurse-profile-timeline-row" onClick={() => navigate(`/patients/${patient.id}`)}>
-                        <span>
-                          <strong>{patient.name}</strong>
-                          <small>{patient.id}</small>
-                        </span>
-                        <span>{patient.diagnosis}</span>
-                        <span>{patient.region}</span>
-                        <span>
-                          <em className={patient.status === 'active' ? 'is-active' : ''}>{patient.status === 'active' ? 'Active' : 'Discharged'}</em>
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+            <div className="np-overview-grid">
+            <Panel
+              title="Personal details"
+              icon={<FiUser size={14} />}
+              accent="#45B6FE"
+              action={(
+                <button type="button" onClick={openPersonalEdit} style={panelEditBtnStyle}>
+                  <FiEdit2 size={12} /> Edit
+                </button>
+              )}
+            >
+              <DataRow label="Name">{fullName}</DataRow>
+              <DataRow label="Email" missing={!n.email}>{n.email}</DataRow>
+              <DataRow label="Phone" missing={!n.phone || n.phone === '—'}>{n.phone}</DataRow>
+              <DataRow label="Gender" missing={!n.gender}>{n.gender}</DataRow>
+              <DataRow label="Address" missing={!n.address || n.address === '—'}>{n.address}</DataRow>
+              <DataRow label="License">{n.mmcPinNo}</DataRow>
+            </Panel>
 
-              <div className="nurse-profile-card nurse-profile-card--snapshot">
-                <div className="nurse-profile-card-heading">Profile Snapshot</div>
-                <div className="nurse-profile-snapshot-list">
-                  {snapshotItems.map((item) => (
-                    <div key={item.label} className="nurse-profile-snapshot-item">
-                      <span>{item.label}</span>
-                      <strong>{item.value}</strong>
-                    </div>
+            <section className="np-overview-patients">
+              <h3 className="np-section-title">Assigned patients</h3>
+              {overviewRoster.length === 0 ? (
+                <p className="np-empty">No patients assigned to this nurse yet.</p>
+              ) : (
+                <ul className="np-patient-list">
+                  {overviewRoster.map((patient) => (
+                    <li
+                      key={patient.id}
+                      onClick={() => navigate(`/patients/${patient.id}`)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') navigate(`/patients/${patient.id}`); }}
+                      role="button"
+                      tabIndex={0}
+                    >
+                      <div>
+                        <span className="np-patient-list__name">{patient.name}</span>
+                        <span className="np-patient-list__sub">{patient.diagnosis}</span>
+                      </div>
+                      <span style={{ fontSize: 12, color: 'var(--np-muted)' }}>{patient.region}</span>
+                      <span className={`np-badge${patient.status === 'active' ? ' np-badge--active' : ' np-badge--pending'}`}>
+                        {patient.status === 'active' ? 'Active' : 'Discharged'}
+                      </span>
+                    </li>
                   ))}
-                </div>
-              </div>
+                </ul>
+              )}
+            </section>
             </div>
           )}
 
@@ -1067,45 +1244,23 @@ export default function NurseProfile() {
                 <>
                   <div className="col-md-6">
                     <Panel title="Diversity Information" icon={<FiUser size={14} />} accent="#8b5cf6"
-                      action={editingSection !== 'diversity' && <button onClick={() => startEditing('diversity', { race: diversity.race || '', religion: diversity.religion || '' })} style={{ background: 'none', border: '1px solid #e5e7eb', borderRadius: 4, padding: '4px 10px', cursor: 'pointer', fontSize: 11, fontWeight: 600, color: '#8b5cf6', display: 'flex', alignItems: 'center', gap: 4 }}><FiEdit2 size={11} /> Edit</button>}
+                      action={<button type="button" onClick={openDiversityEdit} style={{ ...panelEditBtnStyle, color: '#8b5cf6' }}><FiEdit2 size={11} /> Edit</button>}
                     >
-                      {editingSection === 'diversity' ? (
-                        <>
-                          <EditRow label="Race / Ethnicity" field="race" />
-                          <EditRow label="Religion" field="religion" />
-                          <EditActions />
-                        </>
-                      ) : (
-                        <>
-                          <DataRow label="Race / Ethnicity" missing={!diversity.race}>{diversity.race}</DataRow>
-                          <DataRow label="Religion" missing={!diversity.religion}>{diversity.religion}</DataRow>
-                        </>
-                      )}
+                      <DataRow label="Race / Ethnicity" missing={!diversity.race}>{diversity.race}</DataRow>
+                      <DataRow label="Religion" missing={!diversity.religion}>{diversity.religion}</DataRow>
                     </Panel>
                   </div>
                   <div className="col-md-6">
                     <Panel title="Health Disclosures" icon={<FiShield size={14} />} accent="#ef4444"
-                      action={editingSection !== 'diversity' && <button onClick={() => startEditing('diversity', { disability: diversity.disability || 'No', disability_detail: diversity.disability_detail || '', criminal_records: diversity.criminal_records || 'No', criminal_record_detail: diversity.criminal_record_detail || '' })} style={{ background: 'none', border: '1px solid #e5e7eb', borderRadius: 4, padding: '4px 10px', cursor: 'pointer', fontSize: 11, fontWeight: 600, color: '#ef4444', display: 'flex', alignItems: 'center', gap: 4 }}><FiEdit2 size={11} /> Edit</button>}
+                      action={<button type="button" onClick={openDiversityEdit} style={{ ...panelEditBtnStyle, color: '#ef4444' }}><FiEdit2 size={11} /> Edit</button>}
                     >
-                      {editingSection === 'diversity' && editForm.disability !== undefined ? (
-                        <>
-                          <EditRow label="Disability" field="disability" options={['No', 'Yes']} />
-                          {ef('disability') === 'Yes' && <EditRow label="Disability Detail" field="disability_detail" />}
-                          <EditRow label="Criminal Records" field="criminal_records" options={['No', 'Yes']} />
-                          {ef('criminal_records') === 'Yes' && <EditRow label="Criminal Record Detail" field="criminal_record_detail" />}
-                          <EditActions />
-                        </>
-                      ) : (
-                        <>
-                          <DataRow label="Disability">{diversity.disability || 'No'}</DataRow>
-                          {diversity.disability === 'Yes' && (
-                            <DataRow label="Disability Detail">{diversity.disability_detail}</DataRow>
-                          )}
-                          <DataRow label="Criminal Records">{diversity.criminal_records || 'No'}</DataRow>
-                          {diversity.criminal_records === 'Yes' && (
-                            <DataRow label="Criminal Record Detail">{diversity.criminal_record_detail}</DataRow>
-                          )}
-                        </>
+                      <DataRow label="Disability">{diversity.disability || 'No'}</DataRow>
+                      {diversity.disability === 'Yes' && (
+                        <DataRow label="Disability Detail">{diversity.disability_detail}</DataRow>
+                      )}
+                      <DataRow label="Criminal Records">{diversity.criminal_records || 'No'}</DataRow>
+                      {diversity.criminal_records === 'Yes' && (
+                        <DataRow label="Criminal Record Detail">{diversity.criminal_record_detail}</DataRow>
                       )}
                     </Panel>
                   </div>
@@ -1131,33 +1286,14 @@ export default function NurseProfile() {
                   {/* ── Qualifications ── */}
                   <div className="col-12">
                     <Panel title="Qualifications" icon={<FiAward size={14} />} accent="#3b82f6"
-                      action={
-                        editingSection === 'qualifications'
-                          ? <span style={{ fontSize: 11, fontWeight: 700, color: '#3b82f6' }}>Editing…</span>
-                          : <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <span style={{ fontSize: 11, fontWeight: 700, color: '#3b82f6' }}>{(education.qualifications || []).length} records</span>
-                              <button onClick={() => startEditing('qualifications', { qualifications: (education.qualifications || []).map(q => ({ name: q.name || '', institution: q.institution || '', result: q.result || '', year: q.year || '' })) })} style={{ background: 'none', border: '1px solid #e5e7eb', borderRadius: 4, padding: '4px 10px', cursor: 'pointer', fontSize: 11, fontWeight: 600, color: '#3b82f6', display: 'flex', alignItems: 'center', gap: 4 }}><FiEdit2 size={11} /> Edit</button>
-                            </div>
-                      }
+                      action={(
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: '#3b82f6' }}>{(education.qualifications || []).length} records</span>
+                          <button type="button" onClick={() => startEditing('qualifications', { qualifications: (education.qualifications || []).map((q) => ({ name: q.name || '', institution: q.institution || '', result: q.result || '', year: q.year || '' })) })} style={{ ...panelEditBtnStyle, color: '#3b82f6' }}><FiEdit2 size={11} /> Edit</button>
+                        </div>
+                      )}
                     >
-                      {editingSection === 'qualifications' ? (
-                        <>
-                          {(editForm.qualifications || []).map((q, i) => (
-                            <div key={i} style={{ padding: '10px 0', borderBottom: '1px solid #f3f4f6', display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                              <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                                <div><div style={{ fontSize: 10, fontWeight: 700, color: 'var(--kh-text-muted)', marginBottom: 3 }}>Qualification</div><input style={editInputStyle} value={q.name} onChange={e => { const arr = [...editForm.qualifications]; arr[i] = { ...arr[i], name: e.target.value }; uf('qualifications', arr); }} /></div>
-                                <div><div style={{ fontSize: 10, fontWeight: 700, color: 'var(--kh-text-muted)', marginBottom: 3 }}>Institution</div><input style={editInputStyle} value={q.institution} onChange={e => { const arr = [...editForm.qualifications]; arr[i] = { ...arr[i], institution: e.target.value }; uf('qualifications', arr); }} /></div>
-                                <div><div style={{ fontSize: 10, fontWeight: 700, color: 'var(--kh-text-muted)', marginBottom: 3 }}>Result / Grade</div><input style={editInputStyle} value={q.result} onChange={e => { const arr = [...editForm.qualifications]; arr[i] = { ...arr[i], result: e.target.value }; uf('qualifications', arr); }} /></div>
-                                <div><div style={{ fontSize: 10, fontWeight: 700, color: 'var(--kh-text-muted)', marginBottom: 3 }}>Year</div><input style={editInputStyle} value={q.year} onChange={e => { const arr = [...editForm.qualifications]; arr[i] = { ...arr[i], year: e.target.value }; uf('qualifications', arr); }} /></div>
-                              </div>
-                              {editForm.qualifications.length > 1 && <button onClick={() => { const arr = editForm.qualifications.filter((_, j) => j !== i); uf('qualifications', arr); }} style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 4, padding: '6px', cursor: 'pointer', color: '#dc2626', display: 'flex', marginTop: 16 }}><FiTrash2 size={12} /></button>}
-                            </div>
-                          ))}
-                          <button onClick={() => uf('qualifications', [...(editForm.qualifications || []), { name: '', institution: '', result: '', year: '' }])} style={{ marginTop: 10, background: '#f0f7fe', border: '1px solid #d6ecfc', borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 600, color: '#2E7DB8', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5 }}><FiPlus size={12} /> Add Qualification</button>
-                          <EditActions />
-                        </>
-                      ) : (
-                        (education.qualifications || []).length === 0 ? (
+                        {(education.qualifications || []).length === 0 ? (
                           <div style={{ fontSize: 12.5, color: 'var(--kh-text-muted)', padding: '12px 0', textAlign: 'center' }}>No qualifications recorded</div>
                         ) : (
                           <div className="table-responsive">
@@ -1181,33 +1317,18 @@ export default function NurseProfile() {
                               </tbody>
                             </table>
                           </div>
-                        )
-                      )}
+                        )}
                     </Panel>
                   </div>
 
                   {/* ── Training Courses ── */}
                   <div className="col-md-5">
                     <Panel title="Training Courses" icon={<FiCheckCircle size={14} />} accent="#10b981"
-                      action={
-                        editingSection === 'training'
-                          ? <span style={{ fontSize: 11, fontWeight: 700, color: '#10b981' }}>Editing…</span>
-                          : <button onClick={() => startEditing('training', { trainingCourses: (education.trainingCourses || []).filter(t => t).length > 0 ? [...education.trainingCourses.filter(t => t)] : [''] })} style={{ background: 'none', border: '1px solid #e5e7eb', borderRadius: 4, padding: '4px 10px', cursor: 'pointer', fontSize: 11, fontWeight: 600, color: '#10b981', display: 'flex', alignItems: 'center', gap: 4 }}><FiEdit2 size={11} /> Edit</button>
-                      }
+                      action={(
+                        <button type="button" onClick={() => startEditing('training', { trainingCourses: (education.trainingCourses || []).filter((t) => t).length > 0 ? [...education.trainingCourses.filter((t) => t)] : [''] })} style={{ ...panelEditBtnStyle, color: '#10b981' }}><FiEdit2 size={11} /> Edit</button>
+                      )}
                     >
-                      {editingSection === 'training' ? (
-                        <>
-                          {(editForm.trainingCourses || []).map((course, i) => (
-                            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 0', borderBottom: '1px solid #f3f4f6' }}>
-                              <input style={{ ...editInputStyle, flex: 1 }} value={course} onChange={e => { const arr = [...editForm.trainingCourses]; arr[i] = e.target.value; uf('trainingCourses', arr); }} placeholder="Course name" />
-                              {editForm.trainingCourses.length > 1 && <button onClick={() => uf('trainingCourses', editForm.trainingCourses.filter((_, j) => j !== i))} style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 4, padding: '6px', cursor: 'pointer', color: '#dc2626', display: 'flex' }}><FiTrash2 size={12} /></button>}
-                            </div>
-                          ))}
-                          <button onClick={() => uf('trainingCourses', [...(editForm.trainingCourses || []), ''])} style={{ marginTop: 10, background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 600, color: '#059669', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5 }}><FiPlus size={12} /> Add Course</button>
-                          <EditActions />
-                        </>
-                      ) : (
-                        (education.trainingCourses || []).filter(t => t).length === 0 ? (
+                        {(education.trainingCourses || []).filter((t) => t).length === 0 ? (
                           <div style={{ fontSize: 12.5, color: 'var(--kh-text-muted)', padding: '12px 0', textAlign: 'center' }}>No training courses recorded</div>
                         ) : (
                           education.trainingCourses.filter(t => t).map((course, i) => (
@@ -1216,50 +1337,21 @@ export default function NurseProfile() {
                               <span style={{ fontSize: 12.5, color: 'var(--kh-text)' }}>{course}</span>
                             </div>
                           ))
-                        )
-                      )}
+                        )}
                     </Panel>
                   </div>
 
                   {/* ── Employment History ── */}
                   <div className="col-12">
-                    <Panel title="Employment History" icon={<FiClipboard size={14} />} accent="#f59e0b" variant="warm"
-                      action={
-                        editingSection === 'employment'
-                          ? <span style={{ fontSize: 11, fontWeight: 700, color: '#f59e0b' }}>Editing…</span>
-                          : <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <span style={{ fontSize: 11, fontWeight: 700, color: '#f59e0b', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '2px 10px' }}>{(education.employmentHistory || []).length} {(education.employmentHistory || []).length === 1 ? 'record' : 'records'}</span>
-                              <button onClick={() => startEditing('employment', { employmentHistory: (education.employmentHistory || []).map(emp => ({ jobTitle: emp.jobTitle || '', employerName: emp.employerName || '', businessType: emp.businessType || '', startDate: emp.startDate ? emp.startDate.split('T')[0] : '', grade: emp.grade || '', reportingOfficer: emp.reportingOfficer || '', contactPerson: emp.contactPerson || '', address: emp.address || '', descriptionOfDuties: emp.descriptionOfDuties || '', reasonForLeaving: emp.reasonForLeaving || '' })) })} style={{ background: 'none', border: '1px solid #e5e7eb', borderRadius: 4, padding: '4px 10px', cursor: 'pointer', fontSize: 11, fontWeight: 600, color: '#f59e0b', display: 'flex', alignItems: 'center', gap: 4 }}><FiEdit2 size={11} /> Edit</button>
-                            </div>
-                      }
+                    <Panel title="Employment History" icon={<FiClipboard size={14} />} accent="#f59e0b"
+                      action={(
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: '#f59e0b', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '2px 10px' }}>{(education.employmentHistory || []).length} {(education.employmentHistory || []).length === 1 ? 'record' : 'records'}</span>
+                          <button type="button" onClick={() => startEditing('employment', { employmentHistory: (education.employmentHistory || []).map((emp) => ({ jobTitle: emp.jobTitle || '', employerName: emp.employerName || '', businessType: emp.businessType || '', startDate: emp.startDate ? emp.startDate.split('T')[0] : '', grade: emp.grade || '', reportingOfficer: emp.reportingOfficer || '', contactPerson: emp.contactPerson || '', address: emp.address || '', descriptionOfDuties: emp.descriptionOfDuties || '', reasonForLeaving: emp.reasonForLeaving || '' })) })} style={{ ...panelEditBtnStyle, color: '#f59e0b' }}><FiEdit2 size={11} /> Edit</button>
+                        </div>
+                      )}
                     >
-                      {editingSection === 'employment' ? (
-                        <>
-                          {(editForm.employmentHistory || []).map((emp, i) => (
-                            <div key={i} style={{ padding: '14px 0', borderBottom: '1px solid #f3f4f6', marginBottom: 8 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--kh-text)' }}>Employment {i + 1}</span>
-                                {editForm.employmentHistory.length > 1 && <button onClick={() => uf('employmentHistory', editForm.employmentHistory.filter((_, j) => j !== i))} style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 4, padding: '4px 8px', cursor: 'pointer', color: '#dc2626', fontSize: 11, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}><FiTrash2 size={11} /> Remove</button>}
-                              </div>
-                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                                <div><div style={{ fontSize: 10, fontWeight: 700, color: 'var(--kh-text-muted)', marginBottom: 3 }}>Job Title</div><input style={editInputStyle} value={emp.jobTitle} onChange={e => { const arr = [...editForm.employmentHistory]; arr[i] = { ...arr[i], jobTitle: e.target.value }; uf('employmentHistory', arr); }} /></div>
-                                <div><div style={{ fontSize: 10, fontWeight: 700, color: 'var(--kh-text-muted)', marginBottom: 3 }}>Employer Name</div><input style={editInputStyle} value={emp.employerName} onChange={e => { const arr = [...editForm.employmentHistory]; arr[i] = { ...arr[i], employerName: e.target.value }; uf('employmentHistory', arr); }} /></div>
-                                <div><div style={{ fontSize: 10, fontWeight: 700, color: 'var(--kh-text-muted)', marginBottom: 3 }}>Business Type</div><input style={editInputStyle} value={emp.businessType} onChange={e => { const arr = [...editForm.employmentHistory]; arr[i] = { ...arr[i], businessType: e.target.value }; uf('employmentHistory', arr); }} /></div>
-                                <div><div style={{ fontSize: 10, fontWeight: 700, color: 'var(--kh-text-muted)', marginBottom: 3 }}>Start Date</div><input type="date" style={editInputStyle} value={emp.startDate} onChange={e => { const arr = [...editForm.employmentHistory]; arr[i] = { ...arr[i], startDate: e.target.value }; uf('employmentHistory', arr); }} /></div>
-                                <div><div style={{ fontSize: 10, fontWeight: 700, color: 'var(--kh-text-muted)', marginBottom: 3 }}>Grade</div><input style={editInputStyle} value={emp.grade} onChange={e => { const arr = [...editForm.employmentHistory]; arr[i] = { ...arr[i], grade: e.target.value }; uf('employmentHistory', arr); }} /></div>
-                                <div><div style={{ fontSize: 10, fontWeight: 700, color: 'var(--kh-text-muted)', marginBottom: 3 }}>Reporting Officer</div><input style={editInputStyle} value={emp.reportingOfficer} onChange={e => { const arr = [...editForm.employmentHistory]; arr[i] = { ...arr[i], reportingOfficer: e.target.value }; uf('employmentHistory', arr); }} /></div>
-                                <div><div style={{ fontSize: 10, fontWeight: 700, color: 'var(--kh-text-muted)', marginBottom: 3 }}>Contact Person</div><input style={editInputStyle} value={emp.contactPerson} onChange={e => { const arr = [...editForm.employmentHistory]; arr[i] = { ...arr[i], contactPerson: e.target.value }; uf('employmentHistory', arr); }} /></div>
-                                <div><div style={{ fontSize: 10, fontWeight: 700, color: 'var(--kh-text-muted)', marginBottom: 3 }}>Address</div><input style={editInputStyle} value={emp.address} onChange={e => { const arr = [...editForm.employmentHistory]; arr[i] = { ...arr[i], address: e.target.value }; uf('employmentHistory', arr); }} /></div>
-                                <div style={{ gridColumn: '1 / -1' }}><div style={{ fontSize: 10, fontWeight: 700, color: 'var(--kh-text-muted)', marginBottom: 3 }}>Description of Duties</div><textarea style={{ ...editInputStyle, minHeight: 60, resize: 'vertical' }} value={emp.descriptionOfDuties} onChange={e => { const arr = [...editForm.employmentHistory]; arr[i] = { ...arr[i], descriptionOfDuties: e.target.value }; uf('employmentHistory', arr); }} /></div>
-                                <div style={{ gridColumn: '1 / -1' }}><div style={{ fontSize: 10, fontWeight: 700, color: 'var(--kh-text-muted)', marginBottom: 3 }}>Reason for Leaving</div><input style={editInputStyle} value={emp.reasonForLeaving} onChange={e => { const arr = [...editForm.employmentHistory]; arr[i] = { ...arr[i], reasonForLeaving: e.target.value }; uf('employmentHistory', arr); }} /></div>
-                              </div>
-                            </div>
-                          ))}
-                          <button onClick={() => uf('employmentHistory', [...(editForm.employmentHistory || []), { jobTitle: '', employerName: '', businessType: '', startDate: '', grade: '', reportingOfficer: '', contactPerson: '', address: '', descriptionOfDuties: '', reasonForLeaving: '' }])} style={{ marginTop: 10, background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 600, color: '#92400e', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5 }}><FiPlus size={12} /> Add Employment</button>
-                          <EditActions />
-                        </>
-                      ) : (
-                        (education.employmentHistory || []).length === 0 ? (
+                        {(education.employmentHistory || []).length === 0 ? (
                           <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--kh-text-muted)', fontSize: 13 }}>No employment history recorded</div>
                         ) : (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
@@ -1340,8 +1432,7 @@ export default function NurseProfile() {
                               </div>
                             ))}
                           </div>
-                        )
-                      )}
+                        )}
                     </Panel>
                   </div>
                 </>
@@ -1367,67 +1458,30 @@ export default function NurseProfile() {
                 <>
                   <div className="col-md-6">
                     <Panel title="Staff Relationship" icon={<FiUser size={14} />} accent="#8b5cf6"
-                      action={editingSection !== 'supporting' && <button onClick={() => startEditing('supporting', { staffRelation: supporting.staffRelation || 'No', staffRelationDetail: supporting.staffRelationDetail || '', vacancyAdvertised: supporting.vacancyAdvertised || '' })} style={{ background: 'none', border: '1px solid #e5e7eb', borderRadius: 4, padding: '4px 10px', cursor: 'pointer', fontSize: 11, fontWeight: 600, color: '#8b5cf6', display: 'flex', alignItems: 'center', gap: 4 }}><FiEdit2 size={11} /> Edit</button>}
+                      action={<button type="button" onClick={() => startEditing('supporting-staff', { staffRelation: supporting.staffRelation || 'No', staffRelationDetail: supporting.staffRelationDetail || '', vacancyAdvertised: supporting.vacancyAdvertised || '' })} style={{ ...panelEditBtnStyle, color: '#8b5cf6' }}><FiEdit2 size={11} /> Edit</button>}
                     >
-                      {editingSection === 'supporting' && editForm.staffRelation !== undefined ? (
-                        <>
-                          <EditRow label="Has Staff Relation" field="staffRelation" options={['No', 'Yes']} />
-                          {ef('staffRelation') === 'Yes' && <EditRow label="Relation Detail" field="staffRelationDetail" />}
-                          <EditRow label="How Applied" field="vacancyAdvertised" />
-                          <EditActions />
-                        </>
-                      ) : (
-                        <>
-                          <DataRow label="Has Staff Relation">{supporting.staffRelation || 'No'}</DataRow>
-                          {supporting.staffRelation === 'Yes' && (
-                            <DataRow label="Relation Detail">{supporting.staffRelationDetail}</DataRow>
-                          )}
-                        </>
+                      <DataRow label="Has Staff Relation">{supporting.staffRelation || 'No'}</DataRow>
+                      {supporting.staffRelation === 'Yes' && (
+                        <DataRow label="Relation Detail">{supporting.staffRelationDetail}</DataRow>
                       )}
                     </Panel>
-                    {editingSection !== 'supporting' && (
-                      <Panel title="Vacancy Source" icon={<FiFileText size={14} />} accent="#3b82f6">
-                        <DataRow label="How Applied">{supporting.vacancyAdvertised || '—'}</DataRow>
-                        {supporting.vacancyDetail && Object.entries(supporting.vacancyDetail).map(([k, v]) => (
-                          <DataRow key={k} label={k.charAt(0).toUpperCase() + k.slice(1).replace(/([A-Z])/g, ' $1')}>{v}</DataRow>
-                        ))}
-                      </Panel>
-                    )}
+                    <Panel title="Vacancy Source" icon={<FiFileText size={14} />} accent="#3b82f6">
+                      <DataRow label="How Applied">{supporting.vacancyAdvertised || '—'}</DataRow>
+                      {supporting.vacancyDetail && Object.entries(supporting.vacancyDetail).map(([k, v]) => (
+                        <DataRow key={k} label={k.charAt(0).toUpperCase() + k.slice(1).replace(/([A-Z])/g, ' $1')}>{v}</DataRow>
+                      ))}
+                    </Panel>
                   </div>
                   <div className="col-md-6">
                     <Panel title="Referees" icon={<FiUser size={14} />} accent="#10b981"
-                      action={editingSection !== 'supporting' ? (
+                      action={(
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <span style={{ fontSize: 11, fontWeight: 700, color: '#10b981' }}>{(supporting.referees || []).filter(r => r.name).length} provided</span>
-                          <button onClick={() => { const refs = (supporting.referees || []).map(r => ({ name: r.name || '', address: r.address || '', telephone: r.telephone || '' })); while (refs.length < 2) refs.push({ name: '', address: '', telephone: '' }); startEditing('supporting', { referees: refs }); }} style={{ background: 'none', border: '1px solid #e5e7eb', borderRadius: 4, padding: '4px 10px', cursor: 'pointer', fontSize: 11, fontWeight: 600, color: '#10b981', display: 'flex', alignItems: 'center', gap: 4 }}><FiEdit2 size={11} /> Edit</button>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: '#10b981' }}>{(supporting.referees || []).filter((r) => r.name).length} provided</span>
+                          <button type="button" onClick={() => { const refs = (supporting.referees || []).map((r) => ({ name: r.name || '', address: r.address || '', telephone: r.telephone || '' })); while (refs.length < 2) refs.push({ name: '', address: '', telephone: '' }); startEditing('supporting-referees', { referees: refs }); }} style={{ ...panelEditBtnStyle, color: '#10b981' }}><FiEdit2 size={11} /> Edit</button>
                         </div>
-                      ) : null}
+                      )}
                     >
-                      {editingSection === 'supporting' && editForm.referees !== undefined ? (
-                        <>
-                          {(editForm.referees || []).map((ref, i) => (
-                            <div key={i} style={{ padding: '10px 0', borderBottom: '1px solid #f3f4f6' }}>
-                              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--kh-text)', marginBottom: 6 }}>Referee {i + 1}</div>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                  <span style={{ fontSize: 11.5, color: 'var(--kh-text-muted)', minWidth: 60 }}>Name</span>
-                                  <input style={editInputStyle} value={ref.name} onChange={e => { const refs = [...editForm.referees]; refs[i] = { ...refs[i], name: e.target.value }; uf('referees', refs); }} />
-                                </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                  <span style={{ fontSize: 11.5, color: 'var(--kh-text-muted)', minWidth: 60 }}>Address</span>
-                                  <input style={editInputStyle} value={ref.address} onChange={e => { const refs = [...editForm.referees]; refs[i] = { ...refs[i], address: e.target.value }; uf('referees', refs); }} />
-                                </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                  <span style={{ fontSize: 11.5, color: 'var(--kh-text-muted)', minWidth: 60 }}>Phone</span>
-                                  <input style={editInputStyle} value={ref.telephone} onChange={e => { const refs = [...editForm.referees]; refs[i] = { ...refs[i], telephone: e.target.value }; uf('referees', refs); }} />
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                          <EditActions />
-                        </>
-                      ) : (
-                        (supporting.referees || []).filter(r => r.name).length === 0 ? (
+                        {(supporting.referees || []).filter((r) => r.name).length === 0 ? (
                           <div style={{ fontSize: 12.5, color: 'var(--kh-text-muted)', padding: '12px 0', textAlign: 'center' }}>No referees provided</div>
                         ) : (
                           (supporting.referees || []).filter(r => r.name).map((ref, i) => (
@@ -1437,8 +1491,7 @@ export default function NurseProfile() {
                               {ref.telephone && <div style={{ fontSize: 12, color: 'var(--kh-text-muted)' }}><FiPhone size={11} style={{ marginRight: 4 }} />{ref.telephone}</div>}
                             </div>
                           ))
-                        )
-                      )}
+                        )}
                     </Panel>
                   </div>
                 </>
@@ -1602,9 +1655,62 @@ export default function NurseProfile() {
             );
           })()}
 
+          </div>
         </div>
       </div>
-      </div>
+
+      {/* ═══ EDIT MODAL ═══ */}
+      {editingSection && (
+        <div className="app-modal-overlay" role="presentation" onClick={cancelEditing}>
+          <div
+            className="app-modal-dialog app-modal-dialog--xl np-edit-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="nurse-edit-modal-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="app-modal-dialog__header np-edit-modal__header">
+              <div>
+                <p className="np-edit-modal__kicker">Edit nurse profile</p>
+                <h2 id="nurse-edit-modal-title" className="app-modal-dialog__title">
+                  {EDIT_MODAL_TITLES[editingSection] || 'Edit section'}
+                </h2>
+                <p className="np-edit-modal__sub">{fullName}</p>
+              </div>
+              <button type="button" className="app-modal-dialog__close" onClick={cancelEditing} aria-label="Close edit form">
+                <FiX size={20} strokeWidth={1.75} />
+              </button>
+            </div>
+            <div className="app-modal-dialog__body np-edit-modal__body">
+              {editError && (
+                <div className="np-edit-modal__error">
+                  <FiAlertCircle size={14} />
+                  {editError}
+                </div>
+              )}
+              {renderEditModalForm()}
+            </div>
+            <div className="app-modal-dialog__footer np-edit-modal__footer">
+              <button type="button" className="app-modal-dialog__btn-cancel" disabled={savingEdit} onClick={cancelEditing}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary workforce-modal-primary-btn np-edit-modal__save"
+                disabled={savingEdit}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleSaveSection();
+                }}
+              >
+                <FiSave size={14} aria-hidden />
+                <span>{savingEdit ? 'Saving…' : 'Save changes'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ═══ DOCUMENT PREVIEW MODAL ═══ */}
       {previewDoc && (
