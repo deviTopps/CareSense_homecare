@@ -2348,6 +2348,7 @@ export default function PatientProfile() {
   const [deletedExistingMeds, setDeletedExistingMeds] = useState([]);
   const [confirmDelete, setConfirmDelete] = useState(null); // { type: 'existing'|'added', id: number, name: string }
   const [medDeleteConfirmInput, setMedDeleteConfirmInput] = useState('');
+  const [medNameCopied, setMedNameCopied] = useState(false);
   const [showMedForm, setShowMedForm] = useState(false);
   const [editingMedicationId, setEditingMedicationId] = useState(null);
   const [medicationSaveError, setMedicationSaveError] = useState('');
@@ -2625,6 +2626,30 @@ export default function PatientProfile() {
       return next;
     });
     if (showReminderForm === id) setShowReminderForm(null);
+  };
+
+  const copyMedicationNameForDelete = async () => {
+    const name = String(confirmDelete?.name || '').trim();
+    if (!name) return;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(name);
+      } else {
+        throw new Error('clipboard unavailable');
+      }
+    } catch {
+      const textarea = document.createElement('textarea');
+      textarea.value = name;
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+    }
+    setMedNameCopied(true);
+    window.setTimeout(() => setMedNameCopied(false), 2000);
   };
 
   const confirmDeleteMed = async () => {
@@ -5007,9 +5032,11 @@ export default function PatientProfile() {
       setMedicationDeleteError('');
       setDeletingMedication(false);
       setMedDeleteConfirmInput('');
+      setMedNameCopied(false);
     } else {
       setMedDeleteConfirmInput('');
       setMedicationDeleteError('');
+      setMedNameCopied(false);
     }
   }, [confirmDelete]);
 
@@ -9485,13 +9512,11 @@ export default function PatientProfile() {
                   type="button"
                   className="destructive-confirm-dialog__card-action"
                   disabled={deletingMedication}
-                  onClick={() => {
-                    setConfirmDelete(null);
-                    navigate('/dashboard');
-                  }}
+                  aria-label={medNameCopied ? 'Medication name copied' : 'Copy medication name'}
+                  onClick={copyMedicationNameForDelete}
                 >
-                  <FiGrid size={14} />
-                  Go to dashboard
+                  <FiClipboard size={14} />
+                  {medNameCopied ? 'Copied' : 'Copy'}
                 </button>
               </div>
 
