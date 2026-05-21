@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { FiPlus, FiSearch, FiX, FiChevronRight, FiChevronLeft, FiCheck, FiSave, FiChevronsLeft, FiChevronsRight, FiUserPlus, FiCheckCircle, FiInfo, FiDownload, FiUser } from '../icons/hugeicons-feather';
 import { apiFetch } from '../api';
-import { extractApiPatientId, fetchAllPatients, isLikelyMongoObjectId } from '../utils/patients';
+import { extractApiPatientId, fetchAllPatients, isLikelyMongoObjectId, resolvePatientMutationId } from '../utils/patients';
 
 const patientsData = [
   { id: 'P-1001', name: 'Kwame Boateng', age: 72, gender: 'Male', diagnosis: 'Hypertension, Type 2 Diabetes', phone: '+233 24 111 2222', address: '14 Osu Badu St, Accra', region: 'Accra', nurses: ['Efua Mensah'], emergency: 'Ama Boateng (+233 20 333 4444)', status: 'active', enrolled: '2024-06-01' },
@@ -567,14 +567,15 @@ export default function Patients() {
         : 'active';
     const profileImageUrl = extractPatientProfileImageUrl(patient) || getCachedPatientPhotoUrl(patient);
     const apiPatientId = extractApiPatientId(patient);
+    const mutationPatientId = resolvePatientMutationId(patient);
     const displayId = patient?.registrationNumber || patient?.regNo || apiPatientId || `P-${String(index + 1).padStart(4, '0')}`;
     const recordId = patient?._id || (isLikelyMongoObjectId(patient?.id) ? patient.id : null) || null;
     const uuid = patient?.uuid || patient?.patientUuid || patient?.patientUUID || patient?.patient?.uuid || null;
 
     return {
       id: displayId,
-      patientId: apiPatientId || null,
-      profileRouteId: apiPatientId || uuid || displayId,
+      patientId: mutationPatientId || apiPatientId || null,
+      profileRouteId: mutationPatientId || apiPatientId || uuid || displayId,
       recordId,
       uuid,
       name: fullName || 'Unknown Patient',
@@ -1125,7 +1126,13 @@ export default function Patients() {
     }
   };
 
-  const extractPatientId = (data) => extractApiPatientId(data) || extractApiPatientId(data?.patient) || null;
+  const extractPatientId = (data) => (
+    resolvePatientMutationId(data)
+    || resolvePatientMutationId(data?.patient)
+    || extractApiPatientId(data)
+    || extractApiPatientId(data?.patient)
+    || null
+  );
 
   const createPatientAdmission = async () => {
     setSavingAdmission(true);

@@ -18,7 +18,7 @@ import {
   VITAL_RISK_COLORS,
 } from '../utils/vitalMetricsCheck';
 import { API_BASE, apiFetch, getToken, getUser } from '../api';
-import { extractApiPatientId, isLikelyMongoObjectId, isUuidV4ish } from '../utils/patients';
+import { extractApiPatientId, isLikelyMongoObjectId, isUuidV4ish, resolvePatientMutationId } from '../utils/patients';
 
 const DEFAULT_PROFILE_PLACEHOLDER = '/images/default-profile-avatar.svg';
 
@@ -837,10 +837,11 @@ function normalizePatientProfile(rawPatient, fallbackId) {
   };
 
   const apiPatientId = extractApiPatientId(rawPatient);
+  const mutationPatientId = resolvePatientMutationId(rawPatient, fallbackId);
 
   return {
     id: rawPatient?.registrationNumber || rawPatient?.regNo || apiPatientId || fallbackId || '',
-    patientId: apiPatientId,
+    patientId: mutationPatientId || apiPatientId,
     agencyId: resolveAgencyId(rawPatient),
     name: fullName || '',
     preferredName: rawPatient?.preferredName || firstName || '',
@@ -997,7 +998,7 @@ function createPatientUpdateForm(profile, fallbackId) {
   const nullableBoolean = (value) => (value === true ? true : value === false ? false : null);
 
   return {
-    patientId: String(person?.id || fallbackId || '').trim(),
+    patientId: resolvePatientMutationId(person, fallbackId) || String(person?.patientId || '').trim(),
     personalInfo: {
       registrationNumber: person?.regNo || '',
       dateOfAssessment: toDateInputValue(person?.dateOfAssessment || person?.enrolled || ''),
@@ -1918,7 +1919,10 @@ function isPatientDeactivatedStatus(status) {
 }
 
 function resolvePatientApiId(rawApi, profile) {
-  return extractApiPatientId(rawApi) || extractApiPatientId(profile);
+  return resolvePatientMutationId(rawApi)
+    || resolvePatientMutationId(profile)
+    || extractApiPatientId(rawApi)
+    || extractApiPatientId(profile);
 }
 
 function collectNurseIdCandidates(raw) {
@@ -2113,12 +2117,14 @@ export default function PatientProfile() {
       const rawPatient = data?.patient || data?.data || data;
       rawPatientApiRef.current = rawPatient && typeof rawPatient === 'object' ? rawPatient : null;
       const apiPatientId = extractApiPatientId(rawPatient);
-      const hydratedProfile = await hydratePatientProfile(rawPatient, apiPatientId || effectivePatientId);
+      const mutationPatientId = resolvePatientMutationId(rawPatient, effectivePatientId);
+      const hydratedProfile = await hydratePatientProfile(rawPatient, mutationPatientId || apiPatientId || effectivePatientId);
       setRemotePatient(hydratedProfile);
 
       const routeId = String(effectivePatientId || '').trim();
-      if (apiPatientId && apiPatientId !== routeId) {
-        navigate(`/patients/${encodeURIComponent(apiPatientId)}`, { replace: true });
+      const canonicalRouteId = mutationPatientId || apiPatientId;
+      if (canonicalRouteId && canonicalRouteId !== routeId) {
+        navigate(`/patients/${encodeURIComponent(canonicalRouteId)}`, { replace: true });
       }
     } catch (error) {
       setProfileError(error?.message || 'Unable to load patient profile.');
@@ -4386,9 +4392,12 @@ export default function PatientProfile() {
     };
 
     try {
-      const patientIdForPatch = String(profileUpdateForm?.patientId || effectivePatientId || '').trim();
+      const patientIdForPatch = resolvePatientMutationId(
+        rawPatientApiRef.current,
+        profileUpdateForm?.patientId || remotePatient?.patientId || effectivePatientId,
+      );
       if (!patientIdForPatch) {
-        throw new Error('Patient ID is required before updating patient information.');
+        throw new Error('Patient ID is required before updating patient information. Open the patient from the list again or refresh the page.');
       }
 
       await patchJson('/patients/personal-info', {

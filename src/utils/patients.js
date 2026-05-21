@@ -8,7 +8,49 @@ export function isUuidV4ish(value) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '').trim());
 }
 
-/** Canonical patient id for `/patients/:patientId/*` routes — never Mongo `_id`. */
+/**
+ * Patient id for PATCH/POST bodies (`patientId` field).
+ * Backend accepts MongoDB `_id` (24 hex) or patient uuid — not registration numbers.
+ */
+export function resolvePatientMutationId(record, routeFallback = '') {
+  if (!record || typeof record !== 'object') {
+    const route = String(routeFallback || '').trim();
+    if (isUuidV4ish(route) || isLikelyMongoObjectId(route)) return route;
+    return '';
+  }
+
+  const candidates = [
+    record.patientId,
+    record.patientID,
+    record.patient_id,
+    record.uuid,
+    record.patientUuid,
+    record.patientUUID,
+    record.recordId,
+    record.patient?.patientId,
+    record.patient?.patientID,
+    record.patient?.patient_id,
+    record.patient?.uuid,
+    record.patient?.patientUuid,
+    record.patient?.patientUUID,
+    record.patient?._id,
+    record._id,
+    record.id,
+    record.patient?.id,
+  ];
+
+  for (const value of candidates) {
+    const normalized = String(value || '').trim();
+    if (!normalized) continue;
+    if (isUuidV4ish(normalized) || isLikelyMongoObjectId(normalized)) return normalized;
+  }
+
+  const route = String(routeFallback || '').trim();
+  if (isUuidV4ish(route) || isLikelyMongoObjectId(route)) return route;
+  return '';
+}
+
+/** Canonical patient id for `/patients/:patientId/*` routes — prefers uuid over Mongo `_id`. */
 export function extractApiPatientId(record) {
   if (!record || typeof record !== 'object') return '';
 
