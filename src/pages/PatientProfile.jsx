@@ -18,7 +18,16 @@ import {
   VITAL_RISK_COLORS,
 } from '../utils/vitalMetricsCheck';
 import { API_BASE, apiFetch, getToken, getUser } from '../api';
-import { extractApiPatientId, isLikelyMongoObjectId, isUuidV4ish, resolvePatientMutationId } from '../utils/patients';
+import {
+  collectPatientAssignmentIds,
+  extractApiPatientId,
+  extractMongoObjectId,
+  isLikelyMongoObjectId,
+  isUuidV4ish,
+  resolveMongoIdFromCandidates,
+  resolvePatientMutationId,
+} from '../utils/patients';
+import { invalidateMedicalReportsCache } from '../utils/medicalReports';
 
 const DEFAULT_PROFILE_PLACEHOLDER = '/images/default-profile-avatar.svg';
 
@@ -838,10 +847,12 @@ function normalizePatientProfile(rawPatient, fallbackId) {
 
   const apiPatientId = extractApiPatientId(rawPatient);
   const mutationPatientId = resolvePatientMutationId(rawPatient, fallbackId);
+  const recordMongoId = extractMongoObjectId(rawPatient);
 
   return {
     id: rawPatient?.registrationNumber || rawPatient?.regNo || apiPatientId || fallbackId || '',
     patientId: mutationPatientId || apiPatientId,
+    recordMongoId,
     agencyId: resolveAgencyId(rawPatient),
     name: fullName || '',
     preferredName: rawPatient?.preferredName || firstName || '',
@@ -1987,8 +1998,9 @@ function normalizeIncidentNurseRow(n) {
   const candidates = collectNurseIdCandidates(raw);
   if (!candidates.length) return null;
 
-  const uuid = candidates.find(isUuidV4ish);
-  const apiId = uuid || candidates.find((c) => !isLikelyMongoObjectId(c)) || candidates[0];
+  const mongoId = candidates.find(isLikelyMongoObjectId) || '';
+  const uuid = candidates.find(isUuidV4ish) || '';
+  const apiId = mongoId || uuid || candidates[0];
   const idsForMatch = [...new Set(candidates)];
 
   const first = raw.firstName || '';
@@ -1996,7 +2008,7 @@ function normalizeIncidentNurseRow(n) {
   const name = String(raw.name || `${first} ${last}`).trim();
   if (!name) return null;
   const jobTitle = String(raw.jobTitle || raw.specialisation || raw.specialization || '').trim();
-  return { id: apiId, name, jobTitle, idsForMatch };
+  return { id: apiId, mongoId, uuid, name, jobTitle, idsForMatch };
 }
 
 function resolveCurrentNurseId(currentUser, tokenPayload) {
@@ -4716,6 +4728,7 @@ export default function PatientProfile() {
         throw err;
       }
 
+      invalidateMedicalReportsCache();
       setGenerateReportDone(true);
     } catch (error) {
       setGenerateReportError(error?.message || 'Unable to generate patient medical report.');
@@ -4841,17 +4854,27 @@ export default function PatientProfile() {
       return;
     }
 
-    const patientIdentifierCandidates = Array.from(new Set([
-      p?.id,
+    const patientIdentifierCandidates = collectPatientAssignmentIds(
+      rawPatientApiRef?.current || (remotePatient?.recordMongoId ? { _id: remotePatient.recordMongoId } : null),
       effectivePatientId,
-      rawPatientApiRef?.current?.id,
-      rawPatientApiRef?.current?.patientId,
-      rawPatientApiRef?.current?.uuid,
-      rawPatientApiRef?.current?._id,
-    ].map((value) => String(value || '').trim()).filter(Boolean)));
+    );
 
     if (patientIdentifierCandidates.length === 0) {
-      setAssignedNurseActionError('Patient ID is missing.');
+      setAssignedNurseActionError(
+        'This patient has no MongoDB or UUID id on file. Reload the profile from the Patients list, then try again.',
+      );
+      setAssignedNurseActionSuccess('');
+      return;
+    }
+
+    const nurseIdForAssignment = resolveMongoIdFromCandidates(selectedNurse.idsForMatch)
+      || String(selectedNurse.mongoId || '').trim()
+      || '';
+
+    if (!nurseIdForAssignment) {
+      setAssignedNurseActionError(
+        'Selected nurse has no MongoDB id. The assignment API requires the nurse\'s 24-character database _id from GET /nurses.',
+      );
       setAssignedNurseActionSuccess('');
       return;
     }
@@ -4865,7 +4888,7 @@ export default function PatientProfile() {
       try {
         const response = await apiFetch('/assignments', {
           method: 'POST',
-          body: JSON.stringify({ patientId: patientIdCandidate, nurseId: selectedNurseId }),
+          body: JSON.stringify({ patientId: patientIdCandidate, nurseId: nurseIdForAssignment }),
           quiet: true,
         });
         const payload = await response.json().catch(() => ({}));

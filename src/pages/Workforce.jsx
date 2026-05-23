@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import {
@@ -19,8 +20,10 @@ import {
   FiDownload,
   FiSave,
   FiUserPlus,
+  FiMoreHorizontal,
+  FiLock,
 } from '../icons/hugeicons-feather';
-import { apiFetch, isTokenValid, createPlatformUser, fetchAuthUsers, updatePlatformUser, deletePlatformUser } from '../api';
+import { apiFetch, isTokenValid, createPlatformUser, fetchAuthUsers, updatePlatformUser, deletePlatformUser, changePlatformUserPassword } from '../api';
 import { resolveStoredMediaUrl } from '../utils/resolveStoredMediaUrl';
 
 const ROLE_LABELS = { head_nurse: 'Head Nurse', supervising_nurse: 'Supervising Nurse', office_nurse: 'Office Nurse', field_nurse: 'Field Nurse' };
@@ -75,7 +78,139 @@ const PLATFORM_USER_ROLE_OPTIONS = [
   { value: 'hr', label: 'HR' },
 ];
 
-const WORKFORCE_FILTER_TABS = ['All', 'Complete', 'In progress', 'Staff'];
+const WORKFORCE_FILTER_TABS = ['All', 'Complete', 'Staff'];
+
+function StaffRowActions({ row, onEditInfo, onResetPassword }) {
+  const [open, setOpen] = useState(false);
+  const [menuStyle, setMenuStyle] = useState(null);
+  const wrapRef = useRef(null);
+  const toggleRef = useRef(null);
+  const menuRef = useRef(null);
+
+  const updateMenuPosition = useCallback(() => {
+    const btn = toggleRef.current;
+    if (!btn) return;
+    const rect = btn.getBoundingClientRect();
+    const menuWidth = 176;
+    const menuHeight = menuRef.current?.offsetHeight || 88;
+    const gap = 6;
+    const padding = 8;
+
+    let top = rect.bottom + gap;
+    let left = rect.right - menuWidth;
+
+    if (top + menuHeight > window.innerHeight - padding) {
+      top = rect.top - menuHeight - gap;
+    }
+    left = Math.max(padding, Math.min(left, window.innerWidth - menuWidth - padding));
+    top = Math.max(padding, Math.min(top, window.innerHeight - menuHeight - padding));
+
+    setMenuStyle({
+      position: 'fixed',
+      top: `${top}px`,
+      left: `${left}px`,
+      width: `${menuWidth}px`,
+      zIndex: 1075,
+    });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setMenuStyle(null);
+      return undefined;
+    }
+    updateMenuPosition();
+    const raf = requestAnimationFrame(() => updateMenuPosition());
+    const onScrollOrResize = () => updateMenuPosition();
+    window.addEventListener('resize', onScrollOrResize);
+    window.addEventListener('scroll', onScrollOrResize, true);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('resize', onScrollOrResize);
+      window.removeEventListener('scroll', onScrollOrResize, true);
+    };
+  }, [open, updateMenuPosition]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDocClick = (e) => {
+      const target = e.target;
+      if (wrapRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onDocClick);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onDocClick);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [open]);
+
+  const menuPortal = open && menuStyle
+    ? createPortal(
+        <div
+          ref={menuRef}
+          className="workforce-staff-actions__menu workforce-staff-actions__menu--portal"
+          role="menu"
+          style={menuStyle}
+          onClick={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            className="workforce-staff-actions__item"
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpen(false);
+              onEditInfo(row, e);
+            }}
+          >
+            <FiEdit size={14} aria-hidden />
+            Edit info
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="workforce-staff-actions__item"
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpen(false);
+              onResetPassword(row, e);
+            }}
+          >
+            <FiLock size={14} aria-hidden />
+            Reset password
+          </button>
+        </div>,
+        document.body,
+      )
+    : null;
+
+  return (
+    <div className="workforce-staff-actions" ref={wrapRef}>
+      <button
+        ref={toggleRef}
+        type="button"
+        className={`workforce-row-btn workforce-row-btn--menu${open ? ' is-open' : ''}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`Actions for ${row.name}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((prev) => !prev);
+        }}
+      >
+        <FiMoreHorizontal size={14} aria-hidden />
+        <span>Actions</span>
+      </button>
+      {menuPortal}
+    </div>
+  );
+}
 
 const isStaffRole = (role) => {
   const normalized = String(role || '').trim().toLowerCase();
@@ -111,6 +246,7 @@ const mapPlatformUserToRow = (user) => {
     roleRaw: roleRaw || 'staff',
     isStaff: true,
     isPlatformUser: true,
+    authUserId: id,
     phone: user?.phone || '—',
     email: user?.email || '—',
     gender: '—',
@@ -201,6 +337,7 @@ export default function Workforce() {
   const [debugInfo, setDebugInfo] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   const [showAddUserModal, setShowAddUserModal] = useState(false);
   const [addUserForm, setAddUserForm] = useState({ firstName: '', lastName: '', email: '', phone: '', role: 'staff', password: '', confirmPassword: '' });
@@ -208,6 +345,12 @@ export default function Workforce() {
   const [addUserLoading, setAddUserLoading] = useState(false);
   const [addUserError, setAddUserError] = useState('');
   const [addUserSuccess, setAddUserSuccess] = useState(null);
+  const [showResetPasswordModal, setShowResetPasswordModal] = useState(false);
+  const [resetPasswordTarget, setResetPasswordTarget] = useState(null);
+  const [resetPasswordForm, setResetPasswordForm] = useState({ password: '', confirmPassword: '' });
+  const [resetPasswordLoading, setResetPasswordLoading] = useState(false);
+  const [resetPasswordError, setResetPasswordError] = useState('');
+  const [resetPasswordSuccess, setResetPasswordSuccess] = useState(false);
 
   const resolveNurseProfilePhotoUrl = useCallback(async (nurseSummary) => {
     const directProfileImage = extractNurseProfileImage(nurseSummary);
@@ -271,11 +414,29 @@ export default function Workforce() {
       if (usersRes?.ok) {
         const usersPayload = await usersRes.json().catch(() => ({}));
         const userList = extractUserArray(usersPayload);
+        const emailToAuthUserId = new Map();
+        userList.forEach((user) => {
+          const email = String(user?.email || '').trim().toLowerCase();
+          const authId = String(user?._id || user?.id || user?.userId || '').trim();
+          if (email && authId) emailToAuthUserId.set(email, authId);
+        });
+        const nursesWithAuthIds = mappedNurses.map((entry) => {
+          if (!entry.isStaff) return entry;
+          const email = String(entry.email || '').trim().toLowerCase();
+          const authUserId = email ? emailToAuthUserId.get(email) : null;
+          if (!authUserId) return entry;
+          return {
+            ...entry,
+            authUserId,
+            isPlatformUser: true,
+            id: authUserId,
+          };
+        });
         const knownEmails = new Set(
-          mappedNurses.map((entry) => String(entry.email || '').trim().toLowerCase()).filter(Boolean),
+          nursesWithAuthIds.map((entry) => String(entry.email || '').trim().toLowerCase()).filter(Boolean),
         );
         const knownIds = new Set(
-          mappedNurses.map((entry) => String(entry.id || '').trim()).filter(Boolean),
+          nursesWithAuthIds.map((entry) => String(entry.id || '').trim()).filter(Boolean),
         );
         platformStaff = userList
           .filter((user) => isStaffRole(user?.role))
@@ -288,9 +449,10 @@ export default function Workforce() {
           })
           .map(mapPlatformUserToRow)
           .filter((entry) => entry.id);
+        setNurses([...nursesWithAuthIds, ...platformStaff]);
+      } else {
+        setNurses(mappedNurses);
       }
-
-      setNurses([...mappedNurses, ...platformStaff]);
       setAvatarLoadErrors({});
     } catch (err) {
       console.error('Failed to fetch nurses:', err);
@@ -304,7 +466,6 @@ export default function Workforce() {
   const filterCounts = useMemo(() => ({
     All: nurses.filter((n) => !n.isStaff).length,
     Complete: nurses.filter((n) => !n.isStaff && n.isComplete).length,
-    'In progress': nurses.filter((n) => !n.isStaff && !n.isComplete).length,
     Staff: nurses.filter((n) => n.isStaff).length,
   }), [nurses]);
 
@@ -313,7 +474,6 @@ export default function Workforce() {
     if (filter === 'Staff') return n.isStaff;
     if (n.isStaff) return false;
     if (filter === 'Complete' && !n.isComplete) return false;
-    if (filter === 'In progress' && n.isComplete) return false;
     if (!search) return true;
     const q = search.toLowerCase();
     return (
@@ -349,6 +509,7 @@ export default function Workforce() {
   const startRow = (page - 1) * rowsPerPage + 1;
   const endRow = Math.min(page * rowsPerPage, sorted.length);
   const paged = sorted.slice(startRow - 1, endRow);
+  const isStaffTable = filter === 'Staff';
 
   const handleExportNurses = () => {
     const headers = ['Name', 'Email', 'Role', 'License', 'Joined', 'Phone', 'Registration'];
@@ -462,63 +623,116 @@ export default function Workforce() {
 
   const handleDeleteNurse = (nurse, e) => {
     e.stopPropagation();
+    setDeleteError('');
     setDeleteTarget(nurse);
   };
 
-  const handleEditRow = (row, e) => {
+  const closeDeleteModal = () => {
+    if (deleting) return;
+    setDeleteTarget(null);
+    setDeleteError('');
+  };
+
+  const openPlatformUserEdit = (row) => {
+    const nameParts = String(row.name || '—').trim().split(/\s+/).filter(Boolean);
+    const firstName = row.firstName || nameParts[0] || '';
+    const lastName = row.lastName || nameParts.slice(1).join(' ') || '';
+    setEditingPlatformUserId(row.id);
+    setAddUserForm({
+      firstName,
+      lastName,
+      email: row.email !== '—' ? row.email : '',
+      phone: row.phone !== '—' ? row.phone : '',
+      role: row.roleRaw || 'staff',
+      password: '',
+      confirmPassword: '',
+    });
+    setAddUserError('');
+    setAddUserSuccess(null);
+    setShowAddUserModal(true);
+  };
+
+  const openStaffResetPassword = (row, e) => {
     e.stopPropagation();
-    if (row.isPlatformUser || row.isStaff) {
-      const nameParts = String(row.name || '—').trim().split(/\s+/).filter(Boolean);
-      const firstName = row.firstName || nameParts[0] || '';
-      const lastName = row.lastName || nameParts.slice(1).join(' ') || '';
-      setEditingPlatformUserId(row.id);
-      setAddUserForm({
-        firstName,
-        lastName,
-        email: row.email !== '—' ? row.email : '',
-        phone: row.phone !== '—' ? row.phone : '',
-        role: row.roleRaw || 'staff',
-        password: '',
-        confirmPassword: '',
-      });
-      setAddUserError('');
-      setAddUserSuccess(null);
-      setShowAddUserModal(true);
+    setResetPasswordTarget({ id: row.id, name: row.name });
+    setResetPasswordForm({ password: '', confirmPassword: '' });
+    setResetPasswordError('');
+    setResetPasswordSuccess(false);
+    setShowResetPasswordModal(true);
+  };
+
+  const closeResetPasswordModal = () => {
+    setShowResetPasswordModal(false);
+    setResetPasswordTarget(null);
+    setResetPasswordForm({ password: '', confirmPassword: '' });
+    setResetPasswordError('');
+    setResetPasswordSuccess(false);
+    setResetPasswordLoading(false);
+  };
+
+  const handleResetStaffPassword = async () => {
+    if (!resetPasswordTarget?.id || resetPasswordLoading) return;
+    setResetPasswordError('');
+    const { password, confirmPassword } = resetPasswordForm;
+    if (!password.trim()) {
+      setResetPasswordError('Please enter a new password.');
       return;
     }
-    if (!row.isComplete) {
-      continueRegistration(row, e);
+    if (password.length < 8) {
+      setResetPasswordError('Password must be at least 8 characters.');
       return;
     }
-    navigate(`/workforce/${row.id}`);
+    if (password !== confirmPassword) {
+      setResetPasswordError('Passwords do not match.');
+      return;
+    }
+    setResetPasswordLoading(true);
+    try {
+      const res = await changePlatformUserPassword(resetPasswordTarget.id, { password });
+      const text = await res.text();
+      const data = text ? JSON.parse(text) : {};
+      if (!res.ok) {
+        throw new Error(data.error || data.message || 'Could not reset password.');
+      }
+      setResetPasswordSuccess(true);
+    } catch (err) {
+      setResetPasswordError(err.message || 'Could not reset password.');
+    } finally {
+      setResetPasswordLoading(false);
+    }
   };
 
   const confirmDelete = async () => {
-    if (!deleteTarget) return;
+    if (!deleteTarget || deleting) return;
     setDeleting(true);
+    setDeleteError('');
+    const removeId = deleteTarget.authUserId || deleteTarget.id;
     try {
       if (deleteTarget.isPlatformUser || deleteTarget.isStaff) {
-        const res = await deletePlatformUser(deleteTarget.id);
+        const res = await deletePlatformUser(removeId);
+        const text = await res.text();
+        const data = text ? JSON.parse(text) : {};
         if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
           throw new Error(data.error || data.message || `Delete failed (HTTP ${res.status})`);
         }
       } else {
         if (!NURSE_ENDPOINTS.deleteById) {
-          setApiError('Nurse delete endpoint is cleared. Reconnect endpoints before deleting records.');
-          setDeleteTarget(null);
+          setDeleteError('Nurse delete endpoint is not configured. Reconnect endpoints before deleting records.');
           return;
         }
         const res = await apiFetch(`${NURSE_ENDPOINTS.deleteById}/${deleteTarget.id}`, { method: 'DELETE' });
+        const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
           throw new Error(data.error || data.message || `Delete failed (HTTP ${res.status})`);
         }
       }
-      setNurses((prev) => prev.filter((n) => n.id !== deleteTarget.id));
-      setDeleteTarget(null);
+      setNurses((prev) => prev.filter((n) => {
+        const rowAuthId = n.authUserId || n.id;
+        return rowAuthId !== removeId && n.id !== deleteTarget.id;
+      }));
+      closeDeleteModal();
     } catch (err) {
-      alert(err?.message || (deleteTarget.isStaff ? 'Failed to delete staff user.' : 'Failed to delete nurse.'));
+      setDeleteError(err?.message || (deleteTarget.isStaff ? 'Failed to delete user.' : 'Failed to delete nurse.'));
     } finally {
       setDeleting(false);
     }
@@ -543,7 +757,6 @@ export default function Workforce() {
     try {
       if (isEditing) {
         const payload = { firstName: fn, lastName: ln, email: em, phone: ph, role };
-        if (password.trim()) payload.password = password;
         const res = await updatePlatformUser(editingPlatformUserId, payload);
         const text = await res.text();
         const data = text ? JSON.parse(text) : {};
@@ -579,17 +792,6 @@ export default function Workforce() {
   };
 
   const closeModal = () => { setShowModal(false); resetAll(); fetchNurses(); };
-
-  const continueRegistration = (nurse, e) => {
-    e.stopPropagation();
-    const completedCount = Math.min(Math.max(nurse.completedStep || 1, 1), STEPS.length);
-    const doneSteps = Array.from({ length: completedCount }, (_, index) => index);
-    const nextStep = Math.min(completedCount, STEPS.length - 1);
-    setNurseId(nurse.id);
-    setCompletedSteps(doneSteps);
-    setStep(nextStep);
-    setShowModal(true);
-  };
 
   // ── Save current step to API ──
   const saveStep = async () => {
@@ -1183,7 +1385,7 @@ export default function Workforce() {
         <div className="patients-hero">
           <div>
             <div className="patients-kicker">Nurse workspace</div>
-            <h2 className="patients-title">Manage nurse registrations and directory</h2>
+            <h2 className="patients-title">All Workforce</h2>
             <p className="patients-subtitle">Search staff, export the roster, register new hires, and open nurse records from one place.</p>
           </div>
           <div className="patients-hero-actions">
@@ -1238,7 +1440,7 @@ export default function Workforce() {
                 id="workforce-nurse-search"
                 type="search"
                 className="form-control form-control-kh patients-searchbox__input"
-                placeholder="Search nurses, email, or license"
+                placeholder={isStaffTable ? 'Search staff by name or email' : 'Search nurses, email, or license'}
                 value={search}
                 onChange={(e) => { setSearch(e.target.value); setPage(1); }}
                 autoComplete="off"
@@ -1277,7 +1479,9 @@ export default function Workforce() {
                   <th className="col-num">#</th>
                   <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('name')}>Nurse <SortIcon col="name" /></th>
                   <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('role')}>Role <SortIcon col="role" /></th>
-                  <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('license')}>License <SortIcon col="license" /></th>
+                  <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort(isStaffTable ? 'email' : 'license')}>
+                    {isStaffTable ? 'Email' : 'License'} <SortIcon col={isStaffTable ? 'email' : 'license'} />
+                  </th>
                   <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('joined')}>Joined <SortIcon col="joined" /></th>
                   <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('phone')}>Phone <SortIcon col="phone" /></th>
                   <th style={{ width: 168, textAlign: 'center' }}>Actions</th>
@@ -1334,26 +1538,34 @@ export default function Workforce() {
                         </div>
                         <div>
                           <div className="patients-name-primary">{n.name}</div>
-                          <div className="patients-name-secondary">{n.email}</div>
+                          {!n.isStaff && n.email !== '—' ? (
+                            <div className="patients-name-secondary">{n.email}</div>
+                          ) : null}
                         </div>
                       </div>
                     </td>
                     <td data-label="Role"><span className="patient-nurse-chip">{n.role}</span></td>
-                    <td data-label="License" className="patients-table-value"><span className="patients-license-code">{n.license}</span></td>
+                    <td data-label={isStaffTable ? 'Email' : 'License'} className="patients-table-value">
+                      {isStaffTable ? (
+                        <span className="text-break">{n.email}</span>
+                      ) : (
+                        <span className="patients-license-code">{n.license}</span>
+                      )}
+                    </td>
                     <td data-label="Joined" className="patients-table-date">{n.joined}</td>
                     <td data-label="Phone" className="patients-table-value" style={{ fontVariantNumeric: 'tabular-nums' }}>{n.phone}</td>
                     <td data-label="Actions" className="workforce-actions-cell" onClick={(e) => e.stopPropagation()}>
-                      <div className="workforce-row-actions">
-                        <button
-                          type="button"
-                          className="workforce-row-btn workforce-row-btn--edit"
-                          title={n.isStaff ? 'Edit staff' : (n.isComplete ? 'Edit nurse' : 'Continue registration')}
-                          aria-label={n.isStaff ? `Edit ${n.name}` : (n.isComplete ? `Edit ${n.name}` : `Continue registration for ${n.name}`)}
-                          onClick={(e) => handleEditRow(n, e)}
-                        >
-                          <FiEdit size={14} aria-hidden />
-                          <span>Edit</span>
-                        </button>
+                      <div className={`workforce-row-actions${n.isStaff ? '' : ' workforce-row-actions--single'}`}>
+                        {n.isStaff ? (
+                          <StaffRowActions
+                            row={n}
+                            onEditInfo={(row, e) => {
+                              e.stopPropagation();
+                              openPlatformUserEdit(row);
+                            }}
+                            onResetPassword={openStaffResetPassword}
+                          />
+                        ) : null}
                         <button
                           type="button"
                           className="workforce-row-btn workforce-row-btn--delete"
@@ -1402,26 +1614,32 @@ export default function Workforce() {
       {/* ── Delete Confirmation Modal ── */}
       {deleteTarget && (
         <div
-          className="app-modal-overlay app-modal-overlay--danger-flow"
+          className="destructive-confirm-overlay"
           role="presentation"
-          onClick={() => !deleting && setDeleteTarget(null)}
+          onClick={closeDeleteModal}
         >
-          <div className="app-modal-dialog app-modal-dialog--md" role="dialog" aria-modal="true" aria-labelledby="workforce-delete-title" onClick={(e) => e.stopPropagation()}>
-            <div className="app-modal-dialog__header">
-              <h2 id="workforce-delete-title" className="app-modal-dialog__title">
-                {deleteTarget?.isStaff ? 'Delete staff user' : 'Delete nurse'}
+          <div
+            className="destructive-confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="workforce-delete-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="destructive-confirm-dialog__header">
+              <h2 id="workforce-delete-title" className="destructive-confirm-dialog__title">
+                {deleteTarget?.isStaff ? 'Delete user' : 'Delete nurse'}
               </h2>
               <button
                 type="button"
-                className="app-modal-dialog__close"
+                className="destructive-confirm-dialog__close"
                 aria-label="Close"
                 disabled={deleting}
-                onClick={() => setDeleteTarget(null)}
+                onClick={closeDeleteModal}
               >
                 <FiX size={20} strokeWidth={1.75} />
               </button>
             </div>
-            <div className="app-modal-dialog__body">
+            <div className="destructive-confirm-dialog__body">
               <p className="destructive-confirm-dialog__lead">
                 Are you sure you want to delete this team member? This will remove their profile from the workforce
                 directory.
@@ -1433,8 +1651,11 @@ export default function Workforce() {
                   for this {deleteTarget?.isStaff ? 'user' : 'nurse'} may be <strong>permanently lost</strong>.
                 </div>
               </div>
+              {deleteError ? (
+                <div className="destructive-confirm-dialog__banner-error" role="alert">{deleteError}</div>
+              ) : null}
               <div className="destructive-confirm-dialog__card">
-                <div className="destructive-confirm-dialog__card-icon destructive-confirm-dialog__card-icon--brand">
+                <div className="destructive-confirm-dialog__card-icon destructive-confirm-dialog__card-icon--brand" aria-hidden>
                   {deleteTarget.name !== '—'
                     ? deleteTarget.name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase()
                     : '?'}
@@ -1447,14 +1668,114 @@ export default function Workforce() {
                 </div>
               </div>
             </div>
-            <div className="app-modal-dialog__footer">
-              <button type="button" className="app-modal-dialog__btn-cancel" disabled={deleting} onClick={() => setDeleteTarget(null)}>
+            <div className="destructive-confirm-dialog__footer">
+              <button
+                type="button"
+                className="destructive-confirm-dialog__btn-cancel"
+                disabled={deleting}
+                onClick={closeDeleteModal}
+              >
                 Cancel
               </button>
-              <button type="button" className="app-modal-dialog__btn-danger" disabled={deleting} onClick={confirmDelete}>
-                <FiTrash2 size={13} /> {deleting ? 'Deleting…' : (deleteTarget?.isStaff ? 'Delete staff' : 'Delete nurse')}
+              <button
+                type="button"
+                className="destructive-confirm-dialog__btn-danger workforce-delete-user-btn"
+                disabled={deleting}
+                onClick={confirmDelete}
+              >
+                <FiTrash2 size={14} aria-hidden />
+                {deleting ? 'Deleting…' : (deleteTarget?.isStaff ? 'Delete user' : 'Delete nurse')}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Reset staff password modal ── */}
+      {showResetPasswordModal && resetPasswordTarget && (
+        <div className="app-modal-overlay" role="presentation" onClick={closeResetPasswordModal}>
+          <div
+            className="app-modal-dialog app-modal-dialog--md"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="reset-staff-password-title"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: 440 }}
+          >
+            <div className="app-modal-dialog__header">
+              <h2 id="reset-staff-password-title" className="app-modal-dialog__title">
+                {resetPasswordSuccess ? 'Password reset' : 'Reset password'}
+              </h2>
+              <button type="button" className="app-modal-dialog__close" aria-label="Close" onClick={closeResetPasswordModal}>
+                <FiX size={20} strokeWidth={1.75} />
+              </button>
+            </div>
+            <div className="app-modal-dialog__body">
+              {resetPasswordSuccess ? (
+                <div className="workforce-modal-success" style={{ padding: '16px 0' }}>
+                  <div className="workforce-modal-success__icon">
+                    <FiCheck size={28} style={{ color: '#fff', strokeWidth: 3 }} />
+                  </div>
+                  <div className="workforce-modal-success__title">Password updated</div>
+                  <div className="workforce-modal-success__text">
+                    <strong>{resetPasswordTarget.name}</strong> can now sign in with the new password.
+                  </div>
+                  <button type="button" className="btn btn-primary workforce-modal-primary-btn" onClick={closeResetPasswordModal}>
+                    Done
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <p className="text-muted small mb-3" style={{ lineHeight: 1.5 }}>
+                    Set a new password for <strong>{resetPasswordTarget.name}</strong>.
+                  </p>
+                  {resetPasswordError ? (
+                    <div className="workforce-modal-alert" style={{ marginBottom: 16 }}>
+                      <FiAlertCircle size={15} /> {resetPasswordError}
+                    </div>
+                  ) : null}
+                  <div className="row g-3">
+                    <div className="col-12">
+                      <label className="form-label" style={{ fontSize: 12, fontWeight: 700, color: '#415463', marginBottom: 7 }}>New password *</label>
+                      <input
+                        type="password"
+                        className="form-control form-control-kh workforce-form-input"
+                        value={resetPasswordForm.password}
+                        onChange={(e) => setResetPasswordForm((prev) => ({ ...prev, password: e.target.value }))}
+                        placeholder="Min 8 characters"
+                        autoComplete="new-password"
+                      />
+                    </div>
+                    <div className="col-12">
+                      <label className="form-label" style={{ fontSize: 12, fontWeight: 700, color: '#415463', marginBottom: 7 }}>Confirm password *</label>
+                      <input
+                        type="password"
+                        className="form-control form-control-kh workforce-form-input"
+                        value={resetPasswordForm.confirmPassword}
+                        onChange={(e) => setResetPasswordForm((prev) => ({ ...prev, confirmPassword: e.target.value }))}
+                        placeholder="Repeat password"
+                        autoComplete="new-password"
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+            {!resetPasswordSuccess && (
+              <div className="app-modal-dialog__footer">
+                <button type="button" className="app-modal-dialog__btn-cancel" onClick={closeResetPasswordModal}>Cancel</button>
+                <button
+                  type="button"
+                  className="btn btn-primary workforce-modal-primary-btn"
+                  disabled={resetPasswordLoading}
+                  onClick={handleResetStaffPassword}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+                >
+                  <FiLock size={14} />
+                  {resetPasswordLoading ? 'Saving…' : 'Reset password'}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1467,7 +1788,7 @@ export default function Workforce() {
               <h2 id="add-user-title" className="app-modal-dialog__title">
                 {addUserSuccess
                   ? (addUserSuccess.updated ? 'User updated' : 'User created')
-                  : (editingPlatformUserId ? 'Edit platform user' : 'Add new platform user')}
+                  : (editingPlatformUserId ? 'Edit staff info' : 'Add new platform user')}
               </h2>
               <button type="button" className="app-modal-dialog__close" aria-label="Close" onClick={closeAddUserModal}>
                 <FiX size={20} strokeWidth={1.75} />
@@ -1523,18 +1844,18 @@ export default function Workforce() {
                         ))}
                       </select>
                     </div>
-                    <div className="col-md-6">
-                      <label className="form-label" style={{ fontSize: 12, fontWeight: 700, color: '#415463', marginBottom: 7 }}>
-                        {editingPlatformUserId ? 'New password (optional)' : 'Initial password *'}
-                      </label>
-                      <input type="password" className="form-control form-control-kh workforce-form-input" value={addUserForm.password} onChange={(e) => setAddUserField('password', e.target.value)} placeholder={editingPlatformUserId ? 'Leave blank to keep current' : 'Min 8 characters'} autoComplete="new-password" />
-                    </div>
-                    <div className="col-md-6">
-                      <label className="form-label" style={{ fontSize: 12, fontWeight: 700, color: '#415463', marginBottom: 7 }}>
-                        {editingPlatformUserId ? 'Confirm new password' : 'Confirm password *'}
-                      </label>
-                      <input type="password" className="form-control form-control-kh workforce-form-input" value={addUserForm.confirmPassword} onChange={(e) => setAddUserField('confirmPassword', e.target.value)} placeholder="Repeat password" autoComplete="new-password" />
-                    </div>
+                    {!editingPlatformUserId ? (
+                      <>
+                        <div className="col-md-6">
+                          <label className="form-label" style={{ fontSize: 12, fontWeight: 700, color: '#415463', marginBottom: 7 }}>Initial password *</label>
+                          <input type="password" className="form-control form-control-kh workforce-form-input" value={addUserForm.password} onChange={(e) => setAddUserField('password', e.target.value)} placeholder="Min 8 characters" autoComplete="new-password" />
+                        </div>
+                        <div className="col-md-6">
+                          <label className="form-label" style={{ fontSize: 12, fontWeight: 700, color: '#415463', marginBottom: 7 }}>Confirm password *</label>
+                          <input type="password" className="form-control form-control-kh workforce-form-input" value={addUserForm.confirmPassword} onChange={(e) => setAddUserField('confirmPassword', e.target.value)} placeholder="Repeat password" autoComplete="new-password" />
+                        </div>
+                      </>
+                    ) : null}
                   </div>
                 </>
               )}

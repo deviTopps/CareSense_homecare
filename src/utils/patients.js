@@ -84,6 +84,86 @@ export function extractApiPatientId(record) {
   return '';
 }
 
+/** First MongoDB ObjectId (24 hex) on a patient or nurse record. */
+export function extractMongoObjectId(record) {
+  if (!record || typeof record !== 'object') return '';
+
+  const fields = [
+    record._id,
+    record.recordId,
+    record.patient?._id,
+    record.patient?.id,
+    record.nurse?._id,
+    record.nurse?.id,
+    record.id,
+    record.patientId,
+    record.nurseId,
+  ];
+
+  for (const value of fields) {
+    const normalized = String(value || '').trim();
+    if (isLikelyMongoObjectId(normalized)) return normalized;
+  }
+  return '';
+}
+
+/** Prefer Mongo `_id` for POST /assignments; UUID only if no Mongo id exists on the record. */
+export function collectPatientAssignmentIds(record, routeFallback = '') {
+  const mongoIds = [];
+  const addMongo = (value) => {
+    const normalized = String(value || '').trim();
+    if (!isLikelyMongoObjectId(normalized) || mongoIds.includes(normalized)) return;
+    mongoIds.push(normalized);
+  };
+
+  if (record && typeof record === 'object') {
+    addMongo(record._id);
+    addMongo(record.recordId);
+    addMongo(record.patient?._id);
+    addMongo(record.patient?.id);
+    addMongo(record.id);
+    addMongo(record.patientId);
+    addMongo(record.patient_id);
+    addMongo(record.nurse?._id);
+  }
+
+  addMongo(routeFallback);
+  addMongo(extractMongoObjectId(record));
+
+  if (mongoIds.length > 0) return mongoIds;
+
+  const uuidIds = [];
+  const addUuid = (value) => {
+    const normalized = String(value || '').trim();
+    if (!isUuidV4ish(normalized) || uuidIds.includes(normalized)) return;
+    uuidIds.push(normalized);
+  };
+
+  if (record && typeof record === 'object') {
+    addUuid(record.uuid);
+    addUuid(record.patientUuid);
+    addUuid(record.patientUUID);
+    addUuid(record.patientId);
+    addUuid(record.patient?.uuid);
+    addUuid(extractApiPatientId(record));
+  }
+
+  addUuid(routeFallback);
+  addUuid(resolvePatientMutationId(record, routeFallback));
+
+  return uuidIds;
+}
+
+/** Mongo `_id` from a list of id candidates (e.g. nurse `idsForMatch`). */
+export function resolveMongoIdFromCandidates(candidates) {
+  const list = Array.isArray(candidates) ? candidates : [candidates];
+  for (const value of list) {
+    const normalized = String(value || '').trim();
+    if (isLikelyMongoObjectId(normalized)) return normalized;
+  }
+  return '';
+}
+
 /** Resolve API patient id from a normalized medical report row. */
 export function resolveMedicalReportPatientId(report) {
   if (!report || typeof report !== 'object') return '';

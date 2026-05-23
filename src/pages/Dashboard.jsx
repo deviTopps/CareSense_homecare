@@ -3,9 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import {
   FiAlertTriangle,
-  FiX,
-  FiMapPin,
-  FiPhone,
   FiUser,
   FiUsers,
   FiMessageCircle,
@@ -24,6 +21,8 @@ import {
   normalizeDashboardSummary,
   fetchPendingAlerts,
 } from '../api';
+import { extractAlertsFromPayload, mapAlertToCase } from '../utils/alertMapping';
+import DashboardAlertModal from '../components/DashboardAlertModal';
 
 async function parseJsonResponse(res) {
   const text = await res.text();
@@ -33,142 +32,6 @@ async function parseJsonResponse(res) {
   } catch {
     throw new Error('Unable to read server response. Please try again.');
   }
-}
-
-function extractPendingAlertsList(payload) {
-  if (payload == null) return [];
-  if (Array.isArray(payload)) return payload;
-  const KEYS = ['data', 'alerts', 'items', 'results', 'pending', 'records', 'rows', 'content'];
-  const tryNest = (v) => {
-    if (Array.isArray(v)) return v;
-    if (v && typeof v === 'object') {
-      for (const nk of KEYS) {
-        const inner = v[nk];
-        if (Array.isArray(inner)) return inner;
-      }
-    }
-    return null;
-  };
-  for (const k of KEYS) {
-    const arr = tryNest(payload[k]);
-    if (arr) return arr;
-  }
-  if (payload?.edges && Array.isArray(payload.edges)) {
-    const fromEdges = payload.edges.map((e) => e?.node ?? e?.alert).filter(Boolean);
-    if (fromEdges.length) return fromEdges;
-  }
-  return [];
-}
-
-function normalizeWatchlistSeverity(raw) {
-  const s = String(raw ?? 'medium').trim().toLowerCase().replace(/\s+/g, '-').replace(/_/g, '-');
-  if (s.includes('critical') || s.includes('urgent')) return 'critical';
-  if (s.includes('high') || s.includes('severe')) return 'high';
-  if (s.includes('medium') || s.includes('moderate')) return 'medium';
-  if (['critical', 'high', 'medium'].includes(s)) return s;
-  return 'medium';
-}
-
-function trimAlertStr(v) {
-  if (v == null) return '';
-  return String(v).trim();
-}
-
-function patientNameFromRelatedObject(o) {
-  if (!o || typeof o !== 'object') return '';
-  const direct = trimAlertStr(
-    o.name ?? o.fullName ?? o.displayName ?? o.patientName ?? o.legalName ?? o.preferredName,
-  );
-  if (direct) return direct;
-  const fn = trimAlertStr(o.firstName ?? o.givenName);
-  const ln = trimAlertStr(o.lastName ?? o.familyName ?? o.surname);
-  const combined = [fn, ln].filter(Boolean).join(' ').trim();
-  if (combined) return combined;
-  return '';
-}
-
-function pickPatientNameFromAlert(raw, depth = 0) {
-  if (!raw || typeof raw !== 'object' || depth > 4) return '';
-  const direct = trimAlertStr(
-    raw.patientName ?? raw.patient_name ?? raw.clientName ?? raw.client_name ??
-    raw.serviceUserName ?? raw.service_user_name ?? raw.residentName ??
-    raw.consumerName ?? raw.fullName ?? raw.full_name ?? raw.subjectName,
-  );
-  if (direct) return direct;
-  if (typeof raw.subject === 'string' && raw.subject.trim()) return raw.subject.trim();
-  if (raw.subject && typeof raw.subject === 'object') {
-    const subName = patientNameFromRelatedObject(raw.subject) || pickPatientNameFromAlert(raw.subject, depth + 1);
-    if (subName) return subName;
-  }
-  if (typeof raw.patient === 'string' && raw.patient.trim()) return raw.patient.trim();
-  const fromPatient = patientNameFromRelatedObject(raw.patient);
-  if (fromPatient) return fromPatient;
-  for (const key of ['client', 'serviceUser', 'service_user', 'beneficiary', 'person', 'individual', 'subject']) {
-    const n = patientNameFromRelatedObject(raw[key]);
-    if (n) return n;
-  }
-  const ctx = raw.context ?? raw.alertContext ?? raw.payload;
-  if (ctx && typeof ctx === 'object') {
-    const fromCtx = pickPatientNameFromAlert(ctx, depth + 1);
-    if (fromCtx) return fromCtx;
-  }
-  const meta = raw.metadata ?? raw.meta ?? raw.details;
-  if (meta && typeof meta === 'object') {
-    const fromMeta = pickPatientNameFromAlert(meta, depth + 1);
-    if (fromMeta) return fromMeta;
-  }
-  return '';
-}
-
-function pickPatientIdFromAlert(raw) {
-  if (!raw || typeof raw !== 'object') return '—';
-  const top = trimAlertStr(
-    raw.patientId ?? raw.patient_id ?? raw.serviceUserId ?? raw.service_user_id ?? raw.clientId ?? raw.client_id,
-  );
-  if (top) return top;
-  const p = raw.patient;
-  if (p && typeof p === 'object') {
-    const id = trimAlertStr(p.id ?? p._id ?? p.uuid ?? p.patientId ?? p.patientUuid);
-    if (id) return id;
-  }
-  for (const key of ['client', 'serviceUser', 'service_user']) {
-    const o = raw[key];
-    if (o && typeof o === 'object') {
-      const id = trimAlertStr(o.id ?? o._id ?? o.uuid);
-      if (id) return id;
-    }
-  }
-  return '—';
-}
-
-function mapPendingAlertToFlag(raw, index) {
-  const id = String(raw?.id ?? raw?._id ?? raw?.uuid ?? raw?.alertId ?? `alert-${index}`);
-  const patientName = pickPatientNameFromAlert(raw);
-  const patientId = pickPatientIdFromAlert(raw);
-  let patient = patientName;
-  if (!patient && patientId && patientId !== '—') patient = 'Patient';
-  const type = String(raw?.type ?? raw?.category ?? raw?.alertType ?? raw?.reasonCode ?? 'Alert').trim() || 'Alert';
-  const severity = normalizeWatchlistSeverity(raw?.severity ?? raw?.priority ?? raw?.level);
-  const reason = String(raw?.reason ?? raw?.message ?? raw?.description ?? raw?.notes ?? raw?.title ?? '—').trim() || '—';
-  const isoDate = raw?.flaggedDate ?? raw?.createdAt ?? raw?.date ?? raw?.updatedAt ?? raw?.raisedAt;
-  let flaggedDate = '—';
-  if (isoDate != null && isoDate !== '') {
-    const d = new Date(String(isoDate));
-    flaggedDate = Number.isNaN(d.getTime()) ? String(isoDate).slice(0, 10) : d.toISOString().slice(0, 10);
-  }
-
-  return {
-    id,
-    patientId,
-    patient: patient || 'Patient',
-    type,
-    severity,
-    reason,
-    flaggedBy: String(raw?.flaggedBy ?? raw?.raisedBy ?? raw?.createdBy ?? raw?.reportedBy ?? '—').trim() || '—',
-    flaggedDate,
-    nurse: String(raw?.nurse ?? raw?.assignedNurse ?? raw?.nurseName ?? raw?.assignedTo ?? '—').trim() || '—',
-    region: String(raw?.region ?? raw?.location ?? raw?.area ?? raw?.address ?? '—').trim() || '—',
-  };
 }
 
 const FALLBACK_URGENT_COUNT = 0;
@@ -205,76 +68,6 @@ function SeverityBadge({ severity }) {
       <span className="db2-severity-dot" style={{ background: cfg.dot }} />
       {severity}
     </span>
-  );
-}
-
-function FlagDetailModal({ flag, onClose }) {
-  if (!flag) return null;
-  const sev = SEVERITY_CONFIG[flag.severity] || SEVERITY_CONFIG.medium;
-  return (
-    <div className="kh-modal-overlay" style={{ zIndex: 2000 }} onClick={onClose} role="presentation">
-      <div className="db2-flag-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-        <div className="db2-flag-modal__header">
-          <div className="db2-flag-modal__header-left">
-            <div className="db2-flag-modal__icon" style={{ background: sev.bg, color: sev.color }}>
-              <FiAlertTriangle size={18} />
-            </div>
-            <div>
-              <h3 className="db2-flag-modal__title">Alert — {flag.type}</h3>
-              <span className="db2-flag-modal__id">ID: {flag.id}</span>
-            </div>
-          </div>
-          <button type="button" className="db2-flag-modal__close" onClick={onClose} aria-label="Close">
-            <FiX size={16} />
-          </button>
-        </div>
-
-        <div className="db2-flag-modal__body">
-          <div className="db2-flag-modal__patient-row">
-            <div className="db2-flag-modal__patient-avatar">
-              {(flag.patient || '?').split(/\s+/).filter(Boolean).map((n) => n[0]).join('').slice(0, 2) || '?'}
-            </div>
-            <div className="db2-flag-modal__patient-info">
-              <strong>{flag.patient}</strong>
-              <div className="db2-flag-modal__patient-meta">
-                <span><FiMapPin size={12} /> {flag.region}</span>
-                <span><FiPhone size={12} /> {flag.nurse}</span>
-              </div>
-            </div>
-            <SeverityBadge severity={flag.severity} />
-          </div>
-
-          <div className="db2-flag-modal__section">
-            <label>Reason</label>
-            <p>{flag.reason}</p>
-          </div>
-
-          <div className="db2-flag-modal__details-grid">
-            <div className="db2-flag-modal__detail">
-              <label>Flagged by</label>
-              <span>{flag.flaggedBy}</span>
-            </div>
-            <div className="db2-flag-modal__detail">
-              <label>Date</label>
-              <span>{flag.flaggedDate}</span>
-            </div>
-            <div className="db2-flag-modal__detail">
-              <label>Assigned nurse</label>
-              <span>{flag.nurse}</span>
-            </div>
-            <div className="db2-flag-modal__detail">
-              <label>Region</label>
-              <span>{flag.region}</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="db2-flag-modal__footer">
-          <button type="button" className="db2-btn db2-btn--outline" onClick={onClose}>Close</button>
-          <button type="button" className="db2-btn db2-btn--danger">Resolve Alert</button>
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -342,31 +135,28 @@ export default function Dashboard() {
     return () => { cancelled = true; };
   }, [on401]);
 
-  useEffect(() => {
-    let cancelled = false;
-    const loadAlerts = async () => {
-      setWatchlistLoading(true);
-      setWatchlistError('');
-      try {
-        const res = await fetchPendingAlerts({ page: 1, limit: 100 }, on401);
-        const json = await parseJsonResponse(res);
-        if (cancelled) return;
-        if (!res.ok) throw new Error(json?.message || json?.error || `Could not load alerts (${res.status})`);
-        const rawList = extractPendingAlertsList(json);
-        setWatchlistFlags(rawList.map((row, i) => mapPendingAlertToFlag(row, i)));
-      } catch (e) {
-        if (cancelled) return;
-        if (e.message !== 'Session expired. Please log in again.') {
-          setWatchlistError(e.message || 'Could not load pending alerts.');
-        }
-        setWatchlistFlags([]);
-      } finally {
-        if (!cancelled) setWatchlistLoading(false);
+  const loadAlerts = useCallback(async () => {
+    setWatchlistLoading(true);
+    setWatchlistError('');
+    try {
+      const res = await fetchPendingAlerts({ page: 1, limit: 100 }, on401);
+      const json = await parseJsonResponse(res);
+      if (!res.ok) throw new Error(json?.message || json?.error || `Could not load alerts (${res.status})`);
+      const rawList = extractAlertsFromPayload(json);
+      setWatchlistFlags(rawList.map((row, i) => mapAlertToCase(row, i)));
+    } catch (e) {
+      if (e.message !== 'Session expired. Please log in again.') {
+        setWatchlistError(e.message || 'Could not load pending alerts.');
       }
-    };
-    loadAlerts();
-    return () => { cancelled = true; };
+      setWatchlistFlags([]);
+    } finally {
+      setWatchlistLoading(false);
+    }
   }, [on401]);
+
+  useEffect(() => {
+    loadAlerts();
+  }, [loadAlerts]);
 
   const watchlistTypeTabs = useMemo(() => {
     const types = [...new Set(watchlistFlags.map((f) => f.type).filter(Boolean))].sort();
@@ -513,7 +303,6 @@ export default function Dashboard() {
             <span>Patient</span>
             <span>Concern</span>
             <span>Severity</span>
-            <span>Region</span>
             <span>Date</span>
             <span>Action</span>
           </div>
@@ -543,7 +332,6 @@ export default function Dashboard() {
                   <span className="db2-watchlist__cell">
                     <SeverityBadge severity={flag.severity} />
                   </span>
-                  <span className="db2-watchlist__cell">{flag.region}</span>
                   <span className="db2-watchlist__cell">{flag.flaggedDate}</span>
                   <span className="db2-watchlist__cell db2-watchlist__cell--action">View</span>
                 </button>
@@ -555,7 +343,12 @@ export default function Dashboard() {
 
       {/* Flag detail modal */}
       {selectedFlag && (
-        <FlagDetailModal flag={selectedFlag} onClose={() => setSelectedFlag(null)} />
+        <DashboardAlertModal
+          alert={selectedFlag}
+          onClose={() => setSelectedFlag(null)}
+          onResolved={loadAlerts}
+          onUnauthorized={on401}
+        />
       )}
     </motion.div>
   );

@@ -597,7 +597,9 @@ export default function Account() {
               subtitle="Manage your agency details, contact information, and branding."
             >
               <div className="settings-profile-avatar-row">
-                <div className={`settings-profile-avatar-v2 settings-profile-avatar-v2--logo${agencyLogoUploading ? ' is-uploading' : ''}`}>
+                <div
+                  className={`settings-profile-avatar-v2 settings-profile-avatar-v2--logo${agencyLogoPreview ? ' settings-profile-avatar-v2--has-logo' : ''}${agencyLogoUploading ? ' is-uploading' : ''}`}
+                >
                   {agencyLogoPreview ? (
                     <img src={agencyLogoPreview} alt="Agency logo preview" className="settings-profile-logo-img" />
                   ) : (

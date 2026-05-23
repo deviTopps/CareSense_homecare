@@ -15,7 +15,7 @@ import {
   FiMessageCircle,
   FiBarChart2,
   FiFolder,
-  FiSmartphone,
+  FiAward,
   FiMoon,
   FiSun,
 } from '../icons/hugeicons-feather';
@@ -105,8 +105,16 @@ export default function Sidebar({
     document.body.classList.add('sidebar-resizing');
   };
 
-  const agencyName = user?.agency?.name || user?.agencyName || user?.organizationName || user?.organisationName || 'Agency Name';
-  const initials = user ? `${(user.firstName?.[0] || '')}${(user.lastName?.[0] || '')}`.toUpperCase() : 'KC';
+  const agencyName = user?.agency?.name || user?.agencyName || user?.organizationName || user?.organisationName || 'Your agency';
+  const planName = (() => {
+    const raw = user?.plan ?? user?.subscriptionPlan ?? user?.planName ?? user?.tier ?? user?.agency?.plan;
+    if (raw && typeof raw === 'object') {
+      return String(raw.name || raw.label || raw.title || 'Standard').trim() || 'Standard';
+    }
+    const s = String(raw || '').trim();
+    return s || 'Standard';
+  })();
+  const planLabel = planName.toLowerCase() === 'free' ? 'Free' : planName;
 
   return (
     <>
@@ -195,21 +203,31 @@ export default function Sidebar({
             </div>
           </nav>
 
-          <div className="sidebar-upgrade-card">
-            <div className="sidebar-upgrade-card__icon">
-              <div>
-                <FiSmartphone size={16} />
-              </div>
+          <div
+            className="sidebar-plan-card"
+            title={isCollapsed ? `${planLabel} · ${agencyName}` : undefined}
+          >
+            <div className="sidebar-plan-card__icon" aria-hidden>
+              <FiAward size={18} />
             </div>
-            <div className="sidebar-upgrade-card__content">
-              <span className="sidebar-upgrade-card__eyebrow">Current plan :</span>
-              <strong>Standard Plan</strong>
-              <p>Collaborate on your finances. Upgrade to Shared Budget.</p>
-            </div>
-            <NavLink to="/reports" className="sidebar-upgrade-card__action" title="Upgrade plan">
-              <span className="sidebar-link-label">{agencyName}</span>
-            </NavLink>
-            {isCollapsed && <span className="sidebar-upgrade-card__initials">{initials}</span>}
+            {!isCollapsed && (
+              <>
+                <div className="sidebar-plan-card__body">
+                  <span className="sidebar-plan-card__eyebrow">Current plan</span>
+                  <p className="sidebar-plan-card__name">{planLabel}</p>
+                  <p className="sidebar-plan-card__agency">{agencyName}</p>
+                </div>
+                <NavLink
+                  to="/account"
+                  className="sidebar-plan-card__link"
+                  onClick={onClose}
+                  title="Plan and billing settings"
+                >
+                  <span>Manage plan</span>
+                  <FiChevronRight size={14} aria-hidden />
+                </NavLink>
+              </>
+            )}
           </div>
 
           {!isCollapsed && typeof onSidebarResize === 'function' && (

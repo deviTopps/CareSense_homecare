@@ -1,9 +1,21 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { FiPlus, FiSearch, FiX, FiChevronRight, FiChevronLeft, FiCheck, FiSave, FiChevronsLeft, FiChevronsRight, FiUserPlus, FiCheckCircle, FiInfo, FiDownload, FiUser } from '../icons/hugeicons-feather';
+import {
+  FiPlus, FiSearch, FiX, FiChevronRight, FiChevronLeft, FiChevronDown, FiCheck, FiSave,
+  FiChevronsLeft, FiChevronsRight, FiUserPlus, FiCheckCircle, FiInfo, FiDownload, FiUser,
+  FiMoreHorizontal, FiTrash2, FiAlertCircle, FiRefreshCw,
+} from '../icons/hugeicons-feather';
 import { apiFetch } from '../api';
-import { extractApiPatientId, fetchAllPatients, isLikelyMongoObjectId, resolvePatientMutationId } from '../utils/patients';
+import {
+  collectPatientAssignmentIds,
+  extractApiPatientId,
+  fetchAllPatients,
+  isLikelyMongoObjectId,
+  resolveMongoIdFromCandidates,
+  resolvePatientMutationId,
+} from '../utils/patients';
 
 const patientsData = [
   { id: 'P-1001', name: 'Kwame Boateng', age: 72, gender: 'Male', diagnosis: 'Hypertension, Type 2 Diabetes', phone: '+233 24 111 2222', address: '14 Osu Badu St, Accra', region: 'Accra', nurses: ['Efua Mensah'], emergency: 'Ama Boateng (+233 20 333 4444)', status: 'active', enrolled: '2024-06-01' },
@@ -24,6 +36,141 @@ const patientsData = [
 ];
 
 const ROWS_OPTIONS = [5, 10, 15];
+
+const PATIENT_ROW_ACTIONS = [
+  { value: 'deactivate', label: 'Deactivate', icon: FiX, tone: 'default', disabledWhen: (p) => p.status !== 'active' },
+  { value: 'reactivate', label: 'Reactivate', icon: FiRefreshCw, tone: 'default', disabledWhen: (p) => p.status === 'active' },
+  { value: 'report_dead', label: 'Report as dead', icon: FiAlertCircle, tone: 'warning', disabledWhen: (p) => p.status !== 'active' },
+  { value: 'delete', label: 'Delete patient', icon: FiTrash2, tone: 'danger', disabledWhen: () => false },
+];
+
+function PatientRowActions({ patient, onAction }) {
+  const [open, setOpen] = useState(false);
+  const [menuStyle, setMenuStyle] = useState(null);
+  const wrapRef = useRef(null);
+  const toggleRef = useRef(null);
+  const menuRef = useRef(null);
+
+  const updateMenuPosition = useCallback(() => {
+    const btn = toggleRef.current;
+    if (!btn) return;
+    const rect = btn.getBoundingClientRect();
+    const menuWidth = 196;
+    const menuHeight = menuRef.current?.offsetHeight || 160;
+    const gap = 6;
+    const padding = 8;
+
+    let top = rect.bottom + gap;
+    let left = rect.right - menuWidth;
+
+    if (top + menuHeight > window.innerHeight - padding) {
+      top = rect.top - menuHeight - gap;
+    }
+    left = Math.max(padding, Math.min(left, window.innerWidth - menuWidth - padding));
+    top = Math.max(padding, Math.min(top, window.innerHeight - menuHeight - padding));
+
+    setMenuStyle({
+      position: 'fixed',
+      top: `${top}px`,
+      left: `${left}px`,
+      width: `${menuWidth}px`,
+      zIndex: 1075,
+    });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setMenuStyle(null);
+      return undefined;
+    }
+    updateMenuPosition();
+    const raf = requestAnimationFrame(() => updateMenuPosition());
+    const onScrollOrResize = () => updateMenuPosition();
+    window.addEventListener('resize', onScrollOrResize);
+    window.addEventListener('scroll', onScrollOrResize, true);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('resize', onScrollOrResize);
+      window.removeEventListener('scroll', onScrollOrResize, true);
+    };
+  }, [open, updateMenuPosition]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDocClick = (e) => {
+      const target = e.target;
+      if (wrapRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onDocClick);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onDocClick);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [open]);
+
+  const menuPortal = open && menuStyle
+    ? createPortal(
+        <div
+          ref={menuRef}
+          className="patients-row-actions__menu patients-row-actions__menu--portal"
+          role="menu"
+          style={menuStyle}
+          onClick={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          {PATIENT_ROW_ACTIONS.map((action) => {
+            const Icon = action.icon;
+            const disabled = action.disabledWhen(patient);
+            return (
+              <button
+                key={action.value}
+                type="button"
+                role="menuitem"
+                className={`patients-row-actions__item patients-row-actions__item--${action.tone}${disabled ? ' is-disabled' : ''}`}
+                disabled={disabled}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (disabled) return;
+                  setOpen(false);
+                  onAction(patient, action.value, e);
+                }}
+              >
+                <Icon size={14} aria-hidden />
+                {action.label}
+              </button>
+            );
+          })}
+        </div>,
+        document.body,
+      )
+    : null;
+
+  return (
+    <div className="patients-row-actions" ref={wrapRef}>
+      <button
+        ref={toggleRef}
+        type="button"
+        className={`patients-row-actions__toggle${open ? ' is-open' : ''}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`Actions for ${patient.name}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((prev) => !prev);
+        }}
+      >
+        <span>Actions</span>
+        <FiChevronDown size={14} className="patients-row-actions__chevron" aria-hidden />
+      </button>
+      {menuPortal}
+    </div>
+  );
+}
 const PATIENT_PHOTO_CACHE_KEY = 'patientProfilePhotoCache';
 const NURSE_ROLE_LABELS = {
   head_nurse: 'Head Nurse',
@@ -237,6 +384,7 @@ const normalizeAssignableNurse = (nurse) => {
 
   return {
     id: nurse?._id || nurse?.id || null,
+    _id: nurse?._id || null,
     name,
     specialisation: nurse?.jobTitle || NURSE_ROLE_LABELS[nurse?.role] || nurse?.specialisation || nurse?.specialization || 'Nurse',
     region: nurse?.region || nurse?.location || nurse?.address || '—',
@@ -886,13 +1034,13 @@ export default function Patients() {
   };
 
   const handleAssignNurse = async (patient, nurse) => {
-    const patientIdentifierCandidates = Array.from(new Set([
-      patient?.uuid,
-      patient?.recordId,
-      patient?.id,
-    ].map((value) => String(value || '').trim()).filter(Boolean)));
+    const patientIdentifierCandidates = collectPatientAssignmentIds(
+      { _id: patient?.recordId, uuid: patient?.uuid, patientId: patient?.patientId, id: patient?.id },
+      patient?.profileRouteId || patient?.patientId || '',
+    );
 
-    const nurseId = String(nurse?.id || '').trim();
+    const nurseId = resolveMongoIdFromCandidates([nurse?._id, nurse?.id])
+      || String(nurse?.id || '').trim();
 
     if (patientIdentifierCandidates.length === 0 || !nurseId) {
       setAssignmentError('Missing patient or nurse identifier for assignment.');
@@ -1470,9 +1618,17 @@ export default function Patients() {
             <div className="patients-subtoolbar-actions">
               <label className="patients-meta-pill patients-meta-pill--select">
                 <span className="patients-meta-pill__label">Rows</span>
-                <select value={rowsPerPage} onChange={e => { setRowsPerPage(Number(e.target.value)); setPage(1); }} className="patients-rows-select">
-                  {ROWS_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
-                </select>
+                <span className="patients-select-field patients-select-field--compact">
+                  <select
+                    value={rowsPerPage}
+                    onChange={(e) => { setRowsPerPage(Number(e.target.value)); setPage(1); }}
+                    className="patients-select-field__input"
+                    aria-label="Rows per page"
+                  >
+                    {ROWS_OPTIONS.map((r) => <option key={r} value={r}>{r}</option>)}
+                  </select>
+                  <FiChevronDown size={14} className="patients-select-field__chevron" aria-hidden />
+                </span>
               </label>
 
               <button type="button" className="patients-toolbar-btn" onClick={handleExportPatients}>
@@ -1499,7 +1655,7 @@ export default function Patients() {
                 <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('nurse')}>Assigned Nurse <SortIcon col="nurse" /></th>
                 <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('enrolled')}>Enrolled <SortIcon col="enrolled" /></th>
                 <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('status')}>Status <SortIcon col="status" /></th>
-                <th style={{ width: 190, textAlign: 'right' }}>Action</th>
+                <th className="patients-table-actions-col">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -1563,24 +1719,14 @@ export default function Patients() {
                       {p.status === 'active' ? 'Active' : (p.status === 'deactivated' ? 'Deactivated' : 'Death Records')}
                     </span>
                   </td>
-                  <td style={{ textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
-                    <select
-                      className="patients-action-select"
-                      defaultValue=""
-                      onClick={(e) => e.stopPropagation()}
-                      onChange={(e) => {
-                        const nextAction = e.target.value;
-                        handlePatientActionSelect(p, nextAction);
-                        e.target.value = '';
+                  <td className="patients-table-actions-cell" onClick={(e) => e.stopPropagation()}>
+                    <PatientRowActions
+                      patient={p}
+                      onAction={(patient, actionValue, e) => {
+                        e.stopPropagation();
+                        handlePatientActionSelect(patient, actionValue);
                       }}
-                      aria-label={`Actions for ${p.name}`}
-                    >
-                      <option value="" hidden>Select action</option>
-                      <option value="deactivate" disabled={p.status !== 'active'}>Deactivte</option>
-                      <option value="reactivate" disabled={p.status === 'active'}>Reactivate</option>
-                      <option value="report_dead" disabled={p.status !== 'active'}>Report As Dead</option>
-                      <option value="delete">Delete Patient</option>
-                    </select>
+                    />
                   </td>
                 </tr>
               ))}

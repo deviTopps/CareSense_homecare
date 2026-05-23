@@ -116,8 +116,95 @@ export async function clockOutAttendance(attendanceId, payload = {}, onUnauthori
   throw new Error(lastFail ? clockOutErrorFromResponse(lastFail.res, lastFail.text, lastFail.data) : 'Clock-out failed.');
 }
 
+function nurseBucketMatchesId(bucket, nurseId) {
+  const nid = String(nurseId || '').trim();
+  if (!nid || !bucket || typeof bucket !== 'object') return false;
+  const ids = [
+    bucket.nurseId,
+    bucket.nurse_id,
+    bucket.id,
+    bucket._id,
+    bucket.uuid,
+    bucket.nurse?.id,
+    bucket.nurse?._id,
+    bucket.nurse?.uuid,
+  ]
+    .filter((v) => v != null && v !== '')
+    .map((v) => String(v).trim());
+  return ids.some((id) => id === nid);
+}
+
+function sessionsFromNurseBucket(bucket) {
+  if (!bucket) return [];
+  if (Array.isArray(bucket)) return bucket;
+  if (typeof bucket !== 'object') return [];
+  for (const key of ['sessions', 'attendance', 'attendances', 'records', 'clocks', 'visits', 'items', 'rows', 'data']) {
+    if (Array.isArray(bucket[key])) return bucket[key];
+  }
+  return [];
+}
+
 /**
- * Fetch one nurse's attendance for a calendar month.
+ * Normalize GET /attendance/nurses/monthly for one nurse (clock-in / clock-out sessions).
+ *
+ * @param {unknown} json
+ * @param {string} [nurseId]
+ * @returns {unknown[]}
+ */
+export function flattenNursesMonthlyAttendanceResponse(json, nurseId) {
+  if (!json) return [];
+  if (Array.isArray(json)) return json;
+
+  const nid = String(nurseId || '').trim();
+  const root = json?.data != null && typeof json.data === 'object' && !Array.isArray(json.data)
+    ? { ...json, ...json.data }
+    : json;
+
+  const nursesList = root?.nurses ?? root?.nurseRecords ?? root?.byNurse;
+  if (Array.isArray(nursesList)) {
+    if (!nid) {
+      return nursesList.flatMap((bucket) => sessionsFromNurseBucket(bucket));
+    }
+    const match = nursesList.find((bucket) => nurseBucketMatchesId(bucket, nid));
+    return sessionsFromNurseBucket(match);
+  }
+  if (nursesList && typeof nursesList === 'object' && !Array.isArray(nursesList)) {
+    if (nid && Array.isArray(nursesList[nid])) return nursesList[nid];
+    if (nid) {
+      for (const [key, val] of Object.entries(nursesList)) {
+        if (String(key).trim() === nid) return sessionsFromNurseBucket(val);
+      }
+    }
+    return Object.values(nursesList).flatMap((bucket) => sessionsFromNurseBucket(bucket));
+  }
+
+  const direct = root?.records
+    ?? root?.attendances
+    ?? root?.sessions
+    ?? root?.items
+    ?? root?.rows
+    ?? root?.result
+    ?? root?.attendance;
+  if (Array.isArray(direct)) return direct;
+  if (direct && typeof direct === 'object') {
+    return sessionsFromNurseBucket(direct);
+  }
+
+  return sessionsFromNurseBucket(root);
+}
+
+/**
+ * Normalize GET /attendance/nurse/:nurseId/monthly (clock-in / clock-out sessions).
+ *
+ * @param {unknown} json
+ * @returns {unknown[]}
+ */
+export function flattenNurseMonthlyAttendanceResponse(json) {
+  return flattenNursesMonthlyAttendanceResponse(json);
+}
+
+/**
+ * Fetch one nurse's clock-in / clock-out sessions for a calendar month.
  * GET /attendance/nurse/:nurseId/monthly?month=YYYY-MM
  *
  * @param {string} nurseId
@@ -153,11 +240,21 @@ export async function fetchNurseMonthlyAttendance(nurseId, query, onUnauthorized
 }
 
 /**
+ * Normalize GET /attendance/nurse/:nurseId/daily (clock-in / clock-out sessions).
+ *
+ * @param {unknown} json
+ * @returns {unknown[]}
+ */
+export function flattenNurseDailyAttendanceResponse(json) {
+  return flattenNursesMonthlyAttendanceResponse(json);
+}
+
+/**
  * Fetch one nurse's clock-in / clock-out records for a day.
- * GET /attendance/nurse/:nurseId/daily
+ * GET /attendance/nurse/:nurseId/daily?date=YYYY-MM-DD
  *
  * @param {string} nurseId
- * @param {{ date?: string }} [query] — optional YYYY-MM-DD (backend-dependent)
+ * @param {{ date?: string }} [query] — optional YYYY-MM-DD; omit for backend default (usually today)
  * @param {() => void} [onUnauthorized]
  * @returns {Promise<unknown>}
  */

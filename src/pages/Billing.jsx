@@ -13,11 +13,17 @@ import {
   FiPrinter,
   FiUser,
 } from '../icons/hugeicons-feather';
-import { apiFetch, getUser, shareMedicalReportByEmail } from '../api';
-import { extractApiPatientId, fetchAllPatients, resolveMedicalReportPatientId } from '../utils/patients';
+import { shareMedicalReportByEmail } from '../api';
+import { extractApiPatientId, resolveMedicalReportPatientId } from '../utils/patients';
 import { buildMedicalReportPdfFile, downloadPdfFile, REPORT_PRINT_STYLES } from '../utils/medicalReportPdf';
 import MedicalReportDocument from '../components/MedicalReportDocument';
 import { enrichReportWithPatientProfile } from '../utils/medicalReportTemplate';
+import {
+  loadMedicalReportsCatalog,
+  loadPatientProfilesForReports,
+  readMedicalReportsCache,
+  writeMedicalReportsCache,
+} from '../utils/medicalReports';
 
 const ROWS_PER_PAGE = 10;
 
@@ -118,19 +124,6 @@ function extractAgencyLogoUrl(user) {
   }
 
   return '';
-}
-
-function extractMedicalReportArray(payload) {
-  if (Array.isArray(payload)) return payload;
-  if (Array.isArray(payload?.reports)) return payload.reports;
-  if (Array.isArray(payload?.data)) return payload.data;
-  if (payload?.data && typeof payload.data === 'object' && (payload.data.report || payload.data.reportMarkdown || payload.data.patient)) return [payload.data];
-  if (Array.isArray(payload?.data?.reports)) return payload.data.reports;
-  if (Array.isArray(payload?.items)) return payload.items;
-  if (payload?.report && typeof payload.report === 'object') return [payload.report];
-  if (payload && typeof payload === 'object' && (payload.report || payload.reportMarkdown || payload.patient)) return [payload];
-  if (payload?.data?.report && typeof payload.data.report === 'object') return [payload.data.report];
-  return [];
 }
 
 function normalizeMedicalReport(rawReport, index) {
@@ -561,10 +554,12 @@ function ShareEmailModal({ report, attachmentHtml, onClose }) {
         </div>
         <div className="app-modal-dialog__body">
           {sent ? (
-            <div style={{ textAlign: 'center', padding: '24px 0' }}>
-              <FiSend size={32} style={{ color: '#45b6fe', marginBottom: 12 }} />
-              <p style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>Email sent successfully</p>
-              <p style={{ fontSize: 13, color: '#64748b', margin: 0 }}>
+            <div className="reports-email-success">
+              <div className="reports-email-success__icon" aria-hidden>
+                <FiSend size={28} strokeWidth={2} />
+              </div>
+              <p className="reports-email-success__title">Email sent successfully</p>
+              <p className="reports-email-success__text">
                 The {report.type} for <strong>{report.patientName}</strong> has been sent to <strong>{recipientEmail}</strong>.
               </p>
             </div>
@@ -675,8 +670,10 @@ function ShareEmailModal({ report, attachmentHtml, onClose }) {
 }
 
 export default function Billing() {
-  const [reports, setReports] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const initialCachedReports = useMemo(() => readMedicalReportsCache() || [], []);
+  const [reports, setReports] = useState(initialCachedReports);
+  const [loading, setLoading] = useState(() => initialCachedReports.length === 0);
+  const [refreshing, setRefreshing] = useState(() => initialCachedReports.length > 0);
   const [loadError, setLoadError] = useState('');
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('All');
@@ -695,91 +692,42 @@ export default function Billing() {
 
   useEffect(() => {
     let cancelled = false;
+
+    loadPatientProfilesForReports()
+      .then((profileMap) => {
+        if (!cancelled) setPatientProfilesById(profileMap);
+      })
+      .catch(() => {
+        if (!cancelled) setPatientProfilesById({});
+      });
+
     (async () => {
       try {
         setLoadError('');
-        let loadedReports = [];
-        let shouldFallbackToPatientRequests = false;
+        const loadedReports = await loadMedicalReportsCatalog((entry, index) => (
+          normalizeMedicalReport(entry, index)
+        ));
 
-        const response = await apiFetch('/ai/medical-report', { method: 'GET', quiet: true });
-        const payload = await response.json().catch(() => ({}));
-        if (response.ok) {
-          loadedReports = extractMedicalReportArray(payload)
-            .map((entry, index) => normalizeMedicalReport(entry, index))
-            .filter((entry) => entry?.reportId);
-        } else {
-          const message = String(payload?.message || payload?.error || '').toLowerCase();
-          shouldFallbackToPatientRequests = response.status === 404 || response.status === 405 || message.includes('not found');
-          if (!shouldFallbackToPatientRequests) {
-            throw new Error(payload?.message || payload?.error || 'Unable to load generated medical reports.');
-          }
-        }
-
-        if (shouldFallbackToPatientRequests) {
-          const patients = await fetchAllPatients();
-          const patientReports = await Promise.allSettled(
-            (Array.isArray(patients) ? patients : [])
-              .map((patient) => ({ patient, patientId: extractApiPatientId(patient) }))
-              .filter(({ patientId }) => Boolean(patientId))
-              .map(async ({ patient, patientId }) => {
-                const reportResponse = await apiFetch('/ai/medical-report', {
-                  method: 'POST',
-                  body: JSON.stringify({ patientId }),
-                  quiet: true,
-                });
-                const reportPayload = await reportResponse.json().catch(() => ({}));
-                if (!reportResponse.ok) return [];
-
-                const extracted = extractMedicalReportArray(reportPayload);
-                if (!extracted.length && reportPayload && typeof reportPayload === 'object') {
-                  extracted.push(reportPayload);
-                }
-
-                return extracted
-                  .map((entry, index) => normalizeMedicalReport(
-                    {
-                      ...entry,
-                      patient: entry?.patient || patient,
-                      patientId: extractApiPatientId(entry) || extractApiPatientId({ patient: entry?.patient || patient }) || patientId,
-                      patientName: entry?.patientName || getPatientName(patient),
-                    },
-                    index,
-                  ))
-                  .filter((entry) => entry?.reportId);
-              }),
-          );
-
-          loadedReports = patientReports
-            .filter((result) => result.status === 'fulfilled')
-            .flatMap((result) => result.value || []);
-        }
-
-        const uniqueByReportId = Array.from(
-          new Map(loadedReports.map((entry) => [String(entry.reportId), entry])).values(),
-        );
-
-        if (!cancelled) setReports(uniqueByReportId);
-
-        try {
-          const patients = await fetchAllPatients();
-          const profileMap = {};
-          (Array.isArray(patients) ? patients : []).forEach((patient) => {
-            const id = extractApiPatientId(patient);
-            if (id) profileMap[id] = patient;
-          });
-          if (!cancelled) setPatientProfilesById(profileMap);
-        } catch {
-          if (!cancelled) setPatientProfilesById({});
+        if (!cancelled) {
+          setReports(loadedReports);
+          writeMedicalReportsCache(loadedReports);
         }
       } catch (error) {
         if (!cancelled) {
-          setReports([]);
-          setLoadError(error?.message || 'Unable to load generated medical reports.');
+          setReports((prev) => {
+            if (prev.length > 0) return prev;
+            setLoadError(error?.message || 'Unable to load generated medical reports.');
+            return [];
+          });
         }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
     })();
+
     return () => { cancelled = true; };
   }, []);
 
@@ -851,7 +799,10 @@ export default function Billing() {
           <div>
             <div className="patients-kicker">Medical records</div>
             <h2 className="patients-title">Reports</h2>
-            <p className="patients-subtitle">View, read, and share generated medical reports for your patients.</p>
+            <p className="patients-subtitle">
+              View, read, and share generated medical reports for your patients.
+              {refreshing && <span style={{ marginLeft: 8, color: 'var(--kh-text-muted)', fontWeight: 500 }}>Updating…</span>}
+            </p>
           </div>
           <div className="patients-hero-actions">
             <button type="button" className="patients-toolbar-btn" onClick={handleExport}>

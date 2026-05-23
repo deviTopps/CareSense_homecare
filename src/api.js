@@ -136,6 +136,22 @@ export async function createPlatformUser(payload, onUnauthorized) {
   );
 }
 
+/**
+ * Set or change password for a workspace user (admin).
+ * Backend: PATCH /auth/users/:userId/change-password — body: { newPassword }
+ */
+export async function changePlatformUserPassword(userId, { password, newPassword }, onUnauthorized) {
+  const nextPassword = newPassword ?? password;
+  return apiFetch(
+    `/auth/users/${encodeURIComponent(userId)}/change-password`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ newPassword: nextPassword }),
+    },
+    onUnauthorized,
+  );
+}
+
 /** GET `/users` — all created users for the workspace (page/limit if supported by backend). */
 export async function fetchAuthUsers(params = {}, onUnauthorized) {
   const page = params.page != null ? Number(params.page) : 1;

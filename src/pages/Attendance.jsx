@@ -1,8 +1,16 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiCheckCircle, FiAlertCircle, FiXCircle, FiMapPin, FiClock, FiX, FiSearch, FiChevronLeft, FiChevronRight, FiChevronsLeft, FiChevronsRight, FiFilter } from '../icons/hugeicons-feather';
+import { FiCheckCircle, FiAlertCircle, FiXCircle, FiMapPin, FiX, FiSearch, FiChevronLeft, FiChevronRight, FiChevronsLeft, FiChevronsRight } from '../icons/hugeicons-feather';
 import { getUser, getToken } from '../api';
-import { clockInAttendance, clockOutAttendance, fetchNurseMonthlyAttendance, fetchNurseDailyAttendance } from '../utils/attendance';
+import {
+  clockInAttendance,
+  clockOutAttendance,
+  fetchNurseDailyAttendance,
+  fetchNurseMonthlyAttendance,
+  flattenNurseDailyAttendanceResponse,
+  flattenNurseMonthlyAttendanceResponse,
+} from '../utils/attendance';
+import './Attendance.css';
 
 const ACTIVE_ATTENDANCE_SESSION_KEY = 'attendanceActiveSessionId';
 
@@ -278,10 +286,12 @@ function attendanceRowFromApiResponse(data, user) {
   };
 }
 
+function attendanceListFromDailyResponse(json) {
+  return flattenNurseDailyAttendanceResponse(json);
+}
+
 function attendanceListFromMonthlyResponse(json) {
-  if (Array.isArray(json)) return json;
-  const raw = json?.data ?? json?.records ?? json?.attendances ?? json?.items ?? json?.rows ?? json?.result;
-  return Array.isArray(raw) ? raw : [];
+  return flattenNurseMonthlyAttendanceResponse(json);
 }
 
 function resolveNamedField(val, fallbackStr) {
@@ -374,32 +384,31 @@ export default function Attendance() {
   const perPage = 10;
 
   const [apiRecords, setApiRecords] = useState([]);
-  const [clockPatientId, setClockPatientId] = useState('');
-  const [clockNotes, setClockNotes] = useState('');
   const [includeGps, setIncludeGps] = useState(true);
   const [clockInLoading, setClockInLoading] = useState(false);
   const [clockOutLoading, setClockOutLoading] = useState(false);
   const [sessionError, setSessionError] = useState('');
   const [sessionSuccess, setSessionSuccess] = useState('');
   const [activeAttendanceId, setActiveAttendanceId] = useState(null);
-  const [clockOutNotes, setClockOutNotes] = useState('');
 
-  const [monthlyRecords, setMonthlyRecords] = useState([]);
   const [dailyRecords, setDailyRecords] = useState([]);
+  const [monthlyRecords, setMonthlyRecords] = useState([]);
   const [listLoading, setListLoading] = useState(false);
-  const [dailyLoading, setDailyLoading] = useState(false);
   const [listError, setListError] = useState('');
-  const [dailyError, setDailyError] = useState('');
-  const lastMonthlyQueryRef = useRef(null);
   const lastDailyQueryRef = useRef(null);
+  const lastMonthlyQueryRef = useRef(null);
+
+  const serverRecords = useMemo(
+    () => (selectedDate ? dailyRecords : monthlyRecords),
+    [selectedDate, dailyRecords, monthlyRecords],
+  );
 
   const allRecords = useMemo(() => {
     const map = new Map();
-    for (const r of monthlyRecords) map.set(r.id, r);
-    for (const r of dailyRecords) map.set(r.id, r);
+    for (const r of serverRecords) map.set(r.id, r);
     for (const r of apiRecords) map.set(r.id, r);
     return sortRecordsByDateDesc(Array.from(map.values()));
-  }, [monthlyRecords, dailyRecords, apiRecords]);
+  }, [serverRecords, apiRecords]);
 
   /** Open shift id from server-backed lists when this tab never stored clock-in uuid. */
   const inferredOpenAttendanceId = useMemo(
@@ -492,59 +501,78 @@ export default function Attendance() {
       setMonthlyRecords(sortRecordsByDateDesc(rows));
       lastMonthlyQueryRef.current = { year: y, month: m, monthParam };
     } catch (e) {
-      setListError(e.message || 'Could not load attendance.');
+      setListError(e.message || 'Could not load monthly attendance.');
       setMonthlyRecords([]);
     } finally {
       setListLoading(false);
     }
   }, [onUnauthorized, nurseIdResolved]);
 
-  const loadDailyAttendance = useCallback(async (nurseId, dateYYYYMMDD) => {
-    const nid = String(nurseId || '').trim();
+  const loadDailyAttendance = useCallback(async (dateYYYYMMDD) => {
+    setListLoading(true);
+    setListError('');
+    const nid = String(nurseIdResolved || '').trim();
     if (!nid) {
+      setListLoading(false);
       setDailyRecords([]);
-      setDailyError('');
       return;
     }
-    setDailyLoading(true);
-    setDailyError('');
+    const date = String(dateYYYYMMDD || '').trim();
+    if (!date) {
+      setListLoading(false);
+      return;
+    }
     try {
-      const body = await fetchNurseDailyAttendance(
-        nid,
-        dateYYYYMMDD ? { date: dateYYYYMMDD } : {},
-        onUnauthorized,
-      );
-      const list = attendanceListFromMonthlyResponse(body);
+      const body = await fetchNurseDailyAttendance(nid, { date }, onUnauthorized);
+      const list = attendanceListFromDailyResponse(body);
       const u = getUser();
       const rows = list.map((item) => attendanceRowFromApiResponse(item, u));
       setDailyRecords(sortRecordsByDateDesc(rows));
-      lastDailyQueryRef.current = { nurseId: nid, date: dateYYYYMMDD || new Date().toISOString().slice(0, 10) };
+      lastDailyQueryRef.current = { nurseId: nid, date };
     } catch (e) {
-      setDailyError(e.message || 'Could not load daily attendance.');
+      setListError(e.message || 'Could not load daily attendance.');
       setDailyRecords([]);
     } finally {
-      setDailyLoading(false);
+      setListLoading(false);
     }
-  }, [onUnauthorized]);
+  }, [onUnauthorized, nurseIdResolved]);
 
-  useEffect(() => {
-    const now = new Date();
-    if (selectedYear && selectedMonth !== '') {
-      loadMonthlyAttendance(Number(selectedYear), Number(selectedMonth) + 1);
-    } else {
-      loadMonthlyAttendance(now.getFullYear(), now.getMonth() + 1);
+  const reloadAttendanceLists = useCallback(() => {
+    if (selectedDate) {
+      void loadDailyAttendance(selectedDate);
+      return;
     }
-  }, [selectedYear, selectedMonth, loadMonthlyAttendance]);
+    const q = lastMonthlyQueryRef.current;
+    if (q?.year != null && q?.month != null) {
+      void loadMonthlyAttendance(q.year, q.month);
+      return;
+    }
+    const now = new Date();
+    void loadMonthlyAttendance(now.getFullYear(), now.getMonth() + 1);
+  }, [selectedDate, loadDailyAttendance, loadMonthlyAttendance]);
 
   useEffect(() => {
     if (!nurseIdResolved) {
       setDailyRecords([]);
-      setDailyError('');
+      setMonthlyRecords([]);
+      setListError('');
       return;
     }
-    const date = selectedDate || new Date().toISOString().slice(0, 10);
-    loadDailyAttendance(nurseIdResolved, date);
-  }, [nurseIdResolved, selectedDate, loadDailyAttendance]);
+    if (selectedDate) {
+      loadDailyAttendance(selectedDate);
+      return;
+    }
+    const now = new Date();
+    if (selectedYear && selectedMonth !== '') {
+      loadMonthlyAttendance(Number(selectedYear), Number(selectedMonth) + 1);
+      return;
+    }
+    if (selectedYear) {
+      loadMonthlyAttendance(Number(selectedYear), now.getMonth() + 1);
+      return;
+    }
+    loadMonthlyAttendance(now.getFullYear(), now.getMonth() + 1);
+  }, [nurseIdResolved, selectedDate, selectedYear, selectedMonth, loadDailyAttendance, loadMonthlyAttendance]);
 
   const handleClockIn = async () => {
     setSessionError('');
@@ -566,8 +594,6 @@ export default function Attendance() {
       }
       const payload = {
         nurseId: nid,
-        ...(clockPatientId.trim() && { patientId: clockPatientId.trim() }),
-        ...(clockNotes.trim() && { notes: clockNotes.trim() }),
         ...(coords && {
           latitude: coords.latitude,
           longitude: coords.longitude,
@@ -591,14 +617,7 @@ export default function Attendance() {
       setApiRecords((prev) => [row, ...prev]);
       setSessionSuccess(`Clock-in recorded at ${row.clockIn}. Use Clock out when the visit ends.`);
       setPage(1);
-      const q = lastMonthlyQueryRef.current;
-      if (q?.year != null && q?.month != null) {
-        void loadMonthlyAttendance(q.year, q.month);
-      }
-      if (nurseIdResolved) {
-        const d = selectedDate || new Date().toISOString().slice(0, 10);
-        void loadDailyAttendance(nurseIdResolved, d);
-      }
+      reloadAttendanceLists();
     } catch (err) {
       setSessionError(err.message || 'Clock-in failed.');
     } finally {
@@ -637,7 +656,6 @@ export default function Attendance() {
         }
       }
       const payload = {
-        ...(clockOutNotes.trim() && { notes: clockOutNotes.trim() }),
         ...(coords && {
           latitude: coords.latitude,
           longitude: coords.longitude,
@@ -671,16 +689,8 @@ export default function Attendance() {
       } catch {
         /* ignore */
       }
-      setClockOutNotes('');
       setSessionSuccess(`Clock-out recorded at ${outTime}.`);
-      const q = lastMonthlyQueryRef.current;
-      if (q?.year != null && q?.month != null) {
-        void loadMonthlyAttendance(q.year, q.month);
-      }
-      if (nurseIdResolved) {
-        const d = selectedDate || new Date().toISOString().slice(0, 10);
-        void loadDailyAttendance(nurseIdResolved, d);
-      }
+      reloadAttendanceLists();
     } catch (err) {
       setSessionError(err.message || 'Clock-out failed.');
     } finally {
@@ -698,402 +708,296 @@ export default function Attendance() {
   };
 
   const hasFilters = statusFilter !== 'All' || nurseFilter !== 'All Nurses' || selectedDate || selectedMonth !== '' || selectedYear;
+  const userDisplayName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.email || 'user';
+  const onShift = Boolean(displayOpenAttendanceId);
+
+  const monthlyPeriodLabel = useMemo(() => {
+    if (selectedDate) return '';
+    const now = new Date();
+    if (selectedYear && selectedMonth !== '') {
+      return `${selectedYear}-${String(Number(selectedMonth) + 1).padStart(2, '0')}`;
+    }
+    if (selectedYear) {
+      return `${selectedYear}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    }
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  }, [selectedDate, selectedYear, selectedMonth]);
+
+  const statusTagClass = (status) => {
+    if (status === 'verified') return 'attendance-status-tag attendance-status-tag--verified';
+    if (status === 'flagged') return 'attendance-status-tag attendance-status-tag--flagged';
+    return 'attendance-status-tag attendance-status-tag--missed';
+  };
 
   return (
-    <div className="page-wrapper" style={{ background: '#f8f9fa' }}>
+    <div className="page-wrapper attendance-page">
 
-      {/* ── Clock in / Clock out (API) ── */}
-      <div className="kh-card" style={{ marginBottom: 16, padding: 0 }}>
-        <div style={{ background: '#1565A0', padding: '14px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
-          <div className="d-flex align-items-center gap-2">
-            <FiClock size={18} style={{ color: '#fff' }} />
-            <div>
-              <div style={{ color: '#fff', fontWeight: 800, fontSize: 14 }}>Attendance</div>
-              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.85)', fontWeight: 500 }}>
-                Signed in as {[user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.email || 'user'}
-                {!nurseIdResolved && user && (
-                  <span style={{ display: 'block', marginTop: 4, fontSize: 11, opacity: 0.88 }}>
-                    No nurse ID on this account — daily attendance from the server is skipped.
-                  </span>
-                )}
-                {displayOpenAttendanceId && (
-                  <span style={{ display: 'block', marginTop: 4, opacity: 0.95 }}>
-                    Open session: <code style={{ fontSize: 11, background: 'rgba(0,0,0,0.15)', padding: '2px 6px', borderRadius: 2 }}>{displayOpenAttendanceId}</code>
-                  </span>
-                )}
-              </div>
-            </div>
+      <section className="attendance-shift">
+        <div className="attendance-shift__top">
+          <div>
+            <h2 className="attendance-shift__title">Today&apos;s shift</h2>
+            <p className="attendance-shift__meta">Signed in as {userDisplayName}</p>
+            {onShift && (
+              <span className="attendance-shift__badge">
+                <span className="attendance-shift__badge-dot" aria-hidden />
+                On shift — remember to clock out when you finish
+              </span>
+            )}
+            {!nurseIdResolved && user && (
+              <p className="attendance-shift__meta" style={{ marginTop: 8, color: '#b45309' }}>
+                No nurse ID on this account. Contact your administrator if records do not load.
+              </p>
+            )}
           </div>
-          <div className="d-flex flex-wrap gap-2">
+          <div className="attendance-shift__actions">
             <button
               type="button"
+              className="attendance-btn attendance-btn--in"
               onClick={handleClockIn}
               disabled={clockInLoading || clockOutLoading}
-              style={{
-                padding: '10px 22px', fontSize: 13, fontWeight: 800, borderRadius: 2, cursor: clockInLoading ? 'wait' : 'pointer',
-                background: '#fff', color: '#1565A0', border: 'none',
-                opacity: clockInLoading || clockOutLoading ? 0.85 : 1,
-              }}
             >
               {clockInLoading ? 'Submitting…' : 'Clock in'}
             </button>
             <button
               type="button"
+              className="attendance-btn attendance-btn--out"
               onClick={handleClockOut}
               disabled={clockInLoading || clockOutLoading}
-              style={{
-                padding: '10px 22px', fontSize: 13, fontWeight: 800, borderRadius: 2, cursor: clockOutLoading ? 'wait' : 'pointer',
-                background: '#0d4f7c', color: '#fff', border: '1px solid rgba(255,255,255,0.35)',
-                opacity: clockInLoading || clockOutLoading ? 0.85 : 1,
-              }}
             >
               {clockOutLoading ? 'Submitting…' : 'Clock out'}
             </button>
           </div>
         </div>
-        <div style={{ padding: '16px 20px', display: 'grid', gap: 14, gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', alignItems: 'end', borderBottom: '1px solid #e5e7eb' }}>
-          <div>
-            <label style={{ display: 'block', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text-muted)', marginBottom: 4 }}>Patient ID (optional · clock in)</label>
-            <input
-              value={clockPatientId}
-              onChange={(e) => setClockPatientId(e.target.value)}
-              placeholder="e.g. visit / patient id"
-              className="form-control form-control-kh"
-              style={{ fontSize: 13, fontWeight: 600 }}
-            />
-          </div>
-          <div style={{ gridColumn: 'span 2' }}>
-            <label style={{ display: 'block', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text-muted)', marginBottom: 4 }}>Notes (optional · clock in)</label>
-            <input
-              value={clockNotes}
-              onChange={(e) => setClockNotes(e.target.value)}
-              placeholder="Short note for this check-in"
-              className="form-control form-control-kh"
-              style={{ fontSize: 13 }}
-            />
-          </div>
-          <div style={{ gridColumn: 'span 2' }}>
-            <label style={{ display: 'block', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text-muted)', marginBottom: 4 }}>Notes (optional · clock out)</label>
-            <input
-              value={clockOutNotes}
-              onChange={(e) => setClockOutNotes(e.target.value)}
-              placeholder="Short note for this check-out"
-              className="form-control form-control-kh"
-              style={{ fontSize: 13 }}
-            />
-          </div>
-          <label className="d-flex align-items-center gap-2" style={{ cursor: 'pointer', fontSize: 13, fontWeight: 600, color: 'var(--kh-text)', userSelect: 'none' }}>
-            <input type="checkbox" checked={includeGps} onChange={(e) => setIncludeGps(e.target.checked)} style={{ width: 16, height: 16 }} />
-            Include GPS on clock in / clock out
+        <div className="attendance-shift__footer">
+          <label className="attendance-gps-toggle">
+            <input type="checkbox" checked={includeGps} onChange={(e) => setIncludeGps(e.target.checked)} />
+            Share location when clocking in or out
           </label>
+          <span className="attendance-shift__hint">GPS is optional if your browser blocks location access.</span>
         </div>
-        {sessionError && (
-          <div style={{ padding: '12px 20px', background: '#fef2f2', color: '#b91c1c', fontSize: 13, fontWeight: 600, borderTop: '1px solid #fecaca' }}>
-            {sessionError}
-          </div>
-        )}
-        {sessionSuccess && (
-          <div style={{ padding: '12px 20px', background: '#ecfdf5', color: '#047857', fontSize: 13, fontWeight: 600, borderTop: '1px solid #a7f3d0' }}>
-            {sessionSuccess}
-          </div>
-        )}
-      </div>
+        {sessionError && <div className="attendance-alert attendance-alert--error">{sessionError}</div>}
+        {sessionSuccess && <div className="attendance-alert attendance-alert--success">{sessionSuccess}</div>}
+      </section>
 
-      {/* ── Filter Bar ── */}
-      <div className="kh-card" style={{ marginBottom: 16, padding: 0 }}>
-        {/* Green header */}
-        <div style={{ background: '#45B6FE', padding: '14px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
-          <div className="d-flex align-items-center gap-2">
-            <FiFilter size={16} style={{ color: '#fff' }} />
-            <span style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>Clock-in Records</span>
-          </div>
-          <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.8)', fontWeight: 500, minWidth: 140, textAlign: 'right' }}>
-            {listLoading || dailyLoading ? 'Loading records…' : `${filtered.length} records`}
+      <section className="attendance-records kh-card attendance-table-card">
+        <div className="attendance-records__head">
+          <h3>{selectedDate ? 'Daily sessions' : 'Monthly sessions'}</h3>
+          <span className="attendance-records__count">
+            {listLoading ? 'Loading…' : `${filtered.length} record${filtered.length === 1 ? '' : 's'}`}
+            {!listLoading && monthlyPeriodLabel && (
+              <span style={{ marginLeft: 6 }}>· {monthlyPeriodLabel}</span>
+            )}
           </span>
         </div>
-        {listError && (
-          <div style={{ padding: '10px 20px', background: '#fff7ed', color: '#9a3412', fontSize: 12.5, fontWeight: 600, borderBottom: '1px solid #fed7aa' }}>
-            {listError}
-          </div>
-        )}
-        {dailyError && (
-          <div style={{ padding: '10px 20px', background: '#fef2f2', color: '#991b1b', fontSize: 12.5, fontWeight: 600, borderBottom: '1px solid #fecaca' }}>
-            Daily attendance: {dailyError}
-          </div>
-        )}
+        {listError && <div className="attendance-alert--warn">{listError}</div>}
 
-        {/* Filters row */}
-        <div style={{ padding: '14px 20px', display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: 12, borderBottom: '1px solid #e5e7eb' }}>
-          {/* Nurse */}
-          <div>
-            <label style={{ display: 'block', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text-muted)', marginBottom: 4 }}>Nurse</label>
-            <select value={nurseFilter} onChange={e => { setNurseFilter(e.target.value); setPage(1); }} style={{
-              padding: '7px 12px', fontSize: 13, fontWeight: 600, border: '1px solid #d1d5db', borderRadius: 2,
-              background: '#fff', color: 'var(--kh-text)', cursor: 'pointer', minWidth: 170,
-            }}>
-              {nursesList.map(n => <option key={n} value={n}>{n}</option>)}
+        <div className="attendance-filters">
+          <div className="attendance-field">
+            <label>Nurse</label>
+            <select value={nurseFilter} onChange={(e) => { setNurseFilter(e.target.value); setPage(1); }}>
+              {nursesList.map((n) => <option key={n} value={n}>{n}</option>)}
             </select>
           </div>
-
-          {/* Date */}
-          <div>
-            <label style={{ display: 'block', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text-muted)', marginBottom: 4 }}>Date</label>
-            <input type="date" value={selectedDate} onChange={e => { setSelectedDate(e.target.value); setSelectedMonth(''); setSelectedYear(''); setPage(1); }} style={{
-              padding: '7px 12px', fontSize: 13, fontWeight: 600, border: '1px solid #d1d5db', borderRadius: 2,
-              background: '#fff', color: 'var(--kh-text)', cursor: 'pointer', minWidth: 160,
-            }} />
+          <div className="attendance-field">
+            <label>Date</label>
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => { setSelectedDate(e.target.value); setSelectedMonth(''); setSelectedYear(''); setPage(1); }}
+            />
           </div>
-
-          <div style={{ color: '#9ca3af', fontSize: 12, fontWeight: 600, alignSelf: 'center', paddingBottom: 4 }}>or</div>
-
-          {/* Year */}
-          <div>
-            <label style={{ display: 'block', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text-muted)', marginBottom: 4 }}>Year</label>
-            <select value={selectedYear} onChange={e => { setSelectedYear(e.target.value); setSelectedDate(''); setPage(1); if (!e.target.value) setSelectedMonth(''); }} style={{
-              padding: '7px 12px', fontSize: 13, fontWeight: 600, border: '1px solid #d1d5db', borderRadius: 2,
-              background: '#fff', color: 'var(--kh-text)', cursor: 'pointer', minWidth: 100,
-            }}>
-              <option value="">All Years</option>
-              {years.filter(Boolean).map(y => <option key={y} value={y}>{y}</option>)}
+          <span className="attendance-filters__or">or</span>
+          <div className="attendance-field">
+            <label>Year</label>
+            <select
+              value={selectedYear}
+              onChange={(e) => {
+                setSelectedYear(e.target.value);
+                setSelectedDate('');
+                setPage(1);
+                if (!e.target.value) setSelectedMonth('');
+              }}
+            >
+              <option value="">All years</option>
+              {years.filter(Boolean).map((y) => <option key={y} value={y}>{y}</option>)}
             </select>
           </div>
-
-          {/* Month */}
-          <div>
-            <label style={{ display: 'block', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text-muted)', marginBottom: 4 }}>Month</label>
-            <select value={selectedMonth} onChange={e => { setSelectedMonth(e.target.value); setSelectedDate(''); setPage(1); }} disabled={!selectedYear} style={{
-              padding: '7px 12px', fontSize: 13, fontWeight: 600, border: '1px solid #d1d5db', borderRadius: 2,
-              background: !selectedYear ? '#f3f4f6' : '#fff', color: 'var(--kh-text)', cursor: selectedYear ? 'pointer' : 'not-allowed', minWidth: 140,
-              opacity: selectedYear ? 1 : 0.5,
-            }}>
-              <option value="">All Months</option>
+          <div className="attendance-field">
+            <label>Month</label>
+            <select
+              value={selectedMonth}
+              onChange={(e) => { setSelectedMonth(e.target.value); setSelectedDate(''); setPage(1); }}
+              disabled={!selectedYear}
+            >
+              <option value="">All months</option>
               {MONTHS.map((m, i) => <option key={i} value={i}>{m}</option>)}
             </select>
           </div>
-
-          {/* Status pills */}
-          <div style={{ marginLeft: 'auto' }}>
-            <label style={{ display: 'block', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text-muted)', marginBottom: 4 }}>Status</label>
-            <div className="d-flex gap-1">
-              {['All', 'Verified', 'Flagged', 'Missed'].map(f => (
-                <button key={f} onClick={() => { setStatusFilter(f); setPage(1); }} style={{
-                  padding: '6px 14px', fontSize: 11.5, fontWeight: 600, borderRadius: 2, cursor: 'pointer', transition: 'all 0.15s',
-                  background: statusFilter === f ? '#45B6FE' : '#fff',
-                  color: statusFilter === f ? '#fff' : 'var(--kh-text-muted)',
-                  border: `1px solid ${statusFilter === f ? '#45B6FE' : '#d1d5db'}`,
-                }}>{f}</button>
+          <div className="attendance-field" style={{ marginLeft: 'auto' }}>
+            <label>Status</label>
+            <div className="attendance-status-pills">
+              {['All', 'Verified', 'Flagged', 'Missed'].map((f) => (
+                <button
+                  key={f}
+                  type="button"
+                  className={statusFilter === f ? 'is-active' : ''}
+                  onClick={() => { setStatusFilter(f); setPage(1); }}
+                >
+                  {f}
+                </button>
               ))}
             </div>
           </div>
-
-          {/* Clear */}
           {hasFilters && (
-            <button onClick={resetFilters} style={{
-              padding: '7px 14px', fontSize: 12, fontWeight: 700, borderRadius: 2, cursor: 'pointer',
-              background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca',
-              display: 'flex', alignItems: 'center', gap: 5, alignSelf: 'flex-end',
-            }}>
+            <button type="button" className="attendance-clear-btn" onClick={resetFilters}>
               <FiX size={13} /> Clear
             </button>
           )}
         </div>
-      </div>
 
-      {/* ── Table + Detail ── */}
-      <div className="d-flex gap-3" style={{ minHeight: 420, alignItems: 'stretch' }}>
-        <div className="kh-card" style={{ flex: 1, padding: 0, overflow: 'hidden', minHeight: 380 }}>
-          {filtered.length === 0 ? (
-            <div style={{
-              padding: '48px 20px',
-              color: 'var(--kh-text-muted)',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              textAlign: 'center',
-            }}>
-              <span style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', marginBottom: 12 }}>
-                <FiSearch size={32} style={{ opacity: 0.3 }} />
-              </span>
-              <div style={{ fontSize: 14, fontWeight: 600 }}>No records found</div>
-              <div style={{ fontSize: 12.5, marginTop: 4, maxWidth: 360 }}>Adjust the filters above to view clock-in records.</div>
-            </div>
-          ) : (
-            <>
-              <div className="table-responsive">
-                <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #e5e7eb' }}>
-                  <thead>
-                    <tr style={{ background: '#F0F7FE' }}>
-                      {['#', 'Date', 'Nurse', 'Patient', 'Clock In', 'Clock Out', 'Duration', 'GPS Dist.', 'Status'].map((h, i) => (
-                        <th key={i} style={{
-                          padding: '10px 12px', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase',
-                          letterSpacing: '0.5px', color: '#2E7DB8', borderBottom: '2px solid #45B6FE',
-                          border: '1px solid #e5e7eb', textAlign: 'left', whiteSpace: 'nowrap',
-                        }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {paged.map((r, idx) => (
-                      <tr key={r.id}
-                        onClick={() => setSelected(r)}
-                        style={{
-                          cursor: 'pointer', transition: 'background 0.15s',
-                          background: selected?.id === r.id ? '#F0F7FE' : idx % 2 === 1 ? '#fafbfc' : 'transparent',
-                        }}
-                        onMouseEnter={e => { if (selected?.id !== r.id) e.currentTarget.style.background = '#F0F7FE'; }}
-                        onMouseLeave={e => { if (selected?.id !== r.id) e.currentTarget.style.background = idx % 2 === 1 ? '#fafbfc' : 'transparent'; }}
-                      >
-                        <td className="col-num" style={{ padding: '10px 12px', fontSize: 11, color: 'var(--kh-text-muted)', fontWeight: 700, border: '1px solid #e5e7eb' }}>
-                          {(page - 1) * perPage + idx + 1}
-                        </td>
-                        <td style={{ padding: '10px 12px', fontSize: 12.5, fontWeight: 600, color: 'var(--kh-text)', whiteSpace: 'nowrap', border: '1px solid #e5e7eb' }}>{r.date}</td>
-                        <td style={{ padding: '10px 12px', fontSize: 13, fontWeight: 600, color: 'var(--kh-text)', border: '1px solid #e5e7eb' }}>{r.nurse}</td>
-                        <td style={{ padding: '10px 12px', fontSize: 13, color: 'var(--kh-text)', border: '1px solid #e5e7eb' }}>{r.patient}</td>
-                        <td style={{ padding: '10px 12px', fontSize: 13, fontWeight: 700, color: r.clockIn ? '#1565A0' : '#dc2626', whiteSpace: 'nowrap', border: '1px solid #e5e7eb' }}>
-                          {r.clockIn ? (
-                            <span className="d-flex align-items-center gap-1">
-                              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#45B6FE', display: 'inline-block' }} />
-                              {r.clockIn}
-                            </span>
-                          ) : '—'}
-                        </td>
-                        <td style={{ padding: '10px 12px', fontSize: 13, fontWeight: 700, color: r.clockOut ? '#1e40af' : '#dc2626', whiteSpace: 'nowrap', border: '1px solid #e5e7eb' }}>
-                          {r.clockOut || '—'}
-                        </td>
-                        <td style={{ padding: '10px 12px', fontSize: 12.5, fontWeight: 600, color: 'var(--kh-text)', whiteSpace: 'nowrap', border: '1px solid #e5e7eb' }}>
-                          {formatAttendanceDuration(r)}
-                        </td>
-                        <td style={{ padding: '10px 12px', fontSize: 12.5, color: 'var(--kh-text-muted)', border: '1px solid #e5e7eb' }}>
-                          {r.distance || '—'}
-                        </td>
-                        <td style={{ padding: '10px 12px', border: '1px solid #e5e7eb' }}>
-                          <span style={{
-                            fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 2, textTransform: 'capitalize',
-                            ...(r.status === 'verified' ? { background: '#F0F7FE', color: '#1565A0', border: '1px solid #BAE0FD' }
-                              : r.status === 'flagged' ? { background: '#fff7ed', color: '#ea580c', border: '1px solid #fed7aa' }
-                              : { background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }),
-                          }}>
-                            {r.status}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Pagination */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderTop: '2px solid #D6ECFC', background: '#fafbfc' }}>
-                <span style={{ fontSize: 12, color: 'var(--kh-text-muted)', fontWeight: 500 }}>
-                  Showing <span style={{ fontWeight: 700, color: '#45B6FE' }}>{(page - 1) * perPage + 1}–{Math.min(page * perPage, filtered.length)}</span> of {filtered.length}
+        <div className="attendance-layout">
+          <div className="attendance-layout__main kh-card" style={{ padding: 0, overflow: 'hidden' }}>
+            {filtered.length === 0 ? (
+              <div className="attendance-empty">
+                <span className="attendance-empty__icon" aria-hidden>
+                  <FiSearch size={32} />
                 </span>
-                <div className="d-flex gap-1">
-                  <button onClick={() => setPage(1)} disabled={page === 1} style={{
-                    background: '#fff', border: '1px solid #e5e7eb', borderRadius: 2, padding: '5px 8px', cursor: page === 1 ? 'default' : 'pointer',
-                    opacity: page === 1 ? 0.4 : 1, color: 'var(--kh-text-muted)', display: 'flex',
-                  }}><FiChevronsLeft size={14} /></button>
-                  <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} style={{
-                    background: '#fff', border: '1px solid #e5e7eb', borderRadius: 2, padding: '5px 8px', cursor: page === 1 ? 'default' : 'pointer',
-                    opacity: page === 1 ? 0.4 : 1, color: 'var(--kh-text-muted)', display: 'flex',
-                  }}><FiChevronLeft size={14} /></button>
-                  {Array.from({ length: totalPages }, (_, i) => i + 1)
-                    .filter(p => p === 1 || p === totalPages || Math.abs(p - page) <= 1)
-                    .map((p, idx, arr) => {
-                      const els = [];
-                      if (idx > 0 && p - arr[idx - 1] > 1) els.push(<span key={`e-${p}`} style={{ padding: '5px 4px', fontSize: 12, color: '#9ca3af' }}>…</span>);
-                      els.push(
-                        <button key={p} onClick={() => setPage(p)} style={{
-                          background: page === p ? '#45B6FE' : '#fff', color: page === p ? '#fff' : 'var(--kh-text-muted)',
-                          border: `1px solid ${page === p ? '#45B6FE' : '#e5e7eb'}`, borderRadius: 2,
-                          padding: '5px 10px', fontSize: 12, fontWeight: 700, cursor: 'pointer', minWidth: 32,
-                        }}>{p}</button>
-                      );
-                      return els;
-                    })}
-                  <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} style={{
-                    background: '#fff', border: '1px solid #e5e7eb', borderRadius: 2, padding: '5px 8px', cursor: page === totalPages ? 'default' : 'pointer',
-                    opacity: page === totalPages ? 0.4 : 1, color: 'var(--kh-text-muted)', display: 'flex',
-                  }}><FiChevronRight size={14} /></button>
-                  <button onClick={() => setPage(totalPages)} disabled={page === totalPages} style={{
-                    background: '#fff', border: '1px solid #e5e7eb', borderRadius: 2, padding: '5px 8px', cursor: page === totalPages ? 'default' : 'pointer',
-                    opacity: page === totalPages ? 0.4 : 1, color: 'var(--kh-text-muted)', display: 'flex',
-                  }}><FiChevronsRight size={14} /></button>
+                <div className="attendance-empty__title">No records found</div>
+                <p style={{ fontSize: 12.5, marginTop: 4, marginBottom: 0 }}>Try a different date or clear your filters.</p>
+              </div>
+            ) : (
+              <>
+                <div className="attendance-table-wrap">
+                  <table className="attendance-table">
+                    <thead>
+                      <tr>
+                        {['#', 'Date', 'Nurse', 'Patient', 'In', 'Out', 'Duration', 'GPS', 'Status'].map((h) => (
+                          <th key={h}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {paged.map((r, idx) => (
+                        <tr
+                          key={r.id}
+                          className={selected?.id === r.id ? 'is-selected' : ''}
+                          onClick={() => setSelected(r)}
+                        >
+                          <td className="col-num">{(page - 1) * perPage + idx + 1}</td>
+                          <td>{r.date}</td>
+                          <td>{r.nurse}</td>
+                          <td>{r.patient}</td>
+                          <td>
+                            {r.clockIn ? (
+                              <span className="attendance-time-in">
+                                <span className="attendance-time-dot" />
+                                {r.clockIn}
+                              </span>
+                            ) : '—'}
+                          </td>
+                          <td>{r.clockOut || '—'}</td>
+                          <td>{formatAttendanceDuration(r)}</td>
+                          <td style={{ color: 'var(--kh-text-muted)' }}>{r.distance || '—'}</td>
+                          <td><span className={statusTagClass(r.status)}>{r.status}</span></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-              </div>
-            </>
-          )}
-        </div>
+                <div className="attendance-pagination">
+                  <span className="attendance-pagination__info">
+                    {(page - 1) * perPage + 1}–{Math.min(page * perPage, filtered.length)} of {filtered.length}
+                  </span>
+                  <div className="attendance-pagination__nav">
+                    <button type="button" className="attendance-page-btn" onClick={() => setPage(1)} disabled={page === 1}><FiChevronsLeft size={14} /></button>
+                    <button type="button" className="attendance-page-btn" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}><FiChevronLeft size={14} /></button>
+                    {Array.from({ length: totalPages }, (_, i) => i + 1)
+                      .filter((p) => p === 1 || p === totalPages || Math.abs(p - page) <= 1)
+                      .map((p, idx, arr) => {
+                        const els = [];
+                        if (idx > 0 && p - arr[idx - 1] > 1) {
+                          els.push(<span key={`e-${p}`} style={{ padding: '5px 4px', fontSize: 12, color: '#9ca3af' }}>…</span>);
+                        }
+                        els.push(
+                          <button
+                            key={p}
+                            type="button"
+                            className={`attendance-page-btn${page === p ? ' is-active' : ''}`}
+                            onClick={() => setPage(p)}
+                          >
+                            {p}
+                          </button>,
+                        );
+                        return els;
+                      })}
+                    <button type="button" className="attendance-page-btn" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}><FiChevronRight size={14} /></button>
+                    <button type="button" className="attendance-page-btn" onClick={() => setPage(totalPages)} disabled={page === totalPages}><FiChevronsRight size={14} /></button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
 
-        {/* Detail panel */}
-        {selected && (
-          <div className="kh-card" style={{ width: 340, flexShrink: 0 }}>
-            <div style={{ padding: '16px 20px' }}>
-              <div className="d-flex justify-content-between align-items-center mb-4">
-                <h6 style={{ fontWeight: 700, fontSize: 14, margin: 0 }}>Visit Details</h6>
-                <button onClick={() => setSelected(null)} style={{ background: 'none', border: '1px solid #e5e7eb', borderRadius: 2, padding: '5px 7px', cursor: 'pointer', color: 'var(--kh-text-muted)', display: 'flex' }}><FiX size={14} /></button>
-              </div>
-
-              <div className="d-flex flex-column gap-3">
+          {selected && (
+            <aside className="attendance-detail kh-card">
+              <div className="attendance-detail__inner">
+                <div className="attendance-detail__head">
+                  <h4>Visit details</h4>
+                  <button type="button" className="attendance-detail__close" onClick={() => setSelected(null)} aria-label="Close">
+                    <FiX size={14} />
+                  </button>
+                </div>
                 {[
-                  { label: 'Record ID', value: selected.id },
                   { label: 'Nurse', value: selected.nurse },
                   { label: 'Patient', value: selected.patient },
                   { label: 'Region', value: selected.region },
                   { label: 'Date', value: selected.date },
-                ].map((item, i) => (
-                  <div key={i}>
-                    <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text-muted)', marginBottom: 2 }}>{item.label}</div>
-                    <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--kh-text)' }}>{item.value}</div>
+                ].map((item) => (
+                  <div key={item.label} className="attendance-detail__row">
+                    <label>{item.label}</label>
+                    <p>{item.value}</p>
                   </div>
                 ))}
-              </div>
-
-              <div style={{ borderTop: '1px solid #f3f4f6', margin: '16px 0', paddingTop: 16 }}>
-                <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text-muted)', marginBottom: 10 }}>
-                  <FiClock size={11} style={{ marginRight: 4 }} />Timeline
-                </div>
-                <div className="d-flex gap-3">
-                  <div style={{ padding: '10px 16px', borderRadius: 2, background: '#F0F7FE', border: '1px solid #BAE0FD', flex: 1 }}>
-                    <div style={{ fontSize: 10.5, color: 'var(--kh-text-muted)', fontWeight: 600 }}>Clock In</div>
-                    <div style={{ fontSize: 16, fontWeight: 800, color: '#1565A0' }}>{selected.clockIn || '—'}</div>
+                <div className="attendance-timeline">
+                  <div className="attendance-timeline__grid">
+                    <div className="attendance-timeline__cell">
+                      <span>Clock in</span>
+                      <strong>{selected.clockIn || '—'}</strong>
+                    </div>
+                    <div className="attendance-timeline__cell">
+                      <span>Clock out</span>
+                      <strong>{selected.clockOut || '—'}</strong>
+                    </div>
                   </div>
-                  <div style={{ padding: '10px 16px', borderRadius: 2, background: '#eff6ff', border: '1px solid #bfdbfe', flex: 1 }}>
-                    <div style={{ fontSize: 10.5, color: 'var(--kh-text-muted)', fontWeight: 600 }}>Clock Out</div>
-                    <div style={{ fontSize: 16, fontWeight: 800, color: '#1e40af' }}>{selected.clockOut || '—'}</div>
-                  </div>
-                </div>
-                <div style={{ padding: '10px 16px', borderRadius: 2, background: '#f9fafb', border: '1px solid #e5e7eb', marginTop: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: 11, color: 'var(--kh-text-muted)', fontWeight: 600 }}>Duration</span>
-                  <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--kh-text)' }}>{formatAttendanceDuration(selected)}</span>
-                </div>
-              </div>
-
-              {selected.gps && (
-                <div style={{ borderTop: '1px solid #f3f4f6', paddingTop: 16 }}>
-                  <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text-muted)', marginBottom: 10 }}>
-                    <FiMapPin size={11} style={{ marginRight: 4 }} />GPS Verification
-                  </div>
-                  <div style={{ padding: 12, borderRadius: 2, background: '#f9fafb', border: '1px solid #e5e7eb' }}>
-                    <div style={{ fontSize: 12, color: 'var(--kh-text-muted)', marginBottom: 4 }}>Coordinates: {selected.gps.lat.toFixed(4)}, {selected.gps.lng.toFixed(4)}</div>
-                    <div style={{ fontSize: 12, color: 'var(--kh-text-muted)' }}>Distance: <strong style={{ color: selected.distance && parseInt(selected.distance) > 100 ? '#dc2626' : '#45B6FE' }}>{selected.distance}</strong> from patient</div>
+                  <div className="attendance-timeline__cell" style={{ marginTop: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>Duration</span>
+                    <strong>{formatAttendanceDuration(selected)}</strong>
                   </div>
                 </div>
-              )}
-
-              <div style={{ marginTop: 16 }}>
-                <div className="d-flex align-items-center gap-2">
+                {selected.gps && (
+                  <div className="attendance-timeline" style={{ marginTop: 12 }}>
+                    <div className="attendance-detail__row">
+                      <label><FiMapPin size={11} style={{ marginRight: 4 }} />GPS</label>
+                      <p style={{ marginBottom: 4 }}>
+                        {selected.gps.lat.toFixed(4)}, {selected.gps.lng.toFixed(4)}
+                      </p>
+                      {selected.distance && (
+                        <p style={{ fontSize: 12, color: 'var(--kh-text-muted)', margin: 0 }}>
+                          Distance: {selected.distance}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+                <div className="d-flex align-items-center gap-2" style={{ marginTop: 14 }}>
                   {statusIcon[selected.status]}
-                  <span style={{
-                    fontSize: 12, fontWeight: 700, textTransform: 'capitalize',
-                    color: selected.status === 'verified' ? '#1565A0' : selected.status === 'flagged' ? '#ea580c' : '#dc2626',
-                  }}>{selected.status}</span>
+                  <span className={statusTagClass(selected.status)}>{selected.status}</span>
                 </div>
               </div>
-            </div>
-          </div>
-        )}
-      </div>
+            </aside>
+          )}
+        </div>
+      </section>
     </div>
   );
 }
