@@ -28,6 +28,12 @@ import {
   resolvePatientMutationId,
 } from '../utils/patients';
 import { invalidateMedicalReportsCache } from '../utils/medicalReports';
+import {
+  buildDailyCarePlanChecklistPath,
+  fetchPatientCompletedDailyCarePlans,
+  listRecentIsoDates,
+  parseDailyChecklistResponsePayload,
+} from '../utils/carePlanChecklist';
 
 const DEFAULT_PROFILE_PLACEHOLDER = '/images/default-profile-avatar.svg';
 
@@ -238,7 +244,7 @@ const TABS = [
   { key: 'notes', label: 'Nurse Note' },
   { key: 'incidents', label: 'Incident Report' },
   { key: 'careplan', label: 'Care Plan' },
-  { key: 'checkliststatus', label: 'Checklist', icon: <FiBarChart2 size={14} /> },
+  { key: 'checkliststatus', label: 'Daily care', icon: <FiBarChart2 size={14} /> },
 ];
 
 const Panel = ({ title, icon, accent, children, action, variant = 'default', bodyClassName = '' }) => {
@@ -1586,39 +1592,6 @@ function completionFromCarePlanMarkResponse(data) {
     ?? data.carePlan?.isCompleted;
   if (v === undefined || v === null) return undefined;
   return Boolean(v);
-}
-
-function extractDailyChecklistList(payload) {
-  if (payload == null) return [];
-  if (Array.isArray(payload)) return payload;
-  if (Array.isArray(payload?.data)) return payload.data;
-  if (Array.isArray(payload?.items)) return payload.items;
-  if (Array.isArray(payload?.checklist)) return payload.checklist;
-  if (Array.isArray(payload?.carePlans)) return payload.carePlans;
-  if (Array.isArray(payload?.rows)) return payload.rows;
-  if (Array.isArray(payload?.dailyItems)) return payload.dailyItems;
-  if (typeof payload === 'object' && String(payload.task || '').trim()) return [payload];
-  return [];
-}
-
-function normalizeDailyChecklistRow(raw, index = 0) {
-  const r = raw && typeof raw === 'object' ? raw : {};
-  const id = r.id ?? r._id ?? r.carePlanId ?? `daily-${index}`;
-  const completed = Boolean(
-    r.completed ?? r.isCompleted ?? r.checked ?? r.isChecked ?? r.marked ?? false,
-  );
-  const completedBy = r.completedBy ?? r.nurseName ?? r.markedBy ?? r.nurse?.name ?? null;
-  const completedAt = r.completedAt ?? r.completedTime ?? r.markedAt ?? r.time ?? null;
-  return {
-    id: String(id),
-    task: String(r.task ?? r.title ?? r.name ?? '').trim(),
-    category: String(r.category ?? 'Other').trim() || 'Other',
-    frequency: String(r.frequency ?? 'Daily').trim() || 'Daily',
-    priority: String(r.priority ?? 'Medium').trim() || 'Medium',
-    completed,
-    completedBy: completedBy != null && String(completedBy).trim() ? String(completedBy) : null,
-    completedAt: completedAt != null && String(completedAt).trim() ? String(completedAt) : null,
-  };
 }
 
 /* ── Nurse Notes helpers ── */
@@ -3833,6 +3806,8 @@ export default function PatientProfile() {
 
   const [checklistStatusDate, setChecklistStatusDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [dailyChecklistByDate, setDailyChecklistByDate] = useState({});
+  const [completedCarePlansByDate, setCompletedCarePlansByDate] = useState({});
+  const [completedCarePlansLoad, setCompletedCarePlansLoad] = useState({ loading: false, error: '' });
 
   const fetchDailyChecklist = useCallback(async (dateStr) => {
     const pid = String(effectivePatientId || '').trim();
@@ -3845,8 +3820,9 @@ export default function PatientProfile() {
     }));
 
     try {
-      const path = `/care-plan-checklist/patient/${encodeURIComponent(pid)}/daily?date=${encodeURIComponent(d)}`;
-      const res = await apiFetch(path, { method: 'GET' });
+      const path = buildDailyCarePlanChecklistPath(pid, d);
+      if (!path) return;
+      const res = await apiFetch(path, { method: 'GET', quiet: true });
       const text = await res.text().catch(() => '');
       let data = {};
       if (text) {
@@ -3875,8 +3851,7 @@ export default function PatientProfile() {
         }));
         return;
       }
-      const rawList = extractDailyChecklistList(data);
-      const items = rawList.map((row, i) => normalizeDailyChecklistRow(row, i)).filter((row) => row.task);
+      const items = parseDailyChecklistResponsePayload(data);
       setDailyChecklistByDate((prev) => ({
         ...prev,
         [d]: { items, loading: false, error: '' },
@@ -3889,18 +3864,60 @@ export default function PatientProfile() {
     }
   }, [effectivePatientId]);
 
+  const loadPatientCompletedCarePlans = useCallback(async () => {
+    const pid = String(
+      resolvePatientApiId(rawPatientApiRef.current, remotePatient) || effectivePatientId || '',
+    ).trim();
+    if (!pid) return;
+
+    setCompletedCarePlansLoad({ loading: true, error: '' });
+    const result = await fetchPatientCompletedDailyCarePlans(apiFetch, pid, {
+      quiet: true,
+      onUnauthorized: () => { window.location.replace('/login'); },
+    });
+
+    setCompletedCarePlansByDate(result.byDate);
+    setCompletedCarePlansLoad({
+      loading: false,
+      error: result.error || '',
+    });
+
+    setDailyChecklistByDate((prev) => {
+      const next = { ...prev };
+      Object.entries(result.byDate).forEach(([dateStr, completedItems]) => {
+        const existing = Array.isArray(next[dateStr]?.items) ? next[dateStr].items : null;
+        if (existing) {
+          const pending = existing.filter((item) => !item.completed);
+          const merged = [...pending, ...completedItems];
+          const seen = new Set();
+          next[dateStr] = {
+            items: merged.filter((item) => {
+              const key = `${item.id}|${item.task}|${item.completed}`;
+              if (seen.has(key)) return false;
+              seen.add(key);
+              return true;
+            }),
+            loading: false,
+            error: '',
+          };
+        } else {
+          next[dateStr] = { items: completedItems, loading: false, error: '' };
+        }
+      });
+      return next;
+    });
+  }, [effectivePatientId, remotePatient]);
+
+  useEffect(() => {
+    if (patientApiSyncVersion === 0) return;
+    void loadPatientCompletedCarePlans();
+  }, [patientApiSyncVersion, loadPatientCompletedCarePlans]);
+
   useEffect(() => {
     if (tab !== 'checkliststatus') return;
-    const pid = String(effectivePatientId || '').trim();
-    if (!pid) return;
-    const last7 = Array.from({ length: 7 }, (_, i) => {
-      const x = new Date();
-      x.setDate(x.getDate() - i);
-      return x.toISOString().slice(0, 10);
-    });
-    const dates = [...new Set([...last7, checklistStatusDate])];
-    dates.forEach((dt) => { void fetchDailyChecklist(dt); });
-  }, [tab, effectivePatientId, checklistStatusDate, fetchDailyChecklist]);
+    void fetchDailyChecklist(checklistStatusDate);
+    listRecentIsoDates(7).forEach((dateStr) => { void fetchDailyChecklist(dateStr); });
+  }, [tab, checklistStatusDate, fetchDailyChecklist]);
 
   const postCarePlanCreate = async (fullBody, patientId) => {
     const pid = encodeURIComponent(patientId);
@@ -4109,6 +4126,7 @@ export default function PatientProfile() {
       }
 
       void fetchDailyChecklist(todayIso);
+      void loadPatientCompletedCarePlans();
       /* Do not await loadCarePlans() here — GET /care-plan/patient may lag behind POST mark/PATCH
          and would replace the list with stale `completed` flags, making the checkbox snap back. */
     } catch (err) {
@@ -4202,6 +4220,43 @@ export default function PatientProfile() {
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     return { day: days[d.getDay()], date: d.getDate(), month: months[d.getMonth()] };
   };
+  const formatChecklistLongDate = (dateStr) => {
+    const d = new Date(`${dateStr}T00:00:00`);
+    if (Number.isNaN(d.getTime())) return dateStr;
+    return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+  };
+  const completedCarePlanDates = useMemo(() => {
+    const fromApi = Object.keys(completedCarePlansByDate).filter((d) => (
+      Array.isArray(completedCarePlansByDate[d]) && completedCarePlansByDate[d].length > 0
+    ));
+    if (fromApi.length) return fromApi.sort((a, b) => b.localeCompare(a));
+    return quickDates;
+  }, [completedCarePlansByDate, quickDates]);
+  const selectedDateCompletedItems = useMemo(() => {
+    const fromPatientCompleted = completedCarePlansByDate[checklistStatusDate];
+    if (Array.isArray(fromPatientCompleted) && fromPatientCompleted.length > 0) {
+      return fromPatientCompleted;
+    }
+    return selectedDateChecklist ? selectedDateChecklist.filter((item) => item.completed) : [];
+  }, [completedCarePlansByDate, checklistStatusDate, selectedDateChecklist]);
+  const allCompletedCarePlans = useMemo(
+    () => completedCarePlanDates.flatMap((dateStr) => (
+      (completedCarePlansByDate[dateStr] || []).map((item) => ({ ...item, careDate: dateStr }))
+    )),
+    [completedCarePlanDates, completedCarePlansByDate],
+  );
+  const dailyCompletedCareByDay = completedCarePlanDates.map((dateStr) => {
+    const entry = dailyChecklistByDate[dateStr];
+    const completed = completedCarePlansByDate[dateStr]
+      || (getChecklistForDate(dateStr)?.filter((item) => item.completed) ?? []);
+    return {
+      dateStr,
+      entry,
+      items: getChecklistForDate(dateStr),
+      completed: Array.isArray(completed) ? completed : [],
+    };
+  });
+  const totalCompletedAll = allCompletedCarePlans.length;
 
   const handlePhoto = async (e) => {
     const file = e.target.files?.[0];
@@ -5686,6 +5741,123 @@ export default function PatientProfile() {
               </div>
             </div>
           </div>
+
+          <section className="patient-daily-care-completed" aria-labelledby="patient-daily-care-completed-title">
+            <header className="patient-daily-care-completed__head">
+              <div>
+                <h2 id="patient-daily-care-completed-title" className="patient-daily-care-completed__title">
+                  Completed daily care plans
+                </h2>
+                <p className="patient-daily-care-completed__subtitle">
+                  Completed tasks from the daily care plan API ({totalCompletedAll} total
+                  {completedCarePlanDates.length ? ` across ${completedCarePlanDates.length} day${completedCarePlanDates.length === 1 ? '' : 's'}` : ''}).
+                </p>
+              </div>
+              <button
+                type="button"
+                className="patient-daily-care-completed__link"
+                onClick={() => handleProfileTabChange('checkliststatus')}
+              >
+                Full daily care view
+              </button>
+            </header>
+
+            <div className="patient-daily-care-completed__toolbar">
+              <label htmlFor="patient-daily-care-date" className="patient-daily-care-completed__date-label">Date</label>
+              <input
+                id="patient-daily-care-date"
+                type="date"
+                className="patient-daily-care-completed__date-input"
+                value={checklistStatusDate}
+                max={new Date().toISOString().slice(0, 10)}
+                onChange={(e) => setChecklistStatusDate(e.target.value)}
+              />
+              <div className="patient-daily-care-completed__day-strip" role="group" aria-label="Days with completed care plans">
+                {completedCarePlanDates.slice(0, 14).map((qd) => {
+                  const fd = formatShortDate(qd);
+                  const completedCount = completedCarePlansByDate[qd]?.length
+                    ?? getChecklistForDate(qd)?.filter((item) => item.completed).length
+                    ?? null;
+                  return (
+                    <button
+                      key={qd}
+                      type="button"
+                      className={`patient-daily-care-completed__day-chip${checklistStatusDate === qd ? ' is-active' : ''}`}
+                      onClick={() => setChecklistStatusDate(qd)}
+                      aria-pressed={checklistStatusDate === qd}
+                    >
+                      <span>{fd.day.slice(0, 3)} {fd.date}</span>
+                      <small>{completedCount == null ? '…' : `${completedCount} done`}</small>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {(completedCarePlansLoad.loading || (selectedDailyEntry?.loading && selectedDateChecklist == null)) ? (
+              <p className="patient-daily-care-completed__status">Loading completed care plans…</p>
+            ) : (completedCarePlansLoad.error || (selectedDailyEntry?.error && selectedDateChecklist == null)) ? (
+              <p className="patient-daily-care-completed__status patient-daily-care-completed__status--error" role="alert">
+                {completedCarePlansLoad.error || selectedDailyEntry?.error}
+              </p>
+            ) : selectedDateCompletedItems.length > 0 ? (
+              <ul className="patient-daily-care-completed__list">
+                {selectedDateCompletedItems.map((item) => (
+                  <li key={`${checklistStatusDate}-${item.id}`} className="patient-daily-care-completed__item">
+                    <div className="patient-daily-care-completed__item-icon" aria-hidden>
+                      <FiCheckCircle size={14} />
+                    </div>
+                    <div className="patient-daily-care-completed__item-body">
+                      <p className="patient-daily-care-completed__item-task">{item.task}</p>
+                      <div className="patient-daily-care-completed__item-meta">
+                        <span>{item.category}</span>
+                        <span>{item.frequency}</span>
+                        {item.completedBy ? <span>{item.completedBy}</span> : null}
+                        {item.completedAt ? <span>{item.completedAt}</span> : null}
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : selectedDateChecklist ? (
+              <p className="patient-daily-care-completed__status">No completed care plan tasks for {formatChecklistLongDate(checklistStatusDate)}.</p>
+            ) : (
+              <p className="patient-daily-care-completed__status">No daily care checklist data for this date.</p>
+            )}
+
+            <div className="patient-daily-care-completed__history">
+              <h3 className="patient-daily-care-completed__history-title">All completed days</h3>
+              <div className="patient-daily-care-completed__history-grid">
+                {dailyCompletedCareByDay.map((day) => {
+                  const fd = formatShortDate(day.dateStr);
+                  const isSelected = checklistStatusDate === day.dateStr;
+                  if (day.entry?.loading && !day.items) {
+                    return (
+                      <div key={day.dateStr} className="patient-daily-care-completed__history-card is-loading">
+                        <span className="patient-daily-care-completed__history-date">{fd.day} {fd.date} {fd.month}</span>
+                        <span className="patient-daily-care-completed__history-count">Loading…</span>
+                      </div>
+                    );
+                  }
+                  return (
+                    <button
+                      key={day.dateStr}
+                      type="button"
+                      className={`patient-daily-care-completed__history-card${isSelected ? ' is-selected' : ''}`}
+                      onClick={() => setChecklistStatusDate(day.dateStr)}
+                      aria-pressed={isSelected}
+                    >
+                      <span className="patient-daily-care-completed__history-date">{fd.day} {fd.date} {fd.month}</span>
+                      <strong className="patient-daily-care-completed__history-count">
+                        {day.completed.length}
+                      </strong>
+                      <span className="patient-daily-care-completed__history-label">completed</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </section>
 
           <div className="row g-3">
           {/* Left column */}
@@ -8651,8 +8823,8 @@ export default function PatientProfile() {
                 <FiBarChart2 size={16} />
               </div>
               <div className="patient-checklist-status__hero-text">
-                <h2 id="patient-checklist-status-title" className="patient-checklist-status__title">Care Checklist Status</h2>
-                <p className="patient-checklist-status__subtitle">Completion for the day you select below.</p>
+                <h2 id="patient-checklist-status-title" className="patient-checklist-status__title">Daily care checklist</h2>
+                <p className="patient-checklist-status__subtitle">Completed and pending tasks from the daily care plan API.</p>
               </div>
             </header>
 
@@ -8774,11 +8946,66 @@ export default function PatientProfile() {
 
                 <div className="patient-checklist-status__card patient-checklist-status__tasks-card">
                   <header className="patient-checklist-status__tasks-head">
-                    <h3 className="patient-checklist-status__tasks-title">Checklist items</h3>
+                    <h3 className="patient-checklist-status__tasks-title">Completed daily care plans</h3>
                     <span className="patient-checklist-status__tasks-meta">{selectedDateCompleted}/{selectedDateTotal} completed</span>
                   </header>
+                  {selectedDateCompletedItems.length > 0 ? (
+                    <ul className="patient-checklist-status__task-list patient-checklist-status__task-list--completed">
+                      {selectedDateCompletedItems.map((item) => {
+                        const prStyle = getCarePriorityStyle(item.priority);
+                        return (
+                          <li
+                            key={`done-${item.id}`}
+                            className="patient-checklist-status__task-row is-done"
+                          >
+                            <div className="patient-checklist-status__task-icon is-done" aria-hidden>
+                              <FiCheckCircle size={12} />
+                            </div>
+                            <div className="patient-checklist-status__task-body">
+                              <p className="patient-checklist-status__task-name">{item.task}</p>
+                              <div className="patient-checklist-status__task-tags">
+                                <span className="patient-checklist-status__tag patient-checklist-status__tag--cat">{item.category}</span>
+                                <span className="patient-checklist-status__tag patient-checklist-status__tag--freq">
+                                  <FiClock size={10} aria-hidden /> {item.frequency}
+                                </span>
+                                <span
+                                  className="patient-checklist-status__tag patient-checklist-status__tag--pri"
+                                  style={{ background: prStyle.bg, color: prStyle.color, borderColor: prStyle.border }}
+                                >
+                                  {item.priority}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="patient-checklist-status__task-aside">
+                              <span className="patient-checklist-status__aside-status patient-checklist-status__aside-status--ok">Completed</span>
+                              {item.completedAt ? (
+                                <span className="patient-checklist-status__aside-line">
+                                  <FiClock size={10} aria-hidden /> {item.completedAt}
+                                </span>
+                              ) : null}
+                              {item.completedBy ? (
+                                <span className="patient-checklist-status__aside-line">
+                                  <FiUser size={10} aria-hidden /> {item.completedBy}
+                                </span>
+                              ) : null}
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  ) : (
+                    <p className="patient-checklist-status__tasks-empty">No completed tasks for this date.</p>
+                  )}
+                </div>
+
+                {selectedDateChecklist.some((item) => !item.completed) ? (
+                <div className="patient-checklist-status__card patient-checklist-status__tasks-card">
+                  <header className="patient-checklist-status__tasks-head">
+                    <h3 className="patient-checklist-status__tasks-title">Pending tasks</h3>
+                    <span className="patient-checklist-status__tasks-meta">{selectedDateTotal - selectedDateCompleted} remaining</span>
+                  </header>
                   <ul className="patient-checklist-status__task-list">
-                    {selectedDateChecklist.map(item => {
+                    {selectedDateChecklist.filter((item) => !item.completed).map(item => {
                       const prStyle = getCarePriorityStyle(item.priority);
                       return (
                         <li
@@ -8829,6 +9056,7 @@ export default function PatientProfile() {
                     })}
                   </ul>
                 </div>
+                ) : null}
 
                 <div className="patient-checklist-status__card patient-checklist-status__trend-card">
                   <h3 className="patient-checklist-status__trend-title">7-day trend</h3>

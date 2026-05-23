@@ -1,7 +1,7 @@
-/* ═══════════════════════════════════════════════════════════
-   Kulobal Homecare — Premium SaaS Design System
+﻿/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   Kulobal Homecare â€” Premium SaaS Design System
    Colors: #45B6FE (primary), #2E7DB8 (secondary), #fff
-   ═══════════════════════════════════════════════════════════ */
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 
 @import url('https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap');
 
@@ -50,9 +50,9 @@
   --bs-border-radius-lg: var(--kh-radius-lg);
 }
 
-/* ═══════════════════════════════════════════════════════════
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
    Dark Theme
-   ═══════════════════════════════════════════════════════════ */
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 [data-theme="dark"] {
   --kh-primary: #45b6fe;
   --kh-primary-light: #1a2d42;
@@ -202,7 +202,7 @@ button, input, select, textarea {
 ::-webkit-scrollbar-thumb { background: #d0d5d2; border-radius: 10px; }
 ::-webkit-scrollbar-thumb:hover { background: #a0a8a4; }
 
-/* ── Layout ───────────────────────────────────────────── */
+/* â”€â”€ Layout â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .app-layout {
   display: flex;
   min-height: 100vh;
@@ -235,7 +235,7 @@ button, input, select, textarea {
   min-width: 0;
 }
 
-/* ── Authenticated shell: compact chrome (dense, data-first) ── */
+/* â”€â”€ Authenticated shell: compact chrome (dense, data-first) â”€â”€ */
 .kh-bs-theme {
   --kh-topbar-height: 48px;
   --kh-sidebar-collapsed-width: 68px;
@@ -338,7 +338,7 @@ button, input, select, textarea {
   font-size: 12px;
 }
 
-/* ── Sidebar ──────────────────────────────────────────── */
+/* â”€â”€ Sidebar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .sidebar {
   width: var(--kh-sidebar-width);
   height: 100vh;
@@ -708,7 +708,7 @@ body.sidebar-resizing {
   margin: 0;
 }
 
-/* ── Topbar ───────────────────────────────────────────── */
+/* â”€â”€ Topbar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .topbar {
   height: var(--kh-topbar-height);
   position: fixed; top: 0;
@@ -979,7 +979,7 @@ body.sidebar-resizing {
   padding: 4px;
 }
 
-/* ── Stat Cards ───────────────────────────────────────── */
+/* â”€â”€ Stat Cards â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .stat-card {
   background: var(--kh-white);
   border-radius: var(--kh-radius-lg);
@@ -1033,7 +1033,7 @@ body.sidebar-resizing {
 
 
 
-/* ── Cards ────────────────────────────────────────────── */
+/* â”€â”€ Cards â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .kh-card {
   background: var(--kh-white);
   border-radius: var(--kh-radius-lg);
@@ -1059,7 +1059,7 @@ body.sidebar-resizing {
 
 .kh-card .card-body-custom { padding: 22px; }
 
-/* ── Tables ───────────────────────────────────────────── */
+/* â”€â”€ Tables â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .kh-table { margin: 0; border-collapse: collapse; width: 100%; }
 
 .kh-table thead th {
@@ -1255,7 +1255,7 @@ body.sidebar-resizing {
   color: #0f172a;
 }
 
-/* ── Badges ───────────────────────────────────────────── */
+/* â”€â”€ Badges â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .badge-kh {
   font-size: 11px; font-weight: 600;
   padding: 3px 9px; border-radius: 5px;
@@ -1279,7 +1279,7 @@ body.sidebar-resizing {
 .badge-kh.new-patient { background: #f5f3ff; color: #7c3aed; }
 .badge-kh.missed { background: #fef2f2; color: #ef4444; }
 
-/* ── Buttons ──────────────────────────────────────────── */
+/* â”€â”€ Buttons â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .btn-kh-primary {
   background: var(--bs-primary); color: #fff;
   border: 1px solid var(--bs-primary); border-radius: .5rem; padding: 10px 22px;
@@ -1308,7 +1308,7 @@ body.sidebar-resizing {
   border-color: rgba(13,110,253,.35);
 }
 
-/* ── Avatar ───────────────────────────────────────────── */
+/* â”€â”€ Avatar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .avatar {
   width: 34px; height: 34px; border-radius: 8px;
   display: flex; align-items: center; justify-content: center;
@@ -1319,7 +1319,7 @@ body.sidebar-resizing {
 .avatar.sm { width: 30px; height: 30px; font-size: 11px; border-radius: 7px; }
 .avatar.lg { width: 42px; height: 42px; font-size: 15px; border-radius: 10px; }
 
-/* ── Filter Pills ─────────────────────────────────────── */
+/* â”€â”€ Filter Pills â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .filter-pills { display: flex; gap: 6px; flex-wrap: wrap; }
 
 .filter-pill {
@@ -1341,7 +1341,7 @@ body.sidebar-resizing {
   box-shadow: 0 2px 6px rgba(0, 177, 122, 0.2);
 }
 
-/* ── Progress ─────────────────────────────────────────── */
+/* â”€â”€ Progress â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .progress-kh {
   height: 5px; border-radius: 10px;
   background: var(--kh-border-light);
@@ -1353,7 +1353,7 @@ body.sidebar-resizing {
   transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* ── Map Placeholder ──────────────────────────────────── */
+/* â”€â”€ Map Placeholder â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .map-placeholder {
   width: 100%; height: 200px;
   background: var(--kh-light);
@@ -1364,7 +1364,7 @@ body.sidebar-resizing {
   border: 1px dashed var(--kh-border);
 }
 
-/* ── Form Controls ────────────────────────────────────── */
+/* â”€â”€ Form Controls â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .form-control-kh {
   border: 1px solid var(--kh-border); border-radius: 3px;
   padding: 9px 14px; font-size: 13.5px;
@@ -1381,7 +1381,7 @@ body.sidebar-resizing {
   outline: none;
 }
 
-/* ── Modal Premium ────────────────────────────────────── */
+/* â”€â”€ Modal Premium â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .modal-premium .modal-content {
   border-radius: 16px; border: none;
   box-shadow: var(--kh-shadow-lg), 0 0 0 1px rgba(0,0,0,0.03);
@@ -1399,7 +1399,7 @@ body.sidebar-resizing {
   padding: 16px 24px;
 }
 
-/* ── Workforce Page Refresh ──────────────────────────── */
+/* â”€â”€ Workforce Page Refresh â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .workforce-page {
   background: linear-gradient(180deg, #f7f8fc 0%, #eef2f7 100%);
 }
@@ -2054,7 +2054,7 @@ body.sidebar-resizing {
   color: #334455 !important;
 }
 
-/* ── Footer ───────────────────────────────────────────── */
+/* â”€â”€ Footer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .app-footer {
   background: #fff;
   border-top: 1px solid var(--kh-border);
@@ -2098,13 +2098,13 @@ body.sidebar-resizing {
   .app-footer { padding: 0 16px; }
 }
 
-/* ── Empty State ──────────────────────────────────────── */
+/* â”€â”€ Empty State â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .empty-state {
   padding: 60px 24px;
   text-align: center; color: var(--kh-text-muted);
 }
 
-/* ── Responsive ───────────────────────────────────────── */
+/* â”€â”€ Responsive â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 @media (max-width: 991px) {
   .sidebar { transform: translateX(-100%); }
   .sidebar.open { transform: translateX(0); }
@@ -2418,7 +2418,7 @@ body.sidebar-resizing {
   }
 }
 
-/* ── Global UI Normalization (Daisy + Bootstrap bridge) ── */
+/* â”€â”€ Global UI Normalization (Daisy + Bootstrap bridge) â”€â”€ */
 .kh-bs-theme .page-wrapper .btn:not(.btn-link),
 .kh-bs-theme .page-wrapper button.btn:not(.btn-link),
 .kh-bs-theme .page-wrapper a.btn:not(.btn-link) {
@@ -5655,7 +5655,7 @@ body.sidebar-resizing {
   background: #f9fafb;
 }
 
-/* ── Medications mega modal — extras ── */
+/* â”€â”€ Medications mega modal â€” extras â”€â”€ */
 .patient-medications-mega-modal__body {
   display: flex;
   flex-direction: column;
@@ -5684,7 +5684,7 @@ body.sidebar-resizing {
   box-shadow: 0 14px 34px rgba(15, 23, 42, 0.06);
 }
 
-/* ── Notes mega modal — extras ── */
+/* â”€â”€ Notes mega modal â€” extras â”€â”€ */
 .patient-notes-mega-modal__count {
   display: inline-flex;
   align-items: center;
@@ -6124,7 +6124,7 @@ body.sidebar-resizing {
   justify-content: center;
 }
 
-/* ── Incidents mega modal — extras ── */
+/* â”€â”€ Incidents mega modal â€” extras â”€â”€ */
 .patient-incidents-mega-modal__count {
   display: inline-flex;
   align-items: center;
@@ -7160,15 +7160,15 @@ body.sidebar-resizing {
   }
 }
 
-/* ═══════════════════════════════════════════════════════════
-   Dashboard v2 — Clean, modern layout (db2-*)
-   ═══════════════════════════════════════════════════════════ */
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   Dashboard v2 â€” Clean, modern layout (db2-*)
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 .db2-page {
   background: #f8fafc;
   min-height: 100vh;
 }
 
-/* ── Header ── */
+/* â”€â”€ Header â”€â”€ */
 .db2-header {
   display: flex;
   align-items: center;
@@ -7210,7 +7210,7 @@ body.sidebar-resizing {
   transform: translateY(-1px);
 }
 
-/* ── Stat cards row ── */
+/* â”€â”€ Stat cards row â”€â”€ */
 .db2-stats-row {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -7282,7 +7282,7 @@ body.sidebar-resizing {
   color: #94a3b8;
 }
 
-/* ── Skeleton ── */
+/* â”€â”€ Skeleton â”€â”€ */
 .db2-skeleton {
   display: inline-block;
   border-radius: 6px;
@@ -7309,7 +7309,7 @@ body.sidebar-resizing {
   100% { transform: translateX(100%); }
 }
 
-/* ── Section title ── */
+/* â”€â”€ Section title â”€â”€ */
 .db2-section-title {
   margin: 0;
   font-size: 16px;
@@ -7317,7 +7317,7 @@ body.sidebar-resizing {
   color: #0f172a;
 }
 
-/* ── Quick links ── */
+/* â”€â”€ Quick links â”€â”€ */
 .db2-quick-links {
   margin-bottom: 24px;
 }
@@ -7381,7 +7381,7 @@ body.sidebar-resizing {
   transform: translateX(2px);
 }
 
-/* ── Watchlist ── */
+/* â”€â”€ Watchlist â”€â”€ */
 .db2-watchlist {
   background: #fff;
   border: 1px solid #e2e8f0;
@@ -7461,7 +7461,7 @@ body.sidebar-resizing {
   border-bottom: 1px solid #fef3c7;
 }
 
-/* ── Watchlist table ── */
+/* â”€â”€ Watchlist table â”€â”€ */
 .db2-watchlist__table {
   padding: 0 24px 20px;
 }
@@ -7549,7 +7549,7 @@ body.sidebar-resizing {
   font-size: 13px;
 }
 
-/* ── Severity badge ── */
+/* â”€â”€ Severity badge â”€â”€ */
 .db2-severity-badge {
   display: inline-flex;
   align-items: center;
@@ -7570,7 +7570,7 @@ body.sidebar-resizing {
   flex-shrink: 0;
 }
 
-/* Dashboard alert modal — see src/components/DashboardAlertModal.css */
+/* Dashboard alert modal â€” see src/components/DashboardAlertModal.css */
 
 .db2-btn--primary {
   display: inline-flex;
@@ -7623,7 +7623,7 @@ body.sidebar-resizing {
   border-color: #dc2626;
 }
 
-/* ── Responsive ── */
+/* â”€â”€ Responsive â”€â”€ */
 @media (max-width: 1024px) {
   .db2-stats-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -9099,644 +9099,12 @@ button.dashboard-stat-card:active {
   }
 }
 
-/* ── Auth / Login (split layout — BrightNest-inspired) ──── */
-.auth-split-page {
-  display: flex;
-  min-height: 100dvh;
-  min-height: 100vh;
-  background: #f5f5f0;
-  font-family: 'Poppins', -apple-system, BlinkMacSystemFont, sans-serif;
-}
+/* Auth styles: see src/pages/Auth.css */
 
-/* ── Left hero panel ── */
-.auth-split-hero {
-  position: relative;
-  flex: 0 0 46%;
-  max-width: 46%;
-  min-height: 100dvh;
-  display: flex;
-  align-items: flex-end;
-  justify-content: flex-start;
-  padding: 48px 48px 64px;
-  overflow: hidden;
-  border-radius: 0 28px 28px 0;
-}
-
-.auth-split-hero__overlay {
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(ellipse 70% 60% at 55% 55%, rgba(69, 182, 254, 0.5) 0%, transparent 70%),
-    radial-gradient(ellipse 50% 50% at 30% 70%, rgba(46, 143, 212, 0.4) 0%, transparent 65%),
-    radial-gradient(ellipse 80% 80% at 50% 50%, rgba(69, 182, 254, 0.25) 0%, transparent 70%),
-    linear-gradient(160deg, #e8f4fd 0%, #d0e8fa 25%, #b8dcf6 50%, #c8e4f8 75%, #e0f0fc 100%);
-}
-
-.auth-split-hero__content {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  height: 100%;
-  width: 100%;
-}
-
-.auth-split-hero__brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.auth-split-hero__logo {
-  height: 56px;
-  width: auto;
-  object-fit: contain;
-  filter: brightness(0) saturate(100%) invert(15%) sepia(60%) saturate(600%) hue-rotate(190deg) brightness(90%);
-}
-
-.auth-split-hero__text {
-  max-width: 380px;
-}
-
-.auth-split-hero__kicker {
-  font-size: 13px;
-  font-weight: 500;
-  color: rgba(30, 60, 90, 0.65);
-  margin: 0 0 12px;
-}
-
-.auth-split-hero__headline {
-  margin: 0;
-  font-size: 28px;
-  font-weight: 700;
-  line-height: 1.3;
-  letter-spacing: -0.03em;
-  color: #0f2d4a;
-}
-
-/* ── Right form panel ── */
-.auth-split-form-panel {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 48px 40px;
-  background: #fff;
-  overflow-y: auto;
-}
-
-.auth-split-form-panel--centered {
-  background: #f5f8fc;
-}
-.auth-split-form-panel--centered .auth-split-form-wrap {
-  max-width: 460px;
-}
-
-.auth-split-form-wrap {
-  width: 100%;
-  max-width: 420px;
-}
-
-/* ── Accent mark ── */
-.auth-split-accent-mark {
-  font-size: 28px;
-  color: #45b6fe;
-  margin-bottom: 20px;
-  line-height: 1;
-}
-
-/* ── Heading ── */
-.auth-split-heading {
-  margin-bottom: 28px;
-}
-
-.auth-split-heading__title {
-  margin: 0 0 8px;
-  font-size: 26px;
-  font-weight: 800;
-  color: #1a1a1a;
-  letter-spacing: -0.03em;
-  line-height: 1.2;
-}
-
-.auth-split-heading__sub {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 400;
-  color: #888;
-  line-height: 1.55;
-}
-
-/* ── Form ── */
-.auth-split-form {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
-
-.auth-split-field {
-  display: flex;
-  flex-direction: column;
-}
-
-.auth-split-label {
-  display: block;
-  font-size: 13px;
-  font-weight: 600;
-  color: #1a1a1a;
-  margin-bottom: 7px;
-}
-
-.auth-split-label-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 7px;
-}
-
-.auth-split-label-row .auth-split-label {
-  margin-bottom: 0;
-}
-
-.auth-split-input {
-  width: 100%;
-  height: 46px;
-  padding: 0 14px;
-  font-family: inherit;
-  font-size: 14px;
-  font-weight: 400;
-  color: #1a1a1a;
-  background: #fff;
-  border: none;
-  border-bottom: 1.5px solid #e0e0e0;
-  border-radius: 0;
-  outline: none;
-  transition: border-color 0.2s ease;
-}
-
-.auth-split-input::placeholder {
-  color: #bbb;
-  font-weight: 400;
-}
-
-.auth-split-input:focus {
-  border-bottom-color: #1a1a1a;
-}
-
-.auth-split-input.has-error {
-  border-bottom-color: #ef4444;
-  background: #fef8f8;
-}
-
-.auth-split-select {
-  cursor: pointer;
-  appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 8px center;
-  background-size: 16px;
-  padding-right: 32px;
-}
-
-.auth-split-input-wrap {
-  position: relative;
-}
-
-.auth-split-input-wrap .auth-split-input {
-  padding-right: 42px;
-}
-
-.auth-split-eye {
-  position: absolute;
-  right: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  background: none;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  color: #bbb;
-  display: flex;
-  transition: color 0.15s ease;
-}
-
-.auth-split-eye:hover {
-  color: #666;
-}
-
-.auth-split-field-error {
-  font-size: 12px;
-  font-weight: 600;
-  color: #ef4444;
-  margin-top: 5px;
-}
-
-.auth-split-alert {
-  padding: 12px 16px;
-  border-radius: 8px;
-  background: #fef2f2;
-  color: #dc2626;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.auth-split-row-2 {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-}
-
-/* ── Submit button ── */
-.auth-split-submit {
-  width: 100%;
-  height: 48px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  font-family: inherit;
-  font-size: 14px;
-  font-weight: 700;
-  color: #fff;
-  background: #2e8fd4;
-  border: none;
-  border-radius: 9999px;
-  cursor: pointer;
-  transition: background 0.2s ease, transform 0.12s ease;
-  margin-top: 4px;
-}
-
-.auth-split-submit:hover:not(:disabled) {
-  background: #1a6fad;
-  transform: translateY(-1px);
-}
-
-.auth-split-submit:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-/* ── Divider ── */
-.auth-split-divider {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  color: #ccc;
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.auth-split-divider::before,
-.auth-split-divider::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: #e8e8e8;
-}
-
-/* ── Social buttons ── */
-.auth-split-social-row {
-  display: flex;
-  gap: 12px;
-}
-
-.auth-split-social-btn {
-  flex: 1;
-  height: 46px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 1.5px solid #e8e8e8;
-  border-radius: 8px;
-  background: #fff;
-  font-family: inherit;
-  font-size: 16px;
-  font-weight: 600;
-  color: #1a1a1a;
-  cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease;
-}
-
-.auth-split-social-btn:hover {
-  border-color: #ccc;
-  background: #fafafa;
-}
-
-/* ── Links ── */
-.auth-split-link {
-  background: none;
-  border: none;
-  padding: 0;
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 700;
-  color: #2e8fd4;
-  cursor: pointer;
-  transition: color 0.15s ease;
-}
-
-.auth-split-link:hover {
-  color: #1a6fad;
-}
-
-.auth-split-bottom-link {
-  text-align: center;
-  font-size: 13px;
-  font-weight: 400;
-  color: #888;
-}
-
-.auth-split-copyright {
-  text-align: center;
-  font-size: 11px;
-  color: #d0d0d0;
-  margin-top: 36px;
-}
-
-/* ── Success state ── */
-.auth-split-success {
-  text-align: center;
-  padding: 16px 0;
-}
-
-.auth-split-success__icon {
-  width: 60px;
-  height: 60px;
-  border-radius: 50%;
-  background: #ecfdf5;
-  color: #10b981;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 18px;
-}
-
-.auth-split-success__icon--blue {
-  background: #eff6ff;
-  color: #45b6fe;
-}
-
-.auth-split-success__title {
-  font-size: 20px;
-  font-weight: 800;
-  color: #1a1a1a;
-  margin-bottom: 10px;
-  letter-spacing: -0.02em;
-}
-
-.auth-split-success__text {
-  font-size: 14px;
-  color: #888;
-  line-height: 1.7;
-  margin: 0 auto 24px;
-  max-width: 320px;
-  font-weight: 400;
-}
-
-/* ── Account-created success page (redesigned) ── */
-.auth-success-page {
-  text-align: center;
-  padding: 8px 0 0;
-  position: relative;
-  width: 100%;
-  max-width: 440px;
-  margin: 0 auto;
-}
-
-.auth-success-page__particles {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  overflow: hidden;
-}
-.auth-success-particle {
-  position: absolute;
-  border-radius: 50%;
-  opacity: 0;
-  animation: authParticleFade 2.4s ease-out forwards;
-}
-.auth-success-particle--1 { width: 8px; height: 8px; background: #45b6fe; top: 6%; left: 12%; animation-delay: 0.1s; }
-.auth-success-particle--2 { width: 6px; height: 6px; background: #22c97a; top: 10%; right: 18%; animation-delay: 0.3s; }
-.auth-success-particle--3 { width: 10px; height: 10px; background: #f59e0b; top: 2%; left: 55%; animation-delay: 0.15s; }
-.auth-success-particle--4 { width: 5px; height: 5px; background: #ec4899; top: 14%; right: 8%; animation-delay: 0.45s; }
-.auth-success-particle--5 { width: 7px; height: 7px; background: #45b6fe; top: 4%; left: 32%; animation-delay: 0.25s; }
-.auth-success-particle--6 { width: 6px; height: 6px; background: #22c97a; top: 8%; right: 35%; animation-delay: 0.5s; }
-
-@keyframes authParticleFade {
-  0%   { opacity: 0; transform: translateY(0) scale(0.4); }
-  30%  { opacity: 1; transform: translateY(-12px) scale(1); }
-  100% { opacity: 0; transform: translateY(-40px) scale(0.6); }
-}
-
-.auth-success-page__badge {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 72px;
-  height: 72px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #22c97a 0%, #16a361 100%);
-  color: #fff;
-  margin-bottom: 20px;
-  box-shadow: 0 8px 28px rgba(34, 201, 122, 0.3);
-}
-.auth-success-page__badge-ring {
-  position: absolute;
-  inset: -6px;
-  border-radius: 50%;
-  border: 2px solid rgba(34, 201, 122, 0.2);
-  animation: authRingPulse 2s ease-out infinite;
-}
-@keyframes authRingPulse {
-  0%   { transform: scale(1); opacity: 0.6; }
-  100% { transform: scale(1.25); opacity: 0; }
-}
-
-.auth-success-page__title {
-  font-size: 24px;
-  font-weight: 800;
-  color: #1a1a2e;
-  margin-bottom: 8px;
-  letter-spacing: -0.03em;
-}
-
-.auth-success-page__subtitle {
-  font-size: 14px;
-  color: #64748b;
-  line-height: 1.65;
-  margin: 0 auto 28px;
-  max-width: 360px;
-}
-
-.auth-success-page__steps {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin-bottom: 28px;
-  text-align: left;
-}
-
-.auth-success-step {
-  display: flex;
-  align-items: flex-start;
-  gap: 14px;
-  padding: 14px 16px;
-  background: #f8fafc;
-  border: 1px solid rgba(0, 0, 0, 0.06);
-  border-radius: 12px;
-  transition: border-color 0.2s, box-shadow 0.2s;
-}
-.auth-success-step:hover {
-  border-color: rgba(69, 182, 254, 0.25);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
-}
-
-.auth-success-step__num {
-  flex-shrink: 0;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #45b6fe 0%, #2aa3f0 100%);
-  color: #fff;
-  font-size: 13px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-top: 1px;
-}
-
-.auth-success-step strong {
-  display: block;
-  font-size: 13.5px;
-  font-weight: 700;
-  color: #1a1a2e;
-  margin-bottom: 2px;
-}
-
-.auth-success-step span {
-  font-size: 12.5px;
-  color: #64748b;
-  line-height: 1.4;
-}
-
-.auth-success-page__btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  width: 100%;
-  padding: 13px 28px;
-  border: none;
-  border-radius: 9999px;
-  background: linear-gradient(135deg, #2e8fd4 0%, #45b6fe 100%);
-  color: #fff;
-  font-size: 15px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: transform 0.2s, box-shadow 0.2s;
-  box-shadow: 0 6px 20px rgba(69, 182, 254, 0.3);
-}
-.auth-success-page__btn:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 8px 24px rgba(69, 182, 254, 0.35);
-}
-.auth-success-page__btn:active {
-  transform: translateY(0);
-}
-
-.auth-success-page__footnote {
-  margin-top: 20px;
-  font-size: 12.5px;
-  color: #94a3b8;
-}
-.auth-success-page__footnote a {
-  color: #45b6fe;
-  text-decoration: none;
-  font-weight: 600;
-}
-.auth-success-page__footnote a:hover {
-  text-decoration: underline;
-}
-
-/* ── Auth responsive ── */
-@media (max-width: 900px) {
-  .auth-split-page {
-    flex-direction: column;
-  }
-
-  .auth-split-hero {
-    flex: 0 0 auto;
-    max-width: 100%;
-    min-height: 260px;
-    border-radius: 0 0 24px 24px;
-    padding: 32px 28px 40px;
-  }
-
-  .auth-split-hero__headline {
-    font-size: 22px;
-  }
-
-  .auth-split-form-panel {
-    padding: 32px 24px;
-  }
-}
-
-@media (max-width: 480px) {
-  .auth-split-row-2 {
-    grid-template-columns: 1fr;
-  }
-
-  .auth-split-hero {
-    min-height: 200px;
-    padding: 24px 20px 32px;
-  }
-
-  .auth-split-hero__headline {
-    font-size: 20px;
-  }
-
-  .auth-success-page__badge {
-    width: 60px;
-    height: 60px;
-  }
-  .auth-success-page__badge svg {
-    width: 26px;
-    height: 26px;
-  }
-  .auth-success-page__title {
-    font-size: 20px;
-  }
-  .auth-success-page__subtitle {
-    font-size: 13px;
-  }
-  .auth-success-step {
-    padding: 12px 14px;
-    gap: 12px;
-  }
-  .auth-success-step__num {
-    width: 24px;
-    height: 24px;
-    font-size: 11px;
-  }
-  .auth-success-step strong {
-    font-size: 12.5px;
-  }
-  .auth-success-step span {
-    font-size: 11.5px;
-  }
-  .auth-success-page__btn {
-    padding: 12px 24px;
-    font-size: 14px;
-  }
-}
-
-/* ═══════════════════════════════════════════════════════════
-   Patient Profile — Premium Healthcare Redesign (pp-*)
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   Patient Profile â€” Premium Healthcare Redesign (pp-*)
    Scoped overrides + new component layer for the patient page
-   ═══════════════════════════════════════════════════════════ */
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 .patient-profile-page {
   --pp-primary: #1F6FB2;
   --pp-primary-2: #2E7DB8;
@@ -9790,7 +9158,7 @@ button.dashboard-stat-card:active {
   .patient-profile-page .nurse-profile-shell { padding: 14px 14px 28px; gap: 14px; }
 }
 
-/* ── Sticky topbar ── */
+/* â”€â”€ Sticky topbar â”€â”€ */
 .patient-profile-page .nurse-profile-topbar {
   position: sticky;
   top: 0;
@@ -9853,7 +9221,7 @@ button.dashboard-stat-card:active {
   color: #fff;
 }
 
-/* ── Premium hero ── */
+/* â”€â”€ Premium hero â”€â”€ */
 .pp-hero {
   position: relative;
   overflow: hidden;
@@ -10108,7 +9476,7 @@ button.dashboard-stat-card:active {
   background: rgba(14, 159, 110, 0.22);
 }
 
-/* ── KPI strip ── */
+/* â”€â”€ KPI strip â”€â”€ */
 .pp-kpi-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -10174,7 +9542,7 @@ button.dashboard-stat-card:active {
 .pp-kpi--danger .pp-kpi__icon { background: var(--pp-danger-soft); color: var(--pp-danger); }
 .pp-kpi--info .pp-kpi__icon { background: var(--pp-info-soft); color: var(--pp-info); }
 
-/* ── About + summary cards ── */
+/* â”€â”€ About + summary cards â”€â”€ */
 .pp-about-grid {
   display: grid;
   grid-template-columns: 1.45fr 1fr 1fr;
@@ -10278,7 +9646,7 @@ button.dashboard-stat-card:active {
   flex-shrink: 0;
 }
 
-/* ── Quick access list ── */
+/* â”€â”€ Quick access list â”€â”€ */
 .pp-quick-list {
   display: flex;
   flex-direction: column;
@@ -10336,7 +9704,7 @@ button.dashboard-stat-card:active {
   text-overflow: ellipsis;
 }
 
-/* ── Tab strip ── */
+/* â”€â”€ Tab strip â”€â”€ */
 .patient-profile-page .nurse-profile-board {
   background: var(--pp-surface);
   border: 1px solid var(--pp-line);
@@ -10414,7 +9782,7 @@ button.dashboard-stat-card:active {
   padding: 20px 22px 26px;
 }
 
-/* ── Pharmacy-style reference layout (sidebar + lemon CTAs) ── */
+/* â”€â”€ Pharmacy-style reference layout (sidebar + lemon CTAs) â”€â”€ */
 .patient-profile-page {
   --pp-pharm-yellow: #f5e942;
   --pp-pharm-yellow-hover: #ece138;
@@ -10995,7 +10363,7 @@ button.dashboard-stat-card:active {
   font-size: 12.5px;
 }
 
-/* ── Premium Panel (.patient-profile-summary-panel = variant="summary") ── */
+/* â”€â”€ Premium Panel (.patient-profile-summary-panel = variant="summary") â”€â”€ */
 .patient-profile-page .patient-profile-summary-panel {
   background: var(--pp-surface) !important;
   border: 1px solid var(--pp-line) !important;
@@ -11019,7 +10387,7 @@ button.dashboard-stat-card:active {
   color: var(--pp-ink-2) !important;
 }
 
-/* ── Default Panel polish (non-summary) ── */
+/* â”€â”€ Default Panel polish (non-summary) â”€â”€ */
 .patient-profile-page .nurse-profile-board__content > .row > [class*="col-"] > div[style*="background: rgb(255, 255, 255)"],
 .patient-profile-page .nurse-profile-board__content > div[style*="background: rgb(255, 255, 255)"],
 .patient-profile-page .nurse-profile-overview-grid > div[style*="background: rgb(255, 255, 255)"] {
@@ -11033,7 +10401,7 @@ button.dashboard-stat-card:active {
   background: transparent;
 }
 
-/* ── Section title chips ── */
+/* â”€â”€ Section title chips â”€â”€ */
 .pp-section-title {
   display: flex;
   align-items: center;
@@ -11063,7 +10431,7 @@ button.dashboard-stat-card:active {
   margin: 10px 0;
 }
 
-/* ── Status pill (general-purpose) ── */
+/* â”€â”€ Status pill (general-purpose) â”€â”€ */
 .pp-pill {
   display: inline-flex;
   align-items: center;
@@ -11085,7 +10453,7 @@ button.dashboard-stat-card:active {
 .pp-pill.is-danger { background: var(--pp-danger-soft); color: var(--pp-danger); border-color: rgba(220, 38, 38, 0.22); }
 .pp-pill.is-muted { background: #F1F4F8; color: var(--pp-ink-3); border-color: var(--pp-line); }
 
-/* ── Latest vitals tile (override existing VitalTile in summary panel) ── */
+/* â”€â”€ Latest vitals tile (override existing VitalTile in summary panel) â”€â”€ */
 .patient-profile-page .patient-profile-summary-panel div[style*="border: 1px solid rgb(229, 231, 235)"] {
   border-radius: 12px !important;
   border: 1px solid var(--pp-line) !important;
@@ -11099,7 +10467,7 @@ button.dashboard-stat-card:active {
   transform: translateY(-1px);
 }
 
-/* ── Care summary timeline ── */
+/* â”€â”€ Care summary timeline â”€â”€ */
 .patient-profile-page .nurse-profile-timeline-table {
   display: flex;
   flex-direction: column;
@@ -11170,7 +10538,7 @@ button.dashboard-stat-card:active {
   color: var(--pp-success);
 }
 
-/* ── Snapshot list ── */
+/* â”€â”€ Snapshot list â”€â”€ */
 .patient-profile-page .nurse-profile-snapshot-list {
   display: flex;
   flex-direction: column;
@@ -11200,7 +10568,7 @@ button.dashboard-stat-card:active {
   font-weight: 700;
 }
 
-/* ── Hide legacy summary shell when redesign is active (the new hero replaces it) ── */
+/* â”€â”€ Hide legacy summary shell when redesign is active (the new hero replaces it) â”€â”€ */
 .patient-profile-page .nurse-profile-summary-shell {
   display: none;
 }
@@ -11209,7 +10577,7 @@ button.dashboard-stat-card:active {
   display: none;
 }
 
-/* ── Premium polish for Chart Summary cards ── */
+/* â”€â”€ Premium polish for Chart Summary cards â”€â”€ */
 .patient-profile-page .nurse-profile-overview-grid {
   gap: 14px;
   margin-bottom: 14px !important;
@@ -11268,7 +10636,7 @@ button.dashboard-stat-card:active {
   padding: 9px 16px !important;
 }
 
-/* ═══ Unified modal design system (shared across the app) ═══ */
+/* â•â•â• Unified modal design system (shared across the app) â•â•â• */
 :root {
   --app-modal-overlay-bg: rgba(15, 23, 42, 0.38);
   --app-modal-blur: blur(10px);
@@ -11327,7 +10695,7 @@ button.dashboard-stat-card:active {
   width: min(1060px, 100%);
 }
 
-/* ══ Account settings page ═══════════════════════════════════ */
+/* â•â• Account settings page â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 .account-settings-page {
   width: 100%;
   max-width: none;
@@ -11870,190 +11238,62 @@ button.dashboard-stat-card:active {
   color: #fff;
 }
 
-/* ── Danger zone (simplified) ── */
-.dz-section {
-  margin-top: 28px;
-  border: 1px solid #fecaca;
-  border-radius: 12px;
-  padding: 20px 22px;
-  background: #fff;
-}
-
-.dz-section__title {
-  margin: 0 0 14px;
-  font-size: 14px;
-  font-weight: 700;
-  color: #dc2626;
-  letter-spacing: -0.01em;
-}
-
-.dz-section__row {
+/* â”€â”€ Account delete zone (settings) â”€â”€ */
+.account-delete-zone {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 20px;
+  margin-top: 8px;
+  padding: 18px 20px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #f8fafc;
 }
 
-.dz-section__info {
+.account-delete-zone__content {
   flex: 1;
   min-width: 0;
 }
 
-.dz-section__info strong {
-  display: block;
-  font-size: 13.5px;
+.account-delete-zone__title {
+  margin: 0 0 4px;
+  font-size: 15px;
   font-weight: 700;
   color: #0f172a;
-  margin-bottom: 3px;
+  letter-spacing: -0.01em;
 }
 
-.dz-section__info span {
-  font-size: 12.5px;
+.account-delete-zone__text {
+  margin: 0;
+  font-size: 13px;
   color: #64748b;
   line-height: 1.5;
+  max-width: 40rem;
 }
 
-.dz-section__btn {
+.account-delete-zone__btn {
   flex-shrink: 0;
-  padding: 8px 18px;
-  border: 1px solid #fecaca;
-  border-radius: 8px;
-  background: #fff;
-  color: #dc2626;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-.dz-section__btn:hover {
-  background: #fef2f2;
-  border-color: #f87171;
-}
-
-/* ── Delete confirmation modal ── */
-.dz-modal-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 1200;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-  background: rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-}
-
-.dz-modal {
-  width: 100%;
-  max-width: 400px;
-  background: #fff;
-  border-radius: 16px;
-  padding: 32px 28px 24px;
-  text-align: center;
-  box-shadow: 0 24px 56px rgba(0, 0, 0, 0.16);
-  animation: dzModalIn 0.2s ease-out;
-}
-@keyframes dzModalIn {
-  from { opacity: 0; transform: scale(0.95) translateY(8px); }
-  to   { opacity: 1; transform: scale(1) translateY(0); }
-}
-
-.dz-modal__icon-wrap {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  background: #fef2f2;
-  color: #dc2626;
-  margin-bottom: 16px;
-}
-
-.dz-modal__title {
-  margin: 0 0 8px;
-  font-size: 18px;
-  font-weight: 800;
-  color: #0f172a;
-  letter-spacing: -0.02em;
-}
-
-.dz-modal__desc {
-  margin: 0 0 20px;
-  font-size: 13.5px;
-  color: #64748b;
-  line-height: 1.6;
-}
-.dz-modal__desc strong {
-  color: #0f172a;
-}
-
-.dz-modal__label {
-  display: block;
-  text-align: left;
-  font-size: 13px;
-  font-weight: 600;
-  color: #334155;
-  margin-bottom: 6px;
-}
-.dz-modal__label strong {
-  color: #dc2626;
-}
-
-.dz-modal__input {
-  width: 100%;
-  padding: 10px 14px;
+  padding: 9px 16px;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
-  font-size: 14px;
-  color: #0f172a;
-  background: #f8fafc;
-  outline: none;
-  transition: border-color 0.15s, box-shadow 0.15s;
-}
-.dz-modal__input::placeholder { color: #94a3b8; }
-.dz-modal__input:focus {
-  border-color: #f87171;
-  box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.12);
-}
-
-.dz-modal__actions {
-  display: flex;
-  gap: 10px;
-  margin-top: 20px;
-}
-
-.dz-modal__btn {
-  flex: 1;
-  padding: 10px 16px;
-  border-radius: 8px;
-  font-size: 13.5px;
-  font-weight: 700;
+  background: #fff;
+  color: #dc2626;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
-  transition: all 0.15s ease;
-  border: none;
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
 
-.dz-modal__btn--cancel {
-  background: #f1f5f9;
-  color: #334155;
-}
-.dz-modal__btn--cancel:hover {
-  background: #e2e8f0;
+.account-delete-zone__btn:hover {
+  background: #fef2f2;
+  border-color: #fecaca;
 }
 
-.dz-modal__btn--delete {
-  background: #dc2626;
-  color: #fff;
-  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.2);
-}
-.dz-modal__btn--delete:hover:not(:disabled) {
-  background: #b91c1c;
-}
-.dz-modal__btn--delete:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
+.account-delete-zone__btn:focus-visible {
+  outline: 2px solid #f87171;
+  outline-offset: 2px;
 }
 
 @media (max-width: 991px) {
@@ -12067,17 +11307,18 @@ button.dashboard-stat-card:active {
     font-size: 20px;
   }
 
-  .dz-section__row {
+  .account-delete-zone {
     flex-direction: column;
     align-items: stretch;
   }
-  .dz-section__btn {
+
+  .account-delete-zone__btn {
     width: 100%;
     text-align: center;
   }
 }
 
-/* ══ Settings v2 shell & layout ════════════════════════════════ */
+/* â•â• Settings v2 shell & layout â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 .account-settings-page--v2 {
   padding: 0;
 }
@@ -12142,7 +11383,7 @@ button.dashboard-stat-card:active {
   transform: translateY(0);
 }
 
-/* ── Settings nav tabs ── */
+/* â”€â”€ Settings nav tabs â”€â”€ */
 .settings-nav-v2 {
   display: flex;
   flex-wrap: wrap;
@@ -12197,7 +11438,7 @@ button.dashboard-stat-card:active {
   outline-offset: 2px;
 }
 
-/* ── Settings panel & content ── */
+/* â”€â”€ Settings panel & content â”€â”€ */
 .settings-shell-v2__panel {
   min-height: 0;
 }
@@ -12208,7 +11449,7 @@ button.dashboard-stat-card:active {
   gap: 28px;
 }
 
-/* ── Section card ── */
+/* â”€â”€ Section card â”€â”€ */
 .settings-section-v2 {
   background: #fff;
   border-radius: 14px;
@@ -12278,7 +11519,7 @@ button.dashboard-stat-card:active {
   transform: none;
 }
 
-/* ── Form rows ── */
+/* â”€â”€ Form rows â”€â”€ */
 .settings-form-row-v2 {
   display: flex;
   align-items: flex-start;
@@ -12319,7 +11560,7 @@ button.dashboard-stat-card:active {
   min-width: 0;
 }
 
-/* ── Toggle row ── */
+/* â”€â”€ Toggle row â”€â”€ */
 .settings-form-row-v2--toggle {
   align-items: center;
 }
@@ -12333,7 +11574,7 @@ button.dashboard-stat-card:active {
   flex: 0 0 auto;
 }
 
-/* ── Input v2 ── */
+/* â”€â”€ Input v2 â”€â”€ */
 .settings-input-v2 {
   width: 100%;
   height: 42px;
@@ -12370,7 +11611,7 @@ button.dashboard-stat-card:active {
   background: #f1f5f9;
 }
 
-/* ── Select v2 ── */
+/* â”€â”€ Select v2 â”€â”€ */
 .settings-select-v2 {
   width: 100%;
   height: 42px;
@@ -12402,7 +11643,7 @@ button.dashboard-stat-card:active {
   background-color: #fff;
 }
 
-/* ── Toggle switch v2 ── */
+/* â”€â”€ Toggle switch v2 â”€â”€ */
 .settings-switch-v2 {
   position: relative;
   width: 44px;
@@ -12442,7 +11683,7 @@ button.dashboard-stat-card:active {
   outline-offset: 2px;
 }
 
-/* ── Profile avatar row ── */
+/* â”€â”€ Profile avatar row â”€â”€ */
 .settings-profile-avatar-row {
   display: flex;
   align-items: center;
@@ -12530,7 +11771,7 @@ button.dashboard-stat-card:active {
   display: none;
 }
 
-/* ── Link buttons ── */
+/* â”€â”€ Link buttons â”€â”€ */
 .settings-link-btn-v2 {
   padding: 6px 12px;
   border: none;
@@ -12575,7 +11816,7 @@ button.dashboard-stat-card:active {
   color: #64748b;
 }
 
-/* ── Password note block ── */
+/* â”€â”€ Password note block â”€â”€ */
 .settings-password-note {
   padding: 14px 16px;
   border-radius: 10px;
@@ -12605,7 +11846,7 @@ button.dashboard-stat-card:active {
   margin-top: 3px;
 }
 
-/* ── Settings v2 empty state & helpers ── */
+/* â”€â”€ Settings v2 empty state & helpers â”€â”€ */
 .settings-empty-state {
   display: flex;
   flex-direction: column;
@@ -12645,7 +11886,7 @@ button.dashboard-stat-card:active {
   display: inline-block;
 }
 
-/* ── Settings v2 responsive ── */
+/* â”€â”€ Settings v2 responsive â”€â”€ */
 @media (max-width: 768px) {
   .settings-shell-v2 {
     padding: 20px 16px 0;
@@ -12708,7 +11949,7 @@ button.dashboard-stat-card:active {
   }
 }
 
-/* ══ Reports page ═══════════════════════════════════════════ */
+/* â•â• Reports page â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 .reports-status-badge,
 .reports-type-badge {
   display: inline-block;
@@ -13042,7 +12283,7 @@ button.dashboard-stat-card:active {
   }
 }
 
-/* ── Destructive confirm dialog (type-to-delete pattern) ── */
+/* â”€â”€ Destructive confirm dialog (type-to-delete pattern) â”€â”€ */
 .destructive-confirm-overlay {
   position: fixed;
   inset: 0;
@@ -13460,7 +12701,7 @@ button.dashboard-stat-card:active {
   }
 }
 
-/* ── Responsive ── */
+/* â”€â”€ Responsive â”€â”€ */
 @media (max-width: 1100px) {
   .pp-kpi-grid { grid-template-columns: repeat(2, 1fr); }
   .pp-about-grid { grid-template-columns: 1fr 1fr; }
@@ -13479,7 +12720,7 @@ button.dashboard-stat-card:active {
   .patient-profile-page .nurse-profile-board__content { padding: 14px; }
 }
 
-/* ── Patient profile: Care Plan tab ── */
+/* â”€â”€ Patient profile: Care Plan tab â”€â”€ */
 .patient-care-plan {
   display: flex;
   flex-direction: column;
@@ -14240,7 +13481,234 @@ button.dashboard-stat-card:active {
   color: #15803d;
 }
 
-/* ── Patient profile: Care Checklist Status tab ── */
+/* â”€â”€ Patient profile: completed daily care (General tab) â”€â”€ */
+.patient-daily-care-completed {
+  margin-bottom: 18px;
+  padding: 18px 20px;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.patient-daily-care-completed__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.patient-daily-care-completed__title {
+  margin: 0 0 4px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+}
+
+.patient-daily-care-completed__subtitle {
+  margin: 0;
+  font-size: 13px;
+  color: #64748b;
+  line-height: 1.45;
+}
+
+.patient-daily-care-completed__link {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #2e7db8;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.patient-daily-care-completed__link:hover {
+  background: #f0f7ff;
+  border-color: #bae6fd;
+}
+
+.patient-daily-care-completed__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 12px;
+  margin-bottom: 14px;
+}
+
+.patient-daily-care-completed__date-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+}
+
+.patient-daily-care-completed__date-input {
+  padding: 7px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #0f172a;
+  background: #fff;
+}
+
+.patient-daily-care-completed__day-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.patient-daily-care-completed__day-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 6px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  font-size: 11px;
+  font-weight: 600;
+  color: #334155;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.patient-daily-care-completed__day-chip small {
+  font-size: 10px;
+  font-weight: 500;
+  color: #64748b;
+}
+
+.patient-daily-care-completed__day-chip.is-active {
+  border-color: #45b6fe;
+  background: #f0f7ff;
+  color: #1d4ed8;
+}
+
+.patient-daily-care-completed__status {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: #64748b;
+}
+
+.patient-daily-care-completed__status--error {
+  color: #b91c1c;
+  font-weight: 600;
+}
+
+.patient-daily-care-completed__list {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.patient-daily-care-completed__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.patient-daily-care-completed__item-icon {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #ecfdf5;
+  color: #15803d;
+}
+
+.patient-daily-care-completed__item-task {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.patient-daily-care-completed__item-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  font-size: 11px;
+  color: #64748b;
+}
+
+.patient-daily-care-completed__history-title {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #334155;
+}
+
+.patient-daily-care-completed__history-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
+  gap: 8px;
+}
+
+.patient-daily-care-completed__history-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.patient-daily-care-completed__history-card.is-selected {
+  border-color: #45b6fe;
+  box-shadow: 0 0 0 2px rgba(69, 182, 254, 0.15);
+}
+
+.patient-daily-care-completed__history-card.is-loading {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.patient-daily-care-completed__history-date {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.patient-daily-care-completed__history-count {
+  font-size: 18px;
+  font-weight: 800;
+  color: #15803d;
+  line-height: 1.1;
+}
+
+.patient-daily-care-completed__history-label {
+  font-size: 10px;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.patient-checklist-status__tasks-empty {
+  margin: 0;
+  padding: 12px 2px 4px;
+  font-size: 13px;
+  color: #64748b;
+}
+
+/* â”€â”€ Patient profile: Care Checklist Status tab â”€â”€ */
 .patient-checklist-status {
   padding: 0 1px 4px;
   display: flex;
@@ -14295,7 +13763,7 @@ button.dashboard-stat-card:active {
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
-/* Date selection — minimal panel */
+/* Date selection â€” minimal panel */
 .patient-checklist-status__date-panel {
   display: flex;
   flex-direction: column;
@@ -14894,7 +14362,7 @@ button.dashboard-stat-card:active {
   color: var(--kh-text-muted, #94a3b8);
 }
 
-/* ── Emergency Cases (Clinical) ── */
+/* â”€â”€ Emergency Cases (Clinical) â”€â”€ */
 .emergency-cases-page {
   --ec-border: #e2e8f0;
   --ec-radius: 12px;
@@ -14964,7 +14432,7 @@ button.dashboard-stat-card:active {
   margin-top: 4px;
 }
 
-/* Enquiries — full-width workspace below topbar (no max-width cage; table scrolls in-place) */
+/* Enquiries â€” full-width workspace below topbar (no max-width cage; table scrolls in-place) */
 .kh-bs-theme .page-wrapper.enquiries-page--full {
   padding: 0;
   display: flex;
@@ -15182,7 +14650,7 @@ button.dashboard-stat-card:active {
   border-color: #e2e8f0;
 }
 
-/* Delete row action — explicit red (some themes flatten .btn-danger) */
+/* Delete row action â€” explicit red (some themes flatten .btn-danger) */
 .enquiries-page .enquiries-delete-btn.btn {
   background-color: #dc2626 !important;
   border-color: #b91c1c !important;
@@ -15204,7 +14672,7 @@ button.dashboard-stat-card:active {
   opacity: 0.5;
 }
 
-/* Delete enquiry confirmation — wider than modal-sm (~300px), room for title + warning */
+/* Delete enquiry confirmation â€” wider than modal-sm (~300px), room for title + warning */
 .kh-rb-portal-modal.enquiries-delete-modal .modal-dialog.enquiries-delete-modal-dialog {
   max-width: min(520px, calc(100vw - 2rem));
 }
@@ -15770,7 +15238,7 @@ button.dashboard-stat-card:active {
   z-index: 2000;
 }
 
-/* Enquiries (& other RB modals): portaled under body outside .kh-bs-theme — visible overlay + pane */
+/* Enquiries (& other RB modals): portaled under body outside .kh-bs-theme â€” visible overlay + pane */
 .kh-rb-portal-modal.modal.show {
   display: flex !important;
   align-items: center;
@@ -15991,11 +15459,11 @@ button.dashboard-stat-card:active {
   padding-bottom: 4px;
 }
 
-/* ═══════════════════════════════════════════════════════════
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
    DARK MODE OVERRIDES
-   ═══════════════════════════════════════════════════════════ */
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 
-/* ── Body & scrollbars ── */
+/* â”€â”€ Body & scrollbars â”€â”€ */
 [data-theme="dark"] body {
   background: #0b1120;
   color: #e2e8f0;
@@ -16005,12 +15473,12 @@ button.dashboard-stat-card:active {
 [data-theme="dark"] ::-webkit-scrollbar-thumb { background: #334155; }
 [data-theme="dark"] ::-webkit-scrollbar-thumb:hover { background: #475569; }
 
-/* ── Page wrapper ── */
+/* â”€â”€ Page wrapper â”€â”€ */
 [data-theme="dark"] .page-wrapper {
   background: #0b1120;
 }
 
-/* ── Sidebar ── */
+/* â”€â”€ Sidebar â”€â”€ */
 [data-theme="dark"] .sidebar-panel {
   background: #0f172a;
   border-right-color: #1e293b;
@@ -16091,7 +15559,7 @@ button.dashboard-stat-card:active {
   color: #bae6fd;
 }
 
-/* ── Theme toggle button ── */
+/* â”€â”€ Theme toggle button â”€â”€ */
 .sidebar-theme-toggle .icon {
   transition: color 0.2s ease;
 }
@@ -16100,7 +15568,7 @@ button.dashboard-stat-card:active {
   color: #fbbf24;
 }
 
-/* ── Topbar ── */
+/* â”€â”€ Topbar â”€â”€ */
 [data-theme="dark"] .topbar {
   background: rgba(15, 23, 42, 0.92);
   border-bottom-color: #1e293b;
@@ -16178,7 +15646,7 @@ button.dashboard-stat-card:active {
   color: #94a3b8;
 }
 
-/* ── Dashboard v2 ── */
+/* â”€â”€ Dashboard v2 â”€â”€ */
 [data-theme="dark"] .db2-page { background: #0b1120; }
 
 [data-theme="dark"] .db2-header__greeting { color: #e2e8f0; }
@@ -16299,7 +15767,7 @@ button.dashboard-stat-card:active {
   border-color: #475569;
 }
 
-/* ── Patients page ── */
+/* â”€â”€ Patients page â”€â”€ */
 [data-theme="dark"] .patients-hero {
   background: #0f172a;
   border-color: #1e293b;
@@ -16380,7 +15848,7 @@ button.dashboard-stat-card:active {
   color: #fff;
 }
 
-/* ── Common card / form styles ── */
+/* â”€â”€ Common card / form styles â”€â”€ */
 [data-theme="dark"] .card,
 [data-theme="dark"] .form-control,
 [data-theme="dark"] .form-select {
@@ -16416,7 +15884,7 @@ button.dashboard-stat-card:active {
 [data-theme="dark"] .text-muted { color: #64748b !important; }
 [data-theme="dark"] .text-dark { color: #e2e8f0 !important; }
 
-/* ── Modal overlays ── */
+/* â”€â”€ Modal overlays â”€â”€ */
 [data-theme="dark"] .kh-modal-overlay {
   background: rgba(0, 0, 0, 0.65);
 }
@@ -16427,11 +15895,11 @@ button.dashboard-stat-card:active {
   color: #e2e8f0;
 }
 
-/* ═══════════════════════════════════════════════════════════
-   DARK MODE — Tables (comprehensive)
-   ═══════════════════════════════════════════════════════════ */
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   DARK MODE â€” Tables (comprehensive)
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 
-/* ── kh-card (used as table wrapper by Attendance, Scheduling, etc.) ── */
+/* â”€â”€ kh-card (used as table wrapper by Attendance, Scheduling, etc.) â”€â”€ */
 [data-theme="dark"] .kh-card {
   background: #0f172a;
   border-color: #1e293b;
@@ -16451,7 +15919,7 @@ button.dashboard-stat-card:active {
   color: #e2e8f0;
 }
 
-/* ── kh-table (used by Scheduling, Workforce, Patients, Reports, etc.) ── */
+/* â”€â”€ kh-table (used by Scheduling, Workforce, Patients, Reports, etc.) â”€â”€ */
 [data-theme="dark"] .kh-table thead th {
   background: #0f172a;
   color: #64748b;
@@ -16487,7 +15955,7 @@ button.dashboard-stat-card:active {
   color: #e2e8f0;
 }
 
-/* ── Generic table fallback (table-bordered, table-hover, etc.) ── */
+/* â”€â”€ Generic table fallback (table-bordered, table-hover, etc.) â”€â”€ */
 [data-theme="dark"] table thead th {
   background: #0f172a;
   color: #64748b;
@@ -16534,7 +16002,7 @@ button.dashboard-stat-card:active {
   color: #cbd5e1;
 }
 
-/* ── patients-table (Patients & Workforce pages) ── */
+/* â”€â”€ patients-table (Patients & Workforce pages) â”€â”€ */
 [data-theme="dark"] .patients-table thead th {
   background: #0f172a;
   color: #64748b;
@@ -16640,7 +16108,7 @@ button.dashboard-stat-card:active {
   color: #94a3b8;
 }
 
-/* ── Workforce board card ── */
+/* â”€â”€ Workforce board card â”€â”€ */
 [data-theme="dark"] .workforce-board.kh-card {
   background: #0f172a;
   border-color: #1e293b;
@@ -16670,7 +16138,7 @@ button.dashboard-stat-card:active {
   color: #64748b;
 }
 
-/* ── Care Visits schedule table ── */
+/* â”€â”€ Care Visits schedule table â”€â”€ */
 [data-theme="dark"] .care-visits-schedule-table thead th {
   background: #0f172a;
   color: #64748b;
@@ -16727,7 +16195,7 @@ button.dashboard-stat-card:active {
   background: #334155;
 }
 
-/* ── Emergency cases table ── */
+/* â”€â”€ Emergency cases table â”€â”€ */
 [data-theme="dark"] .emergency-cases-table thead th {
   background: #0f1d32;
   color: #60a5fa;
@@ -16773,7 +16241,7 @@ button.dashboard-stat-card:active {
   border-color: #1e293b;
 }
 
-/* ── Account users table ── */
+/* â”€â”€ Account users table â”€â”€ */
 [data-theme="dark"] .account-users-table-wrap {
   border-color: #1e293b;
 }
@@ -16799,7 +16267,7 @@ button.dashboard-stat-card:active {
   color: #94a3b8;
 }
 
-/* ── Nurse profile tables / timeline ── */
+/* â”€â”€ Nurse profile tables / timeline â”€â”€ */
 [data-theme="dark"] .nurse-profile-timeline-table {
   border-color: #1e293b;
 }
@@ -16809,17 +16277,17 @@ button.dashboard-stat-card:active {
   border-color: #1e293b;
 }
 
-/* ── Badge styling in tables ── */
+/* â”€â”€ Badge styling in tables â”€â”€ */
 [data-theme="dark"] .badge-kh {
   opacity: 0.9;
 }
 
-/* ── Pagination (used by Patients, Reports, Workforce, etc.) ── */
+/* â”€â”€ Pagination (used by Patients, Reports, Workforce, etc.) â”€â”€ */
 [data-theme="dark"] .patients-pagination span {
   color: #64748b;
 }
 
-/* ── Workforce / Nurse pages ── */
+/* â”€â”€ Workforce / Nurse pages â”€â”€ */
 [data-theme="dark"] .nurse-card,
 [data-theme="dark"] .nurse-detail-card,
 [data-theme="dark"] .nurse-profile-card {
@@ -16827,14 +16295,14 @@ button.dashboard-stat-card:active {
   border-color: #1e293b;
 }
 
-/* ── Scheduling ── */
+/* â”€â”€ Scheduling â”€â”€ */
 [data-theme="dark"] .schedule-card,
 [data-theme="dark"] .schedule-table-card {
   background: #0f172a;
   border-color: #1e293b;
 }
 
-/* ── Enquiries ── */
+/* â”€â”€ Enquiries â”€â”€ */
 [data-theme="dark"] .enquiry-card,
 [data-theme="dark"] .enquiry-detail {
   background: #0f172a;
@@ -16863,7 +16331,7 @@ button.dashboard-stat-card:active {
   background: #1e293b !important;
 }
 
-/* ── Reports page ── */
+/* â”€â”€ Reports page â”€â”€ */
 [data-theme="dark"] .reports-viewer-dialog {
   background: #0f172a;
 }
@@ -16895,7 +16363,7 @@ button.dashboard-stat-card:active {
   color: #94a3b8;
 }
 
-/* ── Settings page (v2) ── */
+/* â”€â”€ Settings page (v2) â”€â”€ */
 [data-theme="dark"] .account-settings-page--v2 {
   background: #0b1120;
 }
@@ -16946,52 +16414,32 @@ button.dashboard-stat-card:active {
 
 [data-theme="dark"] .settings-form-row-v2 label { color: #94a3b8; }
 
-/* ── Danger zone & delete modal ── */
-[data-theme="dark"] .dz-section {
+/* â”€â”€ Account delete zone â”€â”€ */
+[data-theme="dark"] .account-delete-zone {
   background: #0f172a;
-  border-color: #7f1d1d;
+  border-color: #1e293b;
 }
-[data-theme="dark"] .dz-section__title { color: #f87171; }
-[data-theme="dark"] .dz-section__info strong { color: #e2e8f0; }
-[data-theme="dark"] .dz-section__info span { color: #94a3b8; }
-[data-theme="dark"] .dz-section__btn {
-  background: transparent;
-  border-color: #7f1d1d;
-  color: #f87171;
-}
-[data-theme="dark"] .dz-section__btn:hover {
-  background: rgba(220, 38, 38, 0.1);
-  border-color: #f87171;
-}
-[data-theme="dark"] .dz-modal {
-  background: #1e293b;
-  box-shadow: 0 24px 56px rgba(0, 0, 0, 0.5);
-}
-[data-theme="dark"] .dz-modal__icon-wrap {
-  background: rgba(220, 38, 38, 0.12);
-  color: #f87171;
-}
-[data-theme="dark"] .dz-modal__title { color: #e2e8f0; }
-[data-theme="dark"] .dz-modal__desc { color: #94a3b8; }
-[data-theme="dark"] .dz-modal__desc strong { color: #e2e8f0; }
-[data-theme="dark"] .dz-modal__label { color: #cbd5e1; }
-[data-theme="dark"] .dz-modal__input {
-  background: #0f172a;
-  border-color: #334155;
-  color: #e2e8f0;
-}
-[data-theme="dark"] .dz-modal__input::placeholder { color: #475569; }
-[data-theme="dark"] .dz-modal__input:focus {
-  border-color: #f87171;
-  box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.15);
-}
-[data-theme="dark"] .dz-modal__btn--cancel {
-  background: #334155;
-  color: #e2e8f0;
-}
-[data-theme="dark"] .dz-modal__btn--cancel:hover { background: #475569; }
 
-/* ── Attendance page ── */
+[data-theme="dark"] .account-delete-zone__title {
+  color: #e2e8f0;
+}
+
+[data-theme="dark"] .account-delete-zone__text {
+  color: #94a3b8;
+}
+
+[data-theme="dark"] .account-delete-zone__btn {
+  background: #1e293b;
+  border-color: #334155;
+  color: #fca5a5;
+}
+
+[data-theme="dark"] .account-delete-zone__btn:hover {
+  background: rgba(127, 29, 29, 0.35);
+  border-color: #7f1d1d;
+}
+
+/* â”€â”€ Attendance page â”€â”€ */
 [data-theme="dark"] .attendance-shift,
 [data-theme="dark"] .attendance-card,
 [data-theme="dark"] .attendance-table-card {
@@ -17054,7 +16502,7 @@ button.dashboard-stat-card:active {
   border-color: #334155;
 }
 
-/* Attendance uses inline styles — need !important for overrides */
+/* Attendance uses inline styles â€” need !important for overrides */
 [data-theme="dark"] .page-wrapper table {
   border-color: #1e293b !important;
 }
@@ -17082,7 +16530,7 @@ button.dashboard-stat-card:active {
   background: #0f172a !important;
 }
 
-/* ── Patient Profile ── */
+/* â”€â”€ Patient Profile â”€â”€ */
 [data-theme="dark"] .patient-profile-page {
   --pp-bg: #0b1120;
   --pp-surface: #0f172a;
@@ -17096,7 +16544,7 @@ button.dashboard-stat-card:active {
   --pp-primary-soft: #0f1d32;
 }
 
-/* ── Footer ── */
+/* â”€â”€ Footer â”€â”€ */
 [data-theme="dark"] .footer,
 [data-theme="dark"] footer {
   background: #0f172a;
@@ -17104,7 +16552,7 @@ button.dashboard-stat-card:active {
   border-top-color: #1e293b;
 }
 
-/* ── Alerts / badges ── */
+/* â”€â”€ Alerts / badges â”€â”€ */
 [data-theme="dark"] .alert-warning {
   background: #422006;
   border-color: #78350f;
@@ -17129,7 +16577,7 @@ button.dashboard-stat-card:active {
   color: #7dd3fc;
 }
 
-/* ── KH buttons ── */
+/* â”€â”€ KH buttons â”€â”€ */
 [data-theme="dark"] .btn-kh-primary {
   background: #2563eb;
   border-color: #2563eb;
@@ -17153,7 +16601,7 @@ button.dashboard-stat-card:active {
   color: #e2e8f0;
 }
 
-/* ── Generic section cards used across pages ── */
+/* â”€â”€ Generic section cards used across pages â”€â”€ */
 [data-theme="dark"] .dashboard-stat-card,
 [data-theme="dark"] .dashboard-watchlist-card,
 [data-theme="dark"] .dashboard-flow-card,
@@ -17164,7 +16612,7 @@ button.dashboard-stat-card:active {
   border-color: #1e293b;
 }
 
-/* ── Patient Profile save alert ── */
+/* â”€â”€ Patient Profile save alert â”€â”€ */
 [data-theme="dark"] .patient-profile-save-alert {
   background: #0f172a;
   border-color: #1e293b;
@@ -17173,14 +16621,14 @@ button.dashboard-stat-card:active {
 [data-theme="dark"] .patient-profile-save-alert__content strong { color: #e2e8f0; }
 [data-theme="dark"] .patient-profile-save-alert__content span { color: #94a3b8; }
 
-/* ── Workforce Add User modal ── */
+/* â”€â”€ Workforce Add User modal â”€â”€ */
 [data-theme="dark"] .kh-modal-overlay > div[role="dialog"],
 [data-theme="dark"] .kh-modal-overlay > div[style] {
   background: #0f172a;
   color: #e2e8f0;
 }
 
-/* ── Emergency Cases / Clinical ── */
+/* â”€â”€ Emergency Cases / Clinical â”€â”€ */
 [data-theme="dark"] .emergency-case-modal {
   background: #0f172a;
 }
@@ -17192,7 +16640,7 @@ button.dashboard-stat-card:active {
   border-top-color: #1e293b;
 }
 
-/* ── Hero sections used by patients/workforce/scheduling/enquiries ── */
+/* â”€â”€ Hero sections used by patients/workforce/scheduling/enquiries â”€â”€ */
 [data-theme="dark"] .patients-hero {
   background: #0f172a;
   border-color: #1e293b;
@@ -17201,7 +16649,7 @@ button.dashboard-stat-card:active {
 [data-theme="dark"] .patients-page-title { color: #e2e8f0; }
 [data-theme="dark"] .patients-page-subtitle { color: #64748b; }
 
-/* ── Search inputs used across pages ── */
+/* â”€â”€ Search inputs used across pages â”€â”€ */
 [data-theme="dark"] [class*="-searchbar"],
 [data-theme="dark"] input[type="text"],
 [data-theme="dark"] input[type="email"],
@@ -17231,7 +16679,7 @@ button.dashboard-stat-card:active {
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
 }
 
-/* ── Status badges used across pages ── */
+/* â”€â”€ Status badges used across pages â”€â”€ */
 [data-theme="dark"] .status-badge--active,
 [data-theme="dark"] .status-badge--completed {
   background: #052e16;
@@ -17250,7 +16698,7 @@ button.dashboard-stat-card:active {
   color: #fca5a5;
 }
 
-/* ── Dropdown menus ── */
+/* â”€â”€ Dropdown menus â”€â”€ */
 [data-theme="dark"] .dropdown-menu,
 [data-theme="dark"] [class*="-dropdown"] {
   background: #1e293b;
@@ -17267,7 +16715,7 @@ button.dashboard-stat-card:active {
   color: #e2e8f0;
 }
 
-/* ── Tabs / filter pills ── */
+/* â”€â”€ Tabs / filter pills â”€â”€ */
 [data-theme="dark"] .dashboard-tab-pill,
 [data-theme="dark"] .patients-filter-btn,
 [data-theme="dark"] .db2-tab-pill {
@@ -17289,108 +16737,10 @@ button.dashboard-stat-card:active {
   color: #60a5fa;
 }
 
-/* ── Selection / focus ring ── */
+/* â”€â”€ Selection / focus ring â”€â”€ */
 [data-theme="dark"] ::selection {
   background: rgba(37, 99, 235, 0.3);
   color: #e2e8f0;
 }
 
-/* ── Auth page dark mode ── */
-[data-theme="dark"] .auth-split-page {
-  background: #0b1120;
-}
-
-[data-theme="dark"] .auth-split-hero__overlay {
-  background:
-    radial-gradient(ellipse 70% 60% at 55% 55%, rgba(37, 99, 235, 0.3) 0%, transparent 70%),
-    radial-gradient(ellipse 50% 50% at 30% 70%, rgba(30, 64, 175, 0.25) 0%, transparent 65%),
-    radial-gradient(ellipse 80% 80% at 50% 50%, rgba(37, 99, 235, 0.15) 0%, transparent 70%),
-    linear-gradient(160deg, #0f172a 0%, #1e293b 25%, #0f1d32 50%, #172554 75%, #0f172a 100%);
-}
-
-[data-theme="dark"] .auth-split-hero__kicker { color: rgba(148, 163, 184, 0.8); }
-[data-theme="dark"] .auth-split-hero__headline { color: #e2e8f0; }
-
-[data-theme="dark"] .auth-split-hero__logo {
-  filter: brightness(0) saturate(100%) invert(85%) sepia(10%) saturate(200%) hue-rotate(190deg) brightness(110%);
-}
-
-[data-theme="dark"] .auth-split-form-panel {
-  background: #0f172a;
-}
-
-[data-theme="dark"] .auth-split-form-panel--centered {
-  background: #0b1120;
-}
-
-[data-theme="dark"] .auth-split-accent-mark { color: #60a5fa; }
-
-[data-theme="dark"] .auth-split-heading { color: #e2e8f0; }
-[data-theme="dark"] .auth-split-subhead { color: #94a3b8; }
-
-[data-theme="dark"] .auth-split-label { color: #94a3b8; }
-
-[data-theme="dark"] .auth-split-input {
-  background: #1e293b;
-  border-color: #334155;
-  color: #e2e8f0;
-}
-
-[data-theme="dark"] .auth-split-input:focus {
-  border-color: #2563eb;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
-}
-
-[data-theme="dark"] .auth-split-input::placeholder { color: #64748b; }
-
-[data-theme="dark"] .auth-split-submit {
-  background: #2563eb;
-}
-
-[data-theme="dark"] .auth-split-submit:hover:not(:disabled) {
-  background: #1d4ed8;
-}
-
-[data-theme="dark"] .auth-split-link { color: #60a5fa; }
-[data-theme="dark"] .auth-split-link:hover { color: #93bbfd; }
-
-[data-theme="dark"] .auth-split-bottom-link { color: #64748b; }
-
-[data-theme="dark"] .auth-split-social-btn {
-  background: #1e293b;
-  border-color: #334155;
-  color: #e2e8f0;
-}
-
-[data-theme="dark"] .auth-split-social-btn:hover {
-  background: #334155;
-  border-color: #475569;
-}
-
-[data-theme="dark"] .auth-split-divider { color: #475569; }
-[data-theme="dark"] .auth-split-divider::before,
-[data-theme="dark"] .auth-split-divider::after { background: #334155; }
-
-[data-theme="dark"] .auth-split-success__title { color: #e2e8f0; }
-[data-theme="dark"] .auth-split-success__text { color: #94a3b8; }
-
-[data-theme="dark"] .auth-success-page__title { color: #e2e8f0; }
-[data-theme="dark"] .auth-success-page__subtitle { color: #94a3b8; }
-[data-theme="dark"] .auth-success-step {
-  background: #1e293b;
-  border-color: #334155;
-}
-[data-theme="dark"] .auth-success-step:hover {
-  border-color: rgba(69, 182, 254, 0.3);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
-}
-[data-theme="dark"] .auth-success-step strong { color: #e2e8f0; }
-[data-theme="dark"] .auth-success-step span { color: #94a3b8; }
-[data-theme="dark"] .auth-success-page__footnote { color: #475569; }
-[data-theme="dark"] .auth-success-page__footnote a { color: #60a5fa; }
-[data-theme="dark"] .auth-success-page__btn {
-  background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
-  box-shadow: 0 6px 20px rgba(37, 99, 235, 0.25);
-}
-
-[data-theme="dark"] .auth-split-copyright { color: #475569; }
+/* Auth dark theme: see src/pages/Auth.css */

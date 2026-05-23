@@ -5,27 +5,17 @@ import {
   FiTrash2,
   FiAlertTriangle,
   FiX,
-  FiRefreshCw,
-  FiUsers,
-  FiCheckCircle,
   FiSettings,
-  FiChevronLeft,
-  FiChevronRight,
-  FiChevronsLeft,
-  FiChevronsRight,
-  FiSearch,
   FiCreditCard,
   FiEye,
   FiBell,
-  FiGrid,
   FiShield,
   FiUpload,
 } from '../icons/hugeicons-feather';
-import { getUser, changePassword, fetchAuthUsers, apiFetch } from '../api';
+import { getUser, changePassword, apiFetch } from '../api';
 
 const fontStack = "'Poppins', -apple-system, BlinkMacSystemFont, sans-serif'";
 
-const WORKSPACE_USERS_PER_PAGE = 10;
 const AGENCY_LOGO_STORAGE_KEY = 'accountSettings.agencyLogo';
 
 function readPersistedAgencyLogo() {
@@ -63,60 +53,6 @@ async function parseJsonResponse(res) {
     return JSON.parse(text);
   } catch {
     throw new Error('Unable to read server response. Please try again.');
-  }
-}
-
-/** Normalize common list shapes: `{ data: [] }`, `{ users: [] }`, etc. */
-function extractAuthUsersList(json) {
-  if (json == null) return [];
-  if (Array.isArray(json)) return json;
-  if (typeof json !== 'object') return [];
-  const keys = ['data', 'users', 'items', 'results', 'records'];
-  for (const k of keys) {
-    const v = json[k];
-    if (Array.isArray(v)) return v;
-    if (v && typeof v === 'object') {
-      for (const inner of keys) {
-        const nested = v[inner];
-        if (Array.isArray(nested)) return nested;
-      }
-    }
-  }
-  return [];
-}
-
-function normalizeWorkspaceUser(raw) {
-  if (!raw || typeof raw !== 'object') return null;
-  const email = raw.email ?? raw.emailAddress ?? '';
-  const id = raw.id ?? raw._id ?? raw.uuid;
-  if (id == null && !email) return null;
-  const firstName = raw.firstName ?? raw.first_name ?? '';
-  const lastName = raw.lastName ?? raw.last_name ?? '';
-  const name = [firstName, lastName].filter(Boolean).join(' ').trim()
-    || (typeof raw.name === 'string' ? raw.name.trim() : '')
-    || (typeof raw.fullName === 'string' ? raw.fullName.trim() : '')
-    || '—';
-  const phone = raw.phone ?? raw.phoneNumber ?? raw.phone_number ?? '';
-  const role = raw.role ?? raw.userRole ?? raw.user_role ?? '';
-  const createdRaw = raw.createdAt ?? raw.created_at;
-  return {
-    id: String(id ?? email ?? name),
-    name,
-    email: email ? String(email) : '—',
-    phone: phone ? String(phone) : '—',
-    role: role ? String(role) : '—',
-    createdAt: createdRaw,
-  };
-}
-
-function formatUserTableDate(raw) {
-  if (raw == null || raw === '') return '—';
-  try {
-    const d = new Date(raw);
-    if (Number.isNaN(d.getTime())) return '—';
-    return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-  } catch {
-    return '—';
   }
 }
 
@@ -203,9 +139,7 @@ const SETTINGS_NAV = [
   { key: 'billing', tabKey: 'billing', label: 'Billing & Subscription', Icon: FiCreditCard },
   { key: 'appearance', tabKey: 'appearance', label: 'Appearance', Icon: FiEye },
   { key: 'notifications', tabKey: 'notifications', label: 'Notifications', Icon: FiBell },
-  { key: 'integrations', tabKey: 'integrations', label: 'Integrations', Icon: FiGrid },
   { key: 'privacy', tabKey: 'privacy', label: 'Privacy & Data', Icon: FiShield },
-  { key: 'workspace', tabKey: 'users', label: 'Workspace users', Icon: FiUsers },
 ];
 
 function SettingsSection({ id, title, subtitle, children, className = '' }) {
@@ -271,6 +205,11 @@ export default function Account() {
   const confirmWord = 'DELETE';
   const initials = getInitials(user);
 
+  const closeDeleteModal = useCallback(() => {
+    setShowDeleteModal(false);
+    setDeleteConfirmText('');
+  }, []);
+
   const [passwordForm, setPasswordForm] = useState({
     current: '',
     next: '',
@@ -280,12 +219,6 @@ export default function Account() {
   const [passwordError, setPasswordError] = useState('');
   const [passwordSuccess, setPasswordSuccess] = useState('');
 
-  const [userCreatedModal, setUserCreatedModal] = useState(null);
-  const [workspaceUsers, setWorkspaceUsers] = useState([]);
-  const [workspaceUsersLoading, setWorkspaceUsersLoading] = useState(false);
-  const [workspaceUsersError, setWorkspaceUsersError] = useState('');
-  const [workspaceUsersPage, setWorkspaceUsersPage] = useState(1);
-  const [workspaceUsersSearch, setWorkspaceUsersSearch] = useState('');
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
   const [loginAlertEnabled, setLoginAlertEnabled] = useState(true);
   const [settingsTab, setSettingsTab] = useState('forms');
@@ -305,86 +238,6 @@ export default function Account() {
   const onAuthUnauthorized = useCallback(() => {
     window.location.replace('/login');
   }, []);
-
-  const loadWorkspaceUsers = useCallback(async () => {
-    setWorkspaceUsersError('');
-    setWorkspaceUsersLoading(true);
-    try {
-      const res = await fetchAuthUsers({ page: 1, limit: 200 }, onAuthUnauthorized);
-      const json = await parseJsonResponse(res);
-      if (!res.ok) {
-        throw new Error(json?.error || json?.message || `Could not load users (${res.status})`);
-      }
-      const rows = extractAuthUsersList(json)
-        .map(normalizeWorkspaceUser)
-        .filter(Boolean);
-      const seen = new Set();
-      const deduped = [];
-      for (const r of rows) {
-        if (seen.has(r.id)) continue;
-        seen.add(r.id);
-        deduped.push(r);
-      }
-      setWorkspaceUsers(deduped);
-      setWorkspaceUsersPage(1);
-    } catch (e) {
-      if (e.message !== 'Session expired. Please log in again.') {
-        setWorkspaceUsersError(e.message || 'Could not load users.');
-      }
-      setWorkspaceUsers([]);
-    } finally {
-      setWorkspaceUsersLoading(false);
-    }
-  }, [onAuthUnauthorized]);
-
-  useEffect(() => {
-    if (settingsTab !== 'users') return;
-    loadWorkspaceUsers();
-  }, [settingsTab, loadWorkspaceUsers]);
-
-  const filteredWorkspaceUsers = useMemo(() => {
-    const q = workspaceUsersSearch.trim().toLowerCase();
-    if (!q) return workspaceUsers;
-    return workspaceUsers.filter((row) => (
-      row.name.toLowerCase().includes(q)
-      || row.email.toLowerCase().includes(q)
-      || row.phone.toLowerCase().includes(q)
-      || String(row.role).toLowerCase().includes(q)
-      || String(row.id).toLowerCase().includes(q)
-    ));
-  }, [workspaceUsers, workspaceUsersSearch]);
-
-  useEffect(() => {
-    setWorkspaceUsersPage(1);
-  }, [workspaceUsersSearch]);
-
-  const workspaceUsersTotalPages = Math.max(1, Math.ceil(filteredWorkspaceUsers.length / WORKSPACE_USERS_PER_PAGE));
-  const workspaceUsersStartRow =
-    filteredWorkspaceUsers.length === 0 ? 0 : (workspaceUsersPage - 1) * WORKSPACE_USERS_PER_PAGE + 1;
-  const workspaceUsersEndRow = Math.min(
-    workspaceUsersPage * WORKSPACE_USERS_PER_PAGE,
-    filteredWorkspaceUsers.length,
-  );
-  const pagedWorkspaceUsers = useMemo(
-    () =>
-      filteredWorkspaceUsers.slice(
-        (workspaceUsersPage - 1) * WORKSPACE_USERS_PER_PAGE,
-        workspaceUsersPage * WORKSPACE_USERS_PER_PAGE,
-      ),
-    [filteredWorkspaceUsers, workspaceUsersPage],
-  );
-
-  const workspaceUsersPgBtn = (onClick, disabled, children) => (
-    <button type="button" onClick={onClick} disabled={disabled} className="patients-page-btn">
-      {children}
-    </button>
-  );
-
-  useEffect(() => {
-    if (workspaceUsersPage > workspaceUsersTotalPages) {
-      setWorkspaceUsersPage(workspaceUsersTotalPages);
-    }
-  }, [workspaceUsersPage, workspaceUsersTotalPages]);
 
   const setPwd = (key, v) => {
     setPasswordForm((prev) => ({ ...prev, [key]: v }));
@@ -873,25 +726,6 @@ export default function Account() {
           </div>
         </div>
 
-        {/* ── Integrations tab ── */}
-        <div
-          id="account-panel-integrations"
-          role="tabpanel"
-          aria-labelledby="settings-tab-integrations"
-          hidden={settingsTab !== 'integrations'}
-          className="settings-shell-v2__panel"
-        >
-          <div className="settings-shell-v2__content">
-            <SettingsSection title="Connected services" subtitle="Manage third-party integrations with your workspace.">
-              <div className="settings-empty-state">
-                <FiGrid size={32} strokeWidth={1.5} />
-                <p>No integrations connected yet.</p>
-                <button type="button" className="settings-shell-v2__action-primary">Browse integrations</button>
-              </div>
-            </SettingsSection>
-          </div>
-        </div>
-
         {/* ── Privacy & Data tab ── */}
         <div
           id="account-panel-privacy"
@@ -915,260 +749,116 @@ export default function Account() {
           </div>
         </div>
 
-        {/* ── Workspace users tab ── */}
-        <div
-          id="account-panel-users"
-          role="tabpanel"
-          aria-labelledby="settings-tab-workspace"
-          hidden={settingsTab !== 'users'}
-          className="settings-shell-v2__panel"
-        >
-          <div className="settings-shell-v2__content">
-            <SettingsSection
-              title="Workspace users"
-              subtitle="View and manage all users in your workspace."
-            >
-          <div className="account-users-toolbar mb-3 d-flex flex-wrap align-items-center justify-content-end gap-2">
-            <button
-              type="button"
-              className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
-              disabled={workspaceUsersLoading}
-              onClick={() => loadWorkspaceUsers()}
-            >
-              <FiRefreshCw
-                size={14}
-                className={workspaceUsersLoading ? 'account-users-refresh-icon--spin' : ''}
-                aria-hidden
-              />
-              {workspaceUsersLoading ? 'Loading…' : 'Refresh'}
-            </button>
-          </div>
-          {workspaceUsersError ? (
-            <div className="account-settings-alert account-settings-alert--error mb-3" role="alert">
-              {workspaceUsersError}
-            </div>
-          ) : null}
-          {workspaceUsersLoading && workspaceUsers.length === 0 ? (
-            <p className="text-muted small mb-0">Loading users…</p>
-          ) : null}
-          {!workspaceUsersLoading && workspaceUsers.length === 0 && !workspaceUsersError ? (
-            <p className="text-muted small mb-0">
-              No users found. Tap Refresh or add someone under Account settings.
+        <section className="account-delete-zone" aria-labelledby="account-delete-zone-title">
+          <div className="account-delete-zone__content">
+            <h2 id="account-delete-zone-title" className="account-delete-zone__title">Delete account</h2>
+            <p className="account-delete-zone__text">
+              Permanently remove your workspace, patients, nurses, and all associated data.
             </p>
-          ) : null}
-          {workspaceUsers.length > 0 ? (
-            <div className="patients-searchbox account-users-search mb-3">
-              <FiSearch className="patients-searchbox__icon" size={16} aria-hidden />
-              <input
-                type="search"
-                className="form-control form-control-kh patients-searchbox__input"
-                placeholder="Search by name, email, phone, or role"
-                value={workspaceUsersSearch}
-                onChange={(e) => setWorkspaceUsersSearch(e.target.value)}
-                aria-label="Search workspace users"
-                autoComplete="off"
-              />
-            </div>
-          ) : null}
-          {!workspaceUsersLoading &&
-          workspaceUsers.length > 0 &&
-          filteredWorkspaceUsers.length === 0 &&
-          workspaceUsersSearch.trim() ? (
-            <p className="text-muted small mb-0">No users match your search. Try different keywords.</p>
-          ) : null}
-          {workspaceUsers.length > 0 && filteredWorkspaceUsers.length > 0 ? (
-            <>
-            <div className="table-responsive account-users-table-wrap">
-              <table className="table table-bordered table-hover align-middle mb-0 account-users-table">
-                <thead className="table-light">
-                  <tr>
-                    <th scope="col">Name</th>
-                    <th scope="col">Email</th>
-                    <th scope="col" className="d-none d-md-table-cell">Phone</th>
-                    <th scope="col">Role</th>
-                    <th scope="col" className="d-none d-lg-table-cell">Added</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pagedWorkspaceUsers.map((row) => (
-                    <tr key={row.id}>
-                      <td className="fw-semibold">{row.name}</td>
-                      <td className="text-break">{row.email}</td>
-                      <td className="d-none d-md-table-cell">{row.phone}</td>
-                      <td>
-                        <span className="account-users-table__role">{row.role}</span>
-                      </td>
-                      <td className="d-none d-lg-table-cell text-muted small">{formatUserTableDate(row.createdAt)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="patients-pagination-footer account-users-pagination-footer">
-              <div className="patients-pagination-summary">
-                <span>Showing</span>
-                <strong>{workspaceUsersStartRow}–{workspaceUsersEndRow}</strong>
-                <span>of</span>
-                <strong>{filteredWorkspaceUsers.length}</strong>
-              </div>
-              <div className="d-flex gap-1 patients-pagination-actions flex-wrap">
-                {workspaceUsersPgBtn(
-                  () => setWorkspaceUsersPage(1),
-                  workspaceUsersPage === 1,
-                  <FiChevronsLeft size={14} />,
-                )}
-                {workspaceUsersPgBtn(
-                  () => setWorkspaceUsersPage((p) => p - 1),
-                  workspaceUsersPage === 1,
-                  <FiChevronLeft size={14} />,
-                )}
-                {Array.from({ length: workspaceUsersTotalPages }, (_, i) => i + 1)
-                  .filter((p) => p === 1 || p === workspaceUsersTotalPages || Math.abs(p - workspaceUsersPage) <= 1)
-                  .map((pNum, idx, arr) => {
-                    const prev = arr[idx - 1];
-                    const showEllipsis = prev && pNum - prev > 1;
-                    return (
-                      <span key={pNum}>
-                        {showEllipsis && <span className="patients-pagination-ellipsis">…</span>}
-                        <button
-                          type="button"
-                          onClick={() => setWorkspaceUsersPage(pNum)}
-                          className={`patients-page-number${workspaceUsersPage === pNum ? ' active' : ''}`}
-                        >
-                          {pNum}
-                        </button>
-                      </span>
-                    );
-                  })}
-                {workspaceUsersPgBtn(
-                  () => setWorkspaceUsersPage((p) => p + 1),
-                  workspaceUsersPage === workspaceUsersTotalPages,
-                  <FiChevronRight size={14} />,
-                )}
-                {workspaceUsersPgBtn(
-                  () => setWorkspaceUsersPage(workspaceUsersTotalPages),
-                  workspaceUsersPage === workspaceUsersTotalPages,
-                  <FiChevronsRight size={14} />,
-                )}
-              </div>
-            </div>
-            </>
-          ) : null}
-            </SettingsSection>
-          </div>
-        </div>
-      </div>
-
-      <section className="dz-section">
-        <h3 className="dz-section__title">Danger zone</h3>
-        <div className="dz-section__row">
-          <div className="dz-section__info">
-            <strong>Delete this account</strong>
-            <span>Once deleted, all data will be permanently removed and cannot be recovered.</span>
           </div>
           <button
             type="button"
-            className="dz-section__btn"
+            className="account-delete-zone__btn"
             onClick={() => setShowDeleteModal(true)}
           >
             Delete account
           </button>
-        </div>
-      </section>
-
-      {userCreatedModal ? (
-        <div
-          className="app-modal-overlay"
-          role="presentation"
-          onClick={() => setUserCreatedModal(null)}
-        >
-          <div
-            className="account-user-created-dialog"
-            role="alertdialog"
-            aria-modal="true"
-            aria-labelledby="account-user-created-title"
-            aria-describedby="account-user-created-desc"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="account-user-created-dialog__icon-wrap" aria-hidden>
-              <FiCheckCircle size={40} strokeWidth={1.85} />
-            </div>
-            <h2 id="account-user-created-title" className="account-user-created-dialog__title">
-              User created successfully
-            </h2>
-            <p id="account-user-created-desc" className="account-user-created-dialog__lead">
-              <strong>{userCreatedModal.name}</strong> can sign in with the email and initial password you set.
-              Remind them to change their password after first login if your policy requires it.
-            </p>
-            <div className="account-user-created-dialog__footer">
-              <button
-                type="button"
-                className="btn btn-sm btn-primary account-settings-btn-primary"
-                onClick={() => setUserCreatedModal(null)}
-              >
-                OK
-              </button>
-            </div>
-            <button
-              type="button"
-              className="account-user-created-dialog__close"
-              aria-label="Dismiss"
-              onClick={() => setUserCreatedModal(null)}
-            >
-              <FiX size={20} strokeWidth={1.75} />
-            </button>
-          </div>
-        </div>
-      ) : null}
+        </section>
+      </div>
 
       {showDeleteModal && (
         <div
-          className="dz-modal-overlay"
+          className="destructive-confirm-overlay"
           role="presentation"
-          onClick={() => { setShowDeleteModal(false); setDeleteConfirmText(''); }}
+          onClick={closeDeleteModal}
         >
           <div
-            className="dz-modal"
-            role="dialog"
+            className="destructive-confirm-dialog"
+            role="alertdialog"
             aria-modal="true"
-            aria-labelledby="dz-delete-title"
+            aria-labelledby="account-delete-modal-title"
+            aria-describedby="account-delete-modal-desc"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="dz-modal__icon-wrap">
-              <FiAlertTriangle size={24} strokeWidth={2} />
-            </div>
-
-            <h2 id="dz-delete-title" className="dz-modal__title">Delete your account?</h2>
-            <p className="dz-modal__desc">
-              This action is <strong>permanent</strong>. All nurses, patient records, schedules, and documents will be removed and cannot be recovered.
-            </p>
-
-            <label className="dz-modal__label" htmlFor="dz-confirm-input">
-              Type <strong>{confirmWord}</strong> to confirm
-            </label>
-            <input
-              id="dz-confirm-input"
-              className="dz-modal__input"
-              type="text"
-              autoComplete="off"
-              value={deleteConfirmText}
-              onChange={(e) => setDeleteConfirmText(e.target.value)}
-              placeholder={confirmWord}
-            />
-
-            <div className="dz-modal__actions">
+            <div className="destructive-confirm-dialog__header">
+              <h2 id="account-delete-modal-title" className="destructive-confirm-dialog__title">
+                Delete account?
+              </h2>
               <button
                 type="button"
-                className="dz-modal__btn dz-modal__btn--cancel"
-                onClick={() => { setShowDeleteModal(false); setDeleteConfirmText(''); }}
+                className="destructive-confirm-dialog__close"
+                aria-label="Close"
+                onClick={closeDeleteModal}
+              >
+                <FiX size={20} strokeWidth={1.75} />
+              </button>
+            </div>
+
+            <div className="destructive-confirm-dialog__body">
+              <p id="account-delete-modal-desc" className="destructive-confirm-dialog__lead">
+                You are about to delete your CareSense account. This cannot be undone.
+              </p>
+
+              <div className="destructive-confirm-dialog__warning">
+                <div className="destructive-confirm-dialog__warning-bar" aria-hidden />
+                <div className="destructive-confirm-dialog__warning-text">
+                  <strong>All data will be permanently removed</strong>, including patient records, nurse profiles,
+                  schedules, reports, and documents.
+                </div>
+              </div>
+
+              <div className="destructive-confirm-dialog__card">
+                <div
+                  className="destructive-confirm-dialog__card-icon destructive-confirm-dialog__card-icon--brand"
+                  aria-hidden
+                >
+                  {initials}
+                </div>
+                <div className="destructive-confirm-dialog__card-body">
+                  <div className="destructive-confirm-dialog__card-title">{profileDisplayName}</div>
+                  <div className="destructive-confirm-dialog__card-meta">
+                    {user?.email || '—'}
+                    {user?.role ? ` · ${user.role}` : ''}
+                  </div>
+                </div>
+              </div>
+
+              <label className="destructive-confirm-dialog__input-label" htmlFor="account-delete-confirm-input">
+                Type <strong>{confirmWord}</strong> below to confirm
+              </label>
+              <div className="destructive-confirm-dialog__input-wrap">
+                <span
+                  className="destructive-confirm-dialog__input-icon destructive-confirm-dialog__input-icon--danger"
+                  aria-hidden
+                >
+                  <FiAlertTriangle size={16} />
+                </span>
+                <input
+                  id="account-delete-confirm-input"
+                  className="destructive-confirm-dialog__input"
+                  type="text"
+                  autoComplete="off"
+                  value={deleteConfirmText}
+                  onChange={(e) => setDeleteConfirmText(e.target.value)}
+                  placeholder={confirmWord}
+                />
+              </div>
+            </div>
+
+            <div className="destructive-confirm-dialog__footer">
+              <button
+                type="button"
+                className="destructive-confirm-dialog__btn-cancel"
+                onClick={closeDeleteModal}
               >
                 Cancel
               </button>
               <button
                 type="button"
-                className="dz-modal__btn dz-modal__btn--delete"
+                className="destructive-confirm-dialog__btn-danger"
                 disabled={deleteConfirmText !== confirmWord}
               >
+                <FiTrash2 size={14} aria-hidden />
                 Delete account
               </button>
             </div>

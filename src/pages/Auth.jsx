@@ -1,6 +1,24 @@
 import { useState } from 'react';
-import { FiEye, FiEyeOff, FiArrowRight, FiCheck, FiMail } from '../icons/hugeicons-feather';
+import { Link } from 'react-router-dom';
+import {
+  FiEye,
+  FiEyeOff,
+  FiArrowRight,
+  FiCheck,
+  FiMail,
+  FiLock,
+  FiUsers,
+  FiCalendar,
+  FiFileText,
+} from '../icons/hugeicons-feather';
 import { API_BASE } from '../api';
+import './Auth.css';
+
+const HERO_FEATURES = [
+  { icon: FiUsers, text: 'Patient records and care plans in one place' },
+  { icon: FiCalendar, text: 'Nurse scheduling and attendance tracking' },
+  { icon: FiFileText, text: 'Reports, vitals, and clinical alerts' },
+];
 
 async function parseJsonResponse(res) {
   const text = await res.text();
@@ -16,7 +34,14 @@ export default function Auth({ onLogin }) {
   const [mode, setMode] = useState('login');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [loginForm, setLoginForm] = useState({ email: '', password: '', remember: false });
+  const [loginForm, setLoginForm] = useState(() => {
+    const rememberedEmail = localStorage.getItem('auth.rememberEmail') || '';
+    return {
+      email: rememberedEmail,
+      password: '',
+      remember: Boolean(rememberedEmail),
+    };
+  });
   const [signupForm, setSignupForm] = useState({ firstName: '', lastName: '', email: '', phone: '', password: '', confirmPassword: '', agencyName: '', location: '', country: 'Ghana' });
   const [forgotForm, setForgotForm] = useState({ email: '' });
   const [forgotSent, setForgotSent] = useState(false);
@@ -67,6 +92,11 @@ export default function Auth({ onLogin }) {
       if (!data.token) throw new Error('Sign-in succeeded but no token was returned. Please contact support.');
       localStorage.setItem('token', data.token);
       localStorage.setItem('user', JSON.stringify(data.user ?? {}));
+      if (loginForm.remember) {
+        localStorage.setItem('auth.rememberEmail', loginForm.email.trim());
+      } else {
+        localStorage.removeItem('auth.rememberEmail');
+      }
       onLogin();
     } catch (err) {
       setApiError(err.message || 'Sign in failed');
@@ -142,23 +172,35 @@ export default function Auth({ onLogin }) {
   );
 
   const isFormMode = mode === 'login' || mode === 'signup';
+  const showTopbar = isFormMode || mode === 'forgot';
 
   return (
     <div className="auth-split-page">
       {/* ── Left hero panel ── */}
       {isFormMode && (
-        <div className="auth-split-hero" aria-hidden>
-          <div className="auth-split-hero__overlay" />
+        <div className="auth-split-hero">
+          <div className="auth-split-hero__overlay" aria-hidden />
           <div className="auth-split-hero__content">
             <div className="auth-split-hero__brand">
-              <img src="/Blue_Logo.png" alt="" className="auth-split-hero__logo" />
+              <img src="/Blue_Logo.png" alt="CareSense" className="auth-split-hero__logo" />
             </div>
             <div className="auth-split-hero__text">
-              <p className="auth-split-hero__kicker">Simplified Homecare</p>
+              <p className="auth-split-hero__kicker">CareSense Homecare</p>
               <h2 className="auth-split-hero__headline">
-                Management Platform.
+                Manage care with clarity and confidence.
               </h2>
+              <ul className="auth-split-hero__features">
+                {HERO_FEATURES.map(({ icon: Icon, text }) => (
+                  <li key={text} className="auth-split-hero__feature">
+                    <span className="auth-split-hero__feature-icon" aria-hidden>
+                      <Icon size={14} />
+                    </span>
+                    {text}
+                  </li>
+                ))}
+              </ul>
             </div>
+            <p className="auth-split-hero__footnote">Trusted by homecare agencies across Ghana.</p>
           </div>
         </div>
       )}
@@ -166,74 +208,136 @@ export default function Auth({ onLogin }) {
       {/* ── Right form panel ── */}
       <div className={`auth-split-form-panel${isFormMode ? '' : ' auth-split-form-panel--centered'}`}>
         <div className="auth-split-form-wrap">
+          {showTopbar && (
+            <div className="auth-split-topbar">
+              {mode === 'forgot' ? (
+                <button type="button" className="auth-split-home-link" onClick={() => switchMode('login')}>
+                  ← Back to sign in
+                </button>
+              ) : (
+                <Link to="/" className="auth-split-home-link">← Back to website</Link>
+              )}
+            </div>
+          )}
 
-          {/* Accent mark */}
-          {isFormMode && <div className="auth-split-accent-mark" aria-hidden>✳</div>}
+          {isFormMode && (
+            <div className="auth-split-mode-tabs" role="tablist" aria-label="Sign in or register">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={mode === 'login'}
+                className={`auth-split-mode-tab${mode === 'login' ? ' is-active' : ''}`}
+                onClick={() => switchMode('login')}
+              >
+                Sign in
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={mode === 'signup'}
+                className={`auth-split-mode-tab${mode === 'signup' ? ' is-active' : ''}`}
+                onClick={() => switchMode('signup')}
+              >
+                Create account
+              </button>
+            </div>
+          )}
 
-          {/* Heading (hidden on thankyou — success page has its own) */}
           {mode !== 'thankyou' && (
             <div className="auth-split-heading">
               <h1 className="auth-split-heading__title">
                 {mode === 'login' && 'Welcome back'}
-                {mode === 'signup' && 'Create an account'}
+                {mode === 'signup' && 'Create your agency account'}
                 {mode === 'forgot' && 'Reset password'}
               </h1>
               <p className="auth-split-heading__sub">
-                {mode === 'login' && 'Access your tasks, patients, and reports anytime, anywhere.'}
-                {mode === 'signup' && 'Set up your agency workspace and start managing homecare.'}
-                {mode === 'forgot' && (forgotSent ? 'Check your inbox for reset instructions.' : 'Enter your email to receive a reset link.')}
+                {mode === 'login' && 'Sign in to access patients, schedules, reports, and your team workspace.'}
+                {mode === 'signup' && 'Set up your agency workspace and start managing homecare in minutes.'}
+                {mode === 'forgot' && (forgotSent ? 'Check your inbox for reset instructions.' : 'Enter your email and we will send you a reset link.')}
               </p>
             </div>
           )}
 
           {/* ═══ LOGIN ═══ */}
           {mode === 'login' && (
-            <form onSubmit={handleLogin} className="auth-split-form">
-              {apiError && <div className="auth-split-alert">{apiError}</div>}
+            <form onSubmit={handleLogin} className="auth-split-form auth-split-form-card">
+              {apiError && <div className="auth-split-alert" role="alert">{apiError}</div>}
 
               <div className="auth-split-field">
-                <label className="auth-split-label" htmlFor="auth-login-email">Your email</label>
-                <input
-                  id="auth-login-email"
-                  type="email"
-                  className={`auth-split-input${errors.email ? ' has-error' : ''}`}
-                  placeholder="name@company.com"
-                  value={loginForm.email}
-                  onChange={(e) => setLoginForm((f) => ({ ...f, email: e.target.value }))}
-                  autoComplete="email"
-                />
+                <label className="auth-split-label" htmlFor="auth-login-email">Email address</label>
+                <div className="auth-split-input-wrap">
+                  <span className="auth-split-input-icon" aria-hidden><FiMail size={16} /></span>
+                  <input
+                    id="auth-login-email"
+                    type="email"
+                    className={`auth-split-input${errors.email ? ' has-error' : ''}`}
+                    placeholder="you@agency.com"
+                    value={loginForm.email}
+                    onChange={(e) => setLoginForm((f) => ({ ...f, email: e.target.value }))}
+                    autoComplete="email"
+                  />
+                </div>
                 {errors.email && <div className="auth-split-field-error">{errors.email}</div>}
               </div>
 
               <div className="auth-split-field">
-                <div className="auth-split-label-row">
-                  <label className="auth-split-label" htmlFor="auth-login-pw">Password</label>
-                  <button type="button" className="auth-split-link" onClick={() => switchMode('forgot')}>Forgot?</button>
-                </div>
+                <label className="auth-split-label" htmlFor="auth-login-pw">Password</label>
                 <div className="auth-split-input-wrap">
+                  <span className="auth-split-input-icon" aria-hidden><FiLock size={16} /></span>
                   <input
                     id="auth-login-pw"
                     type={showPassword ? 'text' : 'password'}
-                    className={`auth-split-input${errors.password ? ' has-error' : ''}`}
-                    placeholder="••••••••"
+                    className={`auth-split-input auth-split-input--password${errors.password ? ' has-error' : ''}`}
+                    placeholder="Enter your password"
                     value={loginForm.password}
                     onChange={(e) => setLoginForm((f) => ({ ...f, password: e.target.value }))}
                     autoComplete="current-password"
                   />
-                  <button type="button" className="auth-split-eye" onClick={() => setShowPassword(!showPassword)}>
+                  <button
+                    type="button"
+                    className="auth-split-eye"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    onClick={() => setShowPassword(!showPassword)}
+                  >
                     {showPassword ? <FiEyeOff size={16} /> : <FiEye size={16} />}
                   </button>
                 </div>
                 {errors.password && <div className="auth-split-field-error">{errors.password}</div>}
               </div>
 
+              <div className="auth-split-remember-row">
+                <label className="auth-split-remember">
+                  <input
+                    type="checkbox"
+                    checked={loginForm.remember}
+                    onChange={(e) => setLoginForm((f) => ({ ...f, remember: e.target.checked }))}
+                  />
+                  Remember me
+                </label>
+                <button type="button" className="auth-split-link" onClick={() => switchMode('forgot')}>
+                  Forgot password?
+                </button>
+              </div>
+
               <button type="submit" className="auth-split-submit" disabled={loading}>
-                {loading ? 'Signing in…' : 'Sign in'}
+                {loading ? (
+                  <>
+                    <span className="auth-split-submit__spinner" aria-hidden />
+                    Signing in…
+                  </>
+                ) : (
+                  <>
+                    Sign in
+                    <FiArrowRight size={16} aria-hidden />
+                  </>
+                )}
               </button>
 
               <div className="auth-split-bottom-link">
-                Already have an account?{' '}
-                <button type="button" className="auth-split-link" onClick={() => switchMode('signup')}>Register</button>
+                Don&apos;t have an account?{' '}
+                <button type="button" className="auth-split-link" onClick={() => switchMode('signup')}>
+                  Create account
+                </button>
               </div>
             </form>
           )}
@@ -258,7 +362,10 @@ export default function Auth({ onLogin }) {
 
               <div className="auth-split-field">
                 <label className="auth-split-label" htmlFor="auth-email">Email</label>
-                <input id="auth-email" type="email" className={`auth-split-input${errors.email ? ' has-error' : ''}`} placeholder="you@company.com" value={signupForm.email} onChange={(e) => setSignupForm((f) => ({ ...f, email: e.target.value }))} autoComplete="email" />
+                <div className="auth-split-input-wrap">
+                  <span className="auth-split-input-icon" aria-hidden><FiMail size={16} /></span>
+                  <input id="auth-email" type="email" className={`auth-split-input${errors.email ? ' has-error' : ''}`} placeholder="you@company.com" value={signupForm.email} onChange={(e) => setSignupForm((f) => ({ ...f, email: e.target.value }))} autoComplete="email" />
+                </div>
                 {errors.email && <div className="auth-split-field-error">{errors.email}</div>}
               </div>
 
@@ -293,7 +400,8 @@ export default function Auth({ onLogin }) {
               <div className="auth-split-field">
                 <label className="auth-split-label" htmlFor="auth-pw">Create password</label>
                 <div className="auth-split-input-wrap">
-                  <input id="auth-pw" type={showPassword ? 'text' : 'password'} className={`auth-split-input${errors.password ? ' has-error' : ''}`} placeholder="Min. 8 characters" value={signupForm.password} onChange={(e) => setSignupForm((f) => ({ ...f, password: e.target.value }))} autoComplete="new-password" />
+                  <span className="auth-split-input-icon" aria-hidden><FiLock size={16} /></span>
+                  <input id="auth-pw" type={showPassword ? 'text' : 'password'} className={`auth-split-input auth-split-input--password${errors.password ? ' has-error' : ''}`} placeholder="Min. 8 characters" value={signupForm.password} onChange={(e) => setSignupForm((f) => ({ ...f, password: e.target.value }))} autoComplete="new-password" />
                   <button type="button" className="auth-split-eye" onClick={() => setShowPassword(!showPassword)}>
                     {showPassword ? <FiEyeOff size={16} /> : <FiEye size={16} />}
                   </button>
@@ -304,7 +412,8 @@ export default function Auth({ onLogin }) {
               <div className="auth-split-field">
                 <label className="auth-split-label" htmlFor="auth-cpw">Confirm password</label>
                 <div className="auth-split-input-wrap">
-                  <input id="auth-cpw" type={showConfirmPassword ? 'text' : 'password'} className={`auth-split-input${errors.confirmPassword ? ' has-error' : ''}`} placeholder="Re-enter password" value={signupForm.confirmPassword} onChange={(e) => setSignupForm((f) => ({ ...f, confirmPassword: e.target.value }))} autoComplete="new-password" />
+                  <span className="auth-split-input-icon" aria-hidden><FiLock size={16} /></span>
+                  <input id="auth-cpw" type={showConfirmPassword ? 'text' : 'password'} className={`auth-split-input auth-split-input--password${errors.confirmPassword ? ' has-error' : ''}`} placeholder="Re-enter password" value={signupForm.confirmPassword} onChange={(e) => setSignupForm((f) => ({ ...f, confirmPassword: e.target.value }))} autoComplete="new-password" />
                   <button type="button" className="auth-split-eye" onClick={() => setShowConfirmPassword(!showConfirmPassword)}>
                     {showConfirmPassword ? <FiEyeOff size={16} /> : <FiEye size={16} />}
                   </button>
@@ -313,7 +422,17 @@ export default function Auth({ onLogin }) {
               </div>
 
               <button type="submit" className="auth-split-submit" disabled={loading}>
-                {loading ? 'Creating account…' : 'Create account'}
+                {loading ? (
+                  <>
+                    <span className="auth-split-submit__spinner" aria-hidden />
+                    Creating account…
+                  </>
+                ) : (
+                  <>
+                    Create account
+                    <FiArrowRight size={16} aria-hidden />
+                  </>
+                )}
               </button>
 
               <div className="auth-split-bottom-link">
@@ -393,15 +512,18 @@ export default function Auth({ onLogin }) {
                 <>
                   <div className="auth-split-field">
                     <label className="auth-split-label" htmlFor="auth-forgot-email">Email address</label>
-                    <input
-                      id="auth-forgot-email"
-                      type="email"
-                      className={`auth-split-input${errors.email ? ' has-error' : ''}`}
-                      placeholder="you@company.com"
-                      value={forgotForm.email}
-                      onChange={(e) => setForgotForm({ email: e.target.value })}
-                      autoComplete="email"
-                    />
+                    <div className="auth-split-input-wrap">
+                      <span className="auth-split-input-icon" aria-hidden><FiMail size={16} /></span>
+                      <input
+                        id="auth-forgot-email"
+                        type="email"
+                        className={`auth-split-input${errors.email ? ' has-error' : ''}`}
+                        placeholder="you@company.com"
+                        value={forgotForm.email}
+                        onChange={(e) => setForgotForm({ email: e.target.value })}
+                        autoComplete="email"
+                      />
+                    </div>
                     {errors.email && <div className="auth-split-field-error">{errors.email}</div>}
                   </div>
                   <button type="submit" className="auth-split-submit">
