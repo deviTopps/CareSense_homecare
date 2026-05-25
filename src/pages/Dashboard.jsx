@@ -22,6 +22,7 @@ import {
   fetchPendingAlerts,
 } from '../api';
 import { extractAlertsFromPayload, mapAlertToCase } from '../utils/alertMapping';
+import { listAdmissionDrafts } from '../utils/admissionDrafts';
 import DashboardAlertModal from '../components/DashboardAlertModal';
 
 async function parseJsonResponse(res) {
@@ -86,8 +87,32 @@ export default function Dashboard() {
   const [watchlistError, setWatchlistError] = useState('');
   const [selectedFlag, setSelectedFlag] = useState(null);
   const [flagTab, setFlagTab] = useState('all');
+  const [incompleteAdmissions, setIncompleteAdmissions] = useState([]);
 
   const on401 = useCallback(() => navigate('/login', { replace: true }), [navigate]);
+
+  const refreshIncompleteAdmissions = useCallback(() => {
+    setIncompleteAdmissions(listAdmissionDrafts());
+  }, []);
+
+  useEffect(() => {
+    refreshIncompleteAdmissions();
+  }, [refreshIncompleteAdmissions]);
+
+  useEffect(() => {
+    const refresh = () => refreshIncompleteAdmissions();
+    window.addEventListener('focus', refresh);
+    window.addEventListener('admission-drafts-changed', refresh);
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') refresh();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('focus', refresh);
+      window.removeEventListener('admission-drafts-changed', refresh);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [refreshIncompleteAdmissions]);
 
   useEffect(() => {
     let cancelled = false;
@@ -239,6 +264,61 @@ export default function Dashboard() {
           );
         })}
       </div>
+
+      {/* Incomplete admissions */}
+      {incompleteAdmissions.length > 0 && (
+        <motion.div
+          className="db2-incomplete-admissions"
+          initial={{ y: 12, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ duration: 0.22, delay: 0.08 }}
+        >
+          <div className="db2-incomplete-admissions__header">
+            <div>
+              <h3 className="db2-section-title">Incomplete Admissions</h3>
+              <p className="db2-incomplete-admissions__subtitle">
+                Continue client admission forms that were saved but not finished.
+              </p>
+            </div>
+            <span className="db2-incomplete-admissions__count">{incompleteAdmissions.length}</span>
+          </div>
+          <div className="db2-incomplete-admissions__list">
+            {incompleteAdmissions.map((draft) => {
+              const completed = Array.isArray(draft.completedTabs) ? draft.completedTabs.length : 0;
+              const progressPct = Math.round((completed / 11) * 100);
+              const updatedLabel = draft.updatedAt
+                ? new Date(draft.updatedAt).toLocaleString(undefined, {
+                  month: 'short',
+                  day: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })
+                : 'Recently';
+              return (
+                <div key={draft.patientId} className="db2-incomplete-admissions__item">
+                  <div className="db2-incomplete-admissions__item-main">
+                    <strong>{draft.patientName || 'Incomplete admission'}</strong>
+                    <span>
+                      {draft.registrationNumber ? `Reg. ${draft.registrationNumber}` : 'No registration number'}
+                      {' · '}
+                      {progressPct}% complete ({completed} of 11 sections)
+                    </span>
+                    <small>Last saved {updatedLabel}</small>
+                  </div>
+                  <button
+                    type="button"
+                    className="db2-incomplete-admissions__cta"
+                    onClick={() => navigate(`/patients?resume=${encodeURIComponent(draft.patientId)}`)}
+                  >
+                    Continue form
+                    <FiArrowRight size={14} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </motion.div>
+      )}
 
       {/* Quick links */}
       <div className="db2-quick-links">

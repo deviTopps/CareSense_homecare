@@ -16,6 +16,21 @@ import {
   resolveMongoIdFromCandidates,
   resolvePatientMutationId,
 } from '../utils/patients';
+import {
+  buildAdmissionFormFromApiPatient,
+  resolveAdmissionResumePatientId,
+} from '../utils/admissionFormFromPatient';
+import {
+  collectAdmissionDraftLookupIds,
+  getAdmissionDraft,
+  markAdmissionDraftComplete,
+  upsertAdmissionDraft,
+} from '../utils/admissionDrafts';
+import {
+  ADMISSION_TAB_KEYS,
+  createAdmissionApiHelpers,
+  saveAdmissionProgressForTab,
+} from '../utils/admissionProgress';
 
 const patientsData = [
   { id: 'P-1001', name: 'Kwame Boateng', age: 72, gender: 'Male', diagnosis: 'Hypertension, Type 2 Diabetes', phone: '+233 24 111 2222', address: '14 Osu Badu St, Accra', region: 'Accra', nurses: ['Efua Mensah'], emergency: 'Ama Boateng (+233 20 333 4444)', status: 'active', enrolled: '2024-06-01' },
@@ -616,7 +631,17 @@ export default function Patients() {
   const [assignmentSuccess, setAssignmentSuccess] = useState('');
   const [unassigningAssignmentId, setUnassigningAssignmentId] = useState('');
   const [admissionForm, setAdmissionForm] = useState(initialAdmissionForm);
+  const [admissionPatientId, setAdmissionPatientId] = useState('');
+  const [resumingAdmission, setResumingAdmission] = useState(false);
+  const admissionStateRef = useRef({
+    patientId: '',
+    form: initialAdmissionForm,
+    completedTabs: [],
+    activeTab: 0,
+    savedSections: [],
+  });
   const [savingAdmission, setSavingAdmission] = useState(false);
+  const [savingAdmissionProgress, setSavingAdmissionProgress] = useState(false);
   const [admissionError, setAdmissionError] = useState('');
   const [partialSaveAlert, setPartialSaveAlert] = useState('');
   const [successModal, setSuccessModal] = useState(null);
@@ -918,19 +943,112 @@ export default function Patients() {
 
   /* ── modal helpers ── */
   const markComplete = (idx) => { if (!completedTabs.includes(idx)) setCompletedTabs([...completedTabs, idx]); };
-  const showPartialSaveMessage = (tabIndex = activeTab) => {
+  const showPartialSaveMessage = (tabIndex = activeTab, patientId = admissionPatientId) => {
     const completedCount = new Set([...completedTabs, tabIndex]).size;
-    setPartialSaveAlert(`${TABS[tabIndex].label} saved as partial progress. ${completedCount} of ${TABS.length} sections completed so far.`);
+    const serverNote = patientId ? ' Progress is saved on the server.' : '';
+    setPartialSaveAlert(`${TABS[tabIndex].label} saved.${serverNote} ${completedCount} of ${TABS.length} sections completed — continue anytime from the dashboard.`);
   };
-  const handleNext = () => {
-    markComplete(activeTab);
-    showPartialSaveMessage(activeTab);
-    if (activeTab < TABS.length - 1) setActiveTab(activeTab + 1);
+
+  useEffect(() => {
+    admissionStateRef.current = {
+      patientId: admissionPatientId,
+      form: admissionForm,
+      completedTabs,
+      activeTab,
+      savedSections: admissionStateRef.current.savedSections || [],
+    };
+  }, [admissionPatientId, admissionForm, completedTabs, activeTab]);
+
+  const persistAdmissionDraft = useCallback((overrides = {}) => {
+    const snapshot = admissionStateRef.current;
+    const patientId = String(overrides.patientId ?? snapshot.patientId ?? '').trim();
+    if (!patientId || patientId.startsWith('draft-')) return null;
+    return upsertAdmissionDraft({
+      patientId,
+      form: overrides.form ?? snapshot.form,
+      completedTabs: overrides.completedTabs ?? snapshot.completedTabs,
+      activeTab: overrides.activeTab ?? snapshot.activeTab,
+      savedSections: overrides.savedSections ?? snapshot.savedSections ?? [],
+      lookupIds: overrides.lookupIds ?? [],
+    });
+  }, []);
+
+  const saveAdmissionProgress = async (tabIndex = activeTab) => {
+    setSavingAdmissionProgress(true);
+    setAdmissionError('');
+
+    try {
+      const tabKey = TABS[tabIndex]?.key || ADMISSION_TAB_KEYS[tabIndex];
+      if (tabKey === 'personal') {
+        const reg = String(admissionForm.personal.registrationNumber || '').trim();
+        if (!reg) {
+          throw new Error('Enter a registration number before saving personal details.');
+        }
+        if (!admissionPatientId) {
+          const exists = await checkRegistrationNumberExists(reg, admissionPatientId);
+          if (exists) {
+            throw new Error(`Registration number "${reg}" already exists in your organization.`);
+          }
+        }
+      }
+
+      const api = createAdmissionApiHelpers();
+      const { patientId, savedSections, lookupIds } = await saveAdmissionProgressForTab(
+        tabIndex,
+        admissionForm,
+        admissionPatientId,
+        api,
+      );
+
+      if (patientId) setAdmissionPatientId(patientId);
+      markComplete(tabIndex);
+      const nextCompleted = completedTabs.includes(tabIndex)
+        ? completedTabs
+        : [...completedTabs, tabIndex];
+      const mergedSavedSections = [
+        ...new Set([...(admissionStateRef.current.savedSections || []), ...savedSections]),
+      ];
+      admissionStateRef.current.savedSections = mergedSavedSections;
+
+      if (patientId) {
+        upsertAdmissionDraft({
+          patientId,
+          form: admissionForm,
+          completedTabs: nextCompleted,
+          activeTab: tabIndex,
+          savedSections: mergedSavedSections,
+          lookupIds,
+        });
+      }
+      showPartialSaveMessage(tabIndex, patientId);
+      await loadPatients();
+      return patientId;
+    } catch (error) {
+      const message = String(error?.message || 'Unable to save admission progress.');
+      setAdmissionError(message);
+      throw error;
+    } finally {
+      setSavingAdmissionProgress(false);
+    }
+  };
+
+  const handleNext = async () => {
+    if (savingAdmissionProgress || savingAdmission) return;
+    try {
+      await saveAdmissionProgress(activeTab);
+      if (activeTab < TABS.length - 1) setActiveTab(activeTab + 1);
+    } catch {
+      // error shown in admissionError
+    }
   };
   const handlePrev = () => { if (activeTab > 0) setActiveTab(activeTab - 1); };
-  const handleSave = () => {
-    markComplete(activeTab);
-    showPartialSaveMessage(activeTab);
+  const handleSave = async () => {
+    if (savingAdmissionProgress || savingAdmission) return;
+    try {
+      await saveAdmissionProgress(activeTab);
+    } catch {
+      // error shown in admissionError
+    }
   };
   const setAdmissionField = (path, value) => {
     const keys = path.split('.');
@@ -959,29 +1077,119 @@ export default function Patients() {
     setShowModal(true);
     setActiveTab(0);
     setCompletedTabs([]);
+    setAdmissionPatientId('');
     setAdmissionError('');
     setPartialSaveAlert('');
     setAdmissionForm(initialAdmissionForm);
     setRegistrationCheck({ loading: false, exists: false, checkedValue: '', error: '' });
   }, []);
 
+  const openAdmissionDraft = useCallback((draft) => {
+    if (!draft?.form) return;
+    const draftPatientId = String(draft.patientId || '').trim();
+    const resolvedPatientId = draftPatientId.startsWith('draft-') ? '' : draftPatientId;
+    setShowModal(true);
+    setAdmissionForm(draft.form);
+    setCompletedTabs(Array.isArray(draft.completedTabs) ? draft.completedTabs : []);
+    setActiveTab(
+      Number.isFinite(draft.activeTab)
+        ? Math.max(0, Math.min(draft.activeTab, TABS.length - 1))
+        : 0,
+    );
+    setAdmissionPatientId(resolvedPatientId);
+    admissionStateRef.current = {
+      patientId: resolvedPatientId,
+      form: draft.form,
+      completedTabs: Array.isArray(draft.completedTabs) ? draft.completedTabs : [],
+      activeTab: Number.isFinite(draft.activeTab) ? draft.activeTab : 0,
+      savedSections: Array.isArray(draft.savedSections) ? draft.savedSections : [],
+    };
+    setAdmissionError('');
+    setPartialSaveAlert(resolvedPatientId ? 'Admission draft loaded. Continue where you left off.' : '');
+    setRegistrationCheck({ loading: false, exists: false, checkedValue: '', error: '' });
+  }, []);
+
+  const closeAdmissionModal = useCallback(() => {
+    persistAdmissionDraft();
+    setShowModal(false);
+    setAdmissionError('');
+    setPartialSaveAlert('');
+  }, [persistAdmissionDraft]);
+
+  const resumeAdmissionForPatient = useCallback(async (resumePatientId) => {
+    const resumeId = String(resumePatientId || '').trim();
+    if (!resumeId) return;
+
+    setResumingAdmission(true);
+    setAdmissionError('');
+
+    try {
+      const draft = getAdmissionDraft(resumeId);
+      if (draft) {
+        openAdmissionDraft(draft);
+        return;
+      }
+
+      const response = await apiFetch(`/patients/${encodeURIComponent(resumeId)}`, { method: 'GET', quiet: true });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.message || payload?.error || 'Unable to load patient for admission resume.');
+      }
+
+      const raw = payload?.patient || payload?.data || payload;
+      const canonicalId = resolveAdmissionResumePatientId(raw, resumeId);
+      const form = buildAdmissionFormFromApiPatient(raw, initialAdmissionForm);
+      const lookupIds = collectAdmissionDraftLookupIds(canonicalId, [resumeId]);
+
+      const draftEntry = {
+        patientId: canonicalId,
+        form,
+        completedTabs: [],
+        activeTab: 0,
+        savedSections: [],
+        lookupIds,
+      };
+
+      upsertAdmissionDraft(draftEntry);
+      openAdmissionDraft(draftEntry);
+    } catch (error) {
+      setAdmissionError(error?.message || 'Unable to resume admission form.');
+      openModal();
+    } finally {
+      setResumingAdmission(false);
+    }
+  }, [openAdmissionDraft, openModal]);
+
   useEffect(() => {
     const flag = searchParams.get('admit');
+    const resumePatientId = String(searchParams.get('resume') || searchParams.get('patientId') || '').trim();
+
+    const clearResumeParams = () => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete('resume');
+          next.delete('patientId');
+          next.delete('admit');
+          return next;
+        },
+        { replace: true },
+      );
+    };
+
+    if (resumePatientId) {
+      resumeAdmissionForPatient(resumePatientId).finally(clearResumeParams);
+      return;
+    }
+
     if (flag !== '1' && flag !== 'true') return;
     openModal();
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev);
-        next.delete('admit');
-        return next;
-      },
-      { replace: true },
-    );
-  }, [searchParams, openModal, setSearchParams]);
+    clearResumeParams();
+  }, [searchParams, openModal, resumeAdmissionForPatient, setSearchParams]);
 
   const normalizeRegistrationNumber = (value) => String(value || '').trim().toLowerCase();
 
-  const checkRegistrationNumberExists = async (rawRegistrationNumber) => {
+  const checkRegistrationNumberExists = async (rawRegistrationNumber, excludePatientId = '') => {
     const normalized = normalizeRegistrationNumber(rawRegistrationNumber);
     if (!normalized) {
       setRegistrationCheck({ loading: false, exists: false, checkedValue: '', error: '' });
@@ -996,10 +1204,24 @@ export default function Patients() {
 
     try {
       const patientList = await fetchAllPatients();
+      const exclude = String(excludePatientId || '').trim().toLowerCase();
 
       const exists = patientList.some((patient) => {
         const candidate = patient?.registrationNumber || patient?.regNo || patient?.registration_number || '';
-        return normalizeRegistrationNumber(candidate) === normalized;
+        if (normalizeRegistrationNumber(candidate) !== normalized) return false;
+        if (!exclude) return true;
+
+        const identityKeys = [
+          patient?.patientId,
+          patient?._id,
+          patient?.uuid,
+          patient?.id,
+          patient?.patientUuid,
+        ]
+          .map((value) => String(value || '').trim().toLowerCase())
+          .filter(Boolean);
+
+        return !identityKeys.includes(exclude);
       });
 
       setRegistrationCheck({ loading: false, exists, checkedValue: normalized, error: '' });
@@ -1315,7 +1537,7 @@ export default function Patients() {
         throw new Error('Please enter a registration number before submitting the admission form.');
       }
 
-      const alreadyExists = await checkRegistrationNumberExists(typedRegistrationNumber);
+      const alreadyExists = await checkRegistrationNumberExists(typedRegistrationNumber, admissionPatientId);
       if (alreadyExists) {
         throw new Error(`Registration number "${typedRegistrationNumber}" already exists in your organization.`);
       }
@@ -1534,10 +1756,12 @@ export default function Patients() {
         name: `${personalInfoPayload.firstName} ${personalInfoPayload.lastName}`.trim() || 'Patient',
         registrationNumber: typedRegistrationNumber,
       });
+      markAdmissionDraftComplete(patientId);
       markComplete(activeTab);
       setShowModal(false);
       setActiveTab(0);
       setCompletedTabs([]);
+      setAdmissionPatientId('');
       setAdmissionForm(initialAdmissionForm);
       setPartialSaveAlert('');
       setAdmissionError('');
@@ -1914,15 +2138,26 @@ export default function Patients() {
       })()}
 
       {/* ═══ ADMISSION MODAL ═══ */}
+      {resumingAdmission && (
+        <div className="patients-resume-loading" role="status">Loading admission draft…</div>
+      )}
+
       {showModal && (
-        <div className="modal modal-open patients-modal-shell" onClick={() => setShowModal(false)}>
+        <div className="modal modal-open patients-modal-shell" onClick={closeAdmissionModal}>
           <div style={{ display: 'flex', height: '100vh', padding: 30, maxWidth: 'calc(100vw - 40px)', margin: '0 auto' }} onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', width: '100%', background: '#fff', borderRadius: 2, overflow: 'hidden', boxShadow: '0 24px 80px rgba(0,0,0,0.15)' }}>
               {/* LEFT: Tab Navigation */}
               <div className="bg-base-200" style={{ width: 260, borderRight: '1px solid var(--kh-border-light)', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
                 <div style={{ padding: '22px 20px 16px', borderBottom: '1px solid var(--kh-border-light)' }}>
                   <h6 style={{ fontSize: 15, fontWeight: 800, margin: 0, color: 'var(--kh-text)' }}>Client Admission</h6>
-                  <p style={{ fontSize: 11.5, color: 'var(--kh-text-muted)', margin: '4px 0 12px' }}>Complete each section. Save & continue anytime.</p>
+                  <p style={{ fontSize: 11.5, color: 'var(--kh-text-muted)', margin: '4px 0 12px' }}>
+                    Complete each section. Save progress to continue later from the dashboard.
+                  </p>
+                  {admissionPatientId && (
+                    <p style={{ fontSize: 11, color: '#1d4ed8', margin: '0 0 8px', fontWeight: 600 }}>
+                      Draft saved — resume from Dashboard anytime.
+                    </p>
+                  )}
                   <div style={{ background: 'var(--kh-border-light)', borderRadius: 10, height: 6, overflow: 'hidden' }}>
                     <div style={{ width: `${progress}%`, height: '100%', background: '#45B6FE', borderRadius: 10, transition: 'width 0.3s ease' }} />
                   </div>
@@ -1959,7 +2194,7 @@ export default function Patients() {
                     <h6 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Client Admission Form</h6>
                     <span style={{ fontSize: 12, color: 'var(--kh-text-muted)' }}>Step {activeTab + 1} of {TABS.length} — {TABS[activeTab].label}</span>
                   </div>
-                  <button onClick={() => setShowModal(false)} className="btn btn-sm btn-ghost" style={{ color: 'var(--kh-text-muted)' }}><FiX size={20} /></button>
+                  <button onClick={closeAdmissionModal} className="btn btn-sm btn-ghost" style={{ color: 'var(--kh-text-muted)' }}><FiX size={20} /></button>
                 </div>
                 {partialSaveAlert && (
                   <div style={{ padding: '14px 28px 0', flexShrink: 0 }}>
@@ -1979,11 +2214,25 @@ export default function Patients() {
                 <div style={{ padding: '14px 28px', borderTop: '1px solid var(--kh-border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
                   <div>{activeTab > 0 && <button onClick={handlePrev} className="btn btn-kh-outline d-flex align-items-center gap-1" style={{ fontSize: 13 }}><FiChevronLeft size={15} /> Previous</button>}</div>
                   <div className="d-flex gap-2">
-                    <button onClick={handleSave} className="btn btn-kh-outline d-flex align-items-center gap-1" style={{ fontSize: 13 }}><FiSave size={14} /> Save Progress</button>
+                    <button
+                      onClick={handleSave}
+                      disabled={savingAdmissionProgress || savingAdmission}
+                      className="btn btn-kh-outline d-flex align-items-center gap-1"
+                      style={{ fontSize: 13, opacity: savingAdmissionProgress || savingAdmission ? 0.7 : 1 }}
+                    >
+                      <FiSave size={14} /> {savingAdmissionProgress ? 'Saving…' : 'Save Progress'}
+                    </button>
                     {activeTab < TABS.length - 1 ? (
-                      <button onClick={handleNext} className="btn btn-kh-primary d-flex align-items-center gap-1" style={{ fontSize: 13 }}>Save & Continue <FiChevronRight size={15} /></button>
+                      <button
+                        onClick={handleNext}
+                        disabled={savingAdmissionProgress || savingAdmission}
+                        className="btn btn-kh-primary d-flex align-items-center gap-1"
+                        style={{ fontSize: 13, opacity: savingAdmissionProgress || savingAdmission ? 0.7 : 1 }}
+                      >
+                        {savingAdmissionProgress ? 'Saving…' : 'Save & Continue'} <FiChevronRight size={15} />
+                      </button>
                     ) : (
-                      <button onClick={createPatientAdmission} disabled={savingAdmission} className="btn btn-kh-primary d-flex align-items-center gap-1" style={{ fontSize: 13, opacity: savingAdmission ? 0.75 : 1, cursor: savingAdmission ? 'not-allowed' : 'pointer' }}>
+                      <button onClick={createPatientAdmission} disabled={savingAdmission || savingAdmissionProgress} className="btn btn-kh-primary d-flex align-items-center gap-1" style={{ fontSize: 13, opacity: savingAdmission || savingAdmissionProgress ? 0.75 : 1, cursor: savingAdmission || savingAdmissionProgress ? 'not-allowed' : 'pointer' }}>
                         <FiCheck size={15} /> {savingAdmission ? 'Submitting...' : 'Complete Admission'}
                       </button>
                     )}

@@ -10,6 +10,7 @@ import {
 } from '../icons/hugeicons-feather';
 import { apiFetch, API_BASE } from '../api';
 import { fetchAllPatients } from '../utils/patients';
+import { stashContinueNurseRegistration } from '../utils/nurseRegistrationResume';
 import { extractUrlFromPayload, resolveStoredMediaUrl } from '../utils/resolveStoredMediaUrl';
 import compressImage, { createThumbnailURL } from '../utils/compressImage';
 import './NurseProfile.css';
@@ -844,6 +845,20 @@ export default function NurseProfile() {
   const stepsComplete = [true, hasDiversity, hasEducation, hasSupporting].filter(Boolean).length;
   const isFullyComplete = stepsComplete === 4;
 
+  const goContinueRegistration = () => {
+    const id = String(
+      nurse?._id || nurse?.id || nurseId || '',
+    ).trim();
+    if (!id) {
+      navigate('/workforce');
+      return;
+    }
+    stashContinueNurseRegistration(id);
+    navigate(`/workforce?continueRegistration=${encodeURIComponent(id)}`, {
+      state: { continueRegistration: id },
+    });
+  };
+
   // ── Patients assigned to this nurse ──
   const currentPatients = assignedPatients.filter(p => p.status === 'active');
   const pastPatients = assignedPatients.filter(p => p.status !== 'active');
@@ -1029,7 +1044,7 @@ export default function NurseProfile() {
         <div className="np-alert">
           <FiClock size={15} style={{ flexShrink: 0 }} />
           <span>Registration incomplete — {stepsComplete} of 4 steps done.</span>
-          <button type="button" onClick={() => navigate('/workforce')} className="np-alert__btn">
+          <button type="button" onClick={goContinueRegistration} className="np-alert__btn">
             Complete registration
           </button>
         </div>
@@ -1235,7 +1250,7 @@ export default function NurseProfile() {
                     <FiAlertCircle size={36} className="nurse-profile-empty-state__icon" />
                     <div className="nurse-profile-empty-state__title">Diversity & Health information not yet submitted</div>
                     <div className="nurse-profile-empty-state__text">Step 2 of the nurse registration has not been completed.</div>
-                    <button type="button" onClick={() => navigate('/workforce')} className="nurse-profile-empty-state__btn">
+                    <button type="button" onClick={goContinueRegistration} className="nurse-profile-empty-state__btn">
                       Complete Registration
                     </button>
                   </div>
@@ -1277,7 +1292,7 @@ export default function NurseProfile() {
                   <FiAlertCircle size={36} className="nurse-profile-empty-state__icon" />
                   <div className="nurse-profile-empty-state__title">Education & Employment not yet submitted</div>
                   <div className="nurse-profile-empty-state__text">Step 3 of the nurse registration has not been completed.</div>
-                  <button type="button" onClick={() => navigate('/workforce')} className="nurse-profile-empty-state__btn">
+                  <button type="button" onClick={goContinueRegistration} className="nurse-profile-empty-state__btn">
                     Complete Registration
                   </button>
                 </div>
@@ -1449,7 +1464,7 @@ export default function NurseProfile() {
                     <FiAlertCircle size={36} className="nurse-profile-empty-state__icon" />
                     <div className="nurse-profile-empty-state__title">Supporting Information not yet submitted</div>
                     <div className="nurse-profile-empty-state__text">Step 4 of the nurse registration has not been completed.</div>
-                    <button type="button" onClick={() => navigate('/workforce')} className="nurse-profile-empty-state__btn">
+                    <button type="button" onClick={goContinueRegistration} className="nurse-profile-empty-state__btn">
                       Complete Registration
                     </button>
                   </div>

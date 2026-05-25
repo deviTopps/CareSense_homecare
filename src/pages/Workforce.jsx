@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'motion/react';
 import {
   FiPlus,
@@ -25,6 +25,14 @@ import {
 } from '../icons/hugeicons-feather';
 import { apiFetch, isTokenValid, createPlatformUser, fetchAuthUsers, updatePlatformUser, deletePlatformUser, changePlatformUserPassword } from '../api';
 import { resolveStoredMediaUrl } from '../utils/resolveStoredMediaUrl';
+import {
+  buildWorkforceFormFromNurseApi,
+  clearContinueNurseRegistration,
+  deriveNurseRegistrationResumeState,
+  fetchNurseRegistrationData,
+  peekContinueNurseRegistration,
+  resolveNurseRecordId,
+} from '../utils/nurseRegistrationResume';
 
 const ROLE_LABELS = { head_nurse: 'Head Nurse', supervising_nurse: 'Supervising Nurse', office_nurse: 'Office Nurse', field_nurse: 'Field Nurse' };
 
@@ -317,6 +325,9 @@ const initialFormState = {
 
 export default function Workforce() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const processedContinueIdRef = useRef('');
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('All');
   const [showModal, setShowModal] = useState(false);
@@ -338,6 +349,7 @@ export default function Workforce() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const [resumingRegistration, setResumingRegistration] = useState(false);
 
   const [showAddUserModal, setShowAddUserModal] = useState(false);
   const [addUserForm, setAddUserForm] = useState({ firstName: '', lastName: '', email: '', phone: '', role: 'staff', password: '', confirmPassword: '' });
@@ -791,7 +803,82 @@ export default function Workforce() {
     setAddUserForm({ firstName: '', lastName: '', email: '', phone: '', role: 'staff', password: '', confirmPassword: '' });
   };
 
-  const closeModal = () => { setShowModal(false); resetAll(); fetchNurses(); };
+  const closeModal = () => {
+    processedContinueIdRef.current = '';
+    setShowModal(false);
+    resetAll();
+    fetchNurses();
+  };
+
+  const continueNurseRegistration = useCallback(async (targetNurseId) => {
+    const lookupId = String(targetNurseId || '').trim();
+    if (!lookupId) return;
+
+    setShowModal(true);
+    setResumingRegistration(true);
+    setApiError('');
+
+    try {
+      const data = await fetchNurseRegistrationData(lookupId);
+      const resolvedId = resolveNurseRecordId(data, lookupId);
+      const { completedSteps: resumeCompleted, step: resumeStep } = deriveNurseRegistrationResumeState(data);
+      const resumeForm = buildWorkforceFormFromNurseApi(
+        data,
+        initialFormState,
+        emptyQualification,
+        emptyEmployment,
+        emptyReferee,
+      );
+
+      setNurseId(resolvedId);
+      setForm(resumeForm);
+      setCompletedSteps(resumeCompleted);
+      setStep(resumeStep);
+      setSaving(false);
+      setDebugInfo(null);
+      clearContinueNurseRegistration();
+    } catch (error) {
+      setApiError(error?.message || 'Unable to open registration form.');
+    } finally {
+      setResumingRegistration(false);
+    }
+  }, []);
+
+  const continueRegistrationQuery =
+    searchParams.get('continueRegistration') || searchParams.get('resume') || '';
+
+  const pendingContinueRegistrationId = useMemo(() => String(
+    location.state?.continueRegistration
+    || peekContinueNurseRegistration()
+    || continueRegistrationQuery
+    || '',
+  ).trim(), [
+    location.state,
+    location.key,
+    continueRegistrationQuery,
+  ]);
+
+  useEffect(() => {
+    const continueId = pendingContinueRegistrationId;
+    if (!continueId) return;
+    if (processedContinueIdRef.current === continueId) return;
+
+    processedContinueIdRef.current = continueId;
+
+    if (continueRegistrationQuery) {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete('continueRegistration');
+          next.delete('resume');
+          return next;
+        },
+        { replace: true },
+      );
+    }
+
+    continueNurseRegistration(continueId);
+  }, [pendingContinueRegistrationId, continueRegistrationQuery, continueNurseRegistration, setSearchParams]);
 
   // ── Save current step to API ──
   const saveStep = async () => {
@@ -837,13 +924,24 @@ export default function Workforce() {
 
         const normalizedEmail = form.email.trim().toLowerCase();
         const normalizedMmcPin = form.mmcPinNo.trim().toLowerCase();
-        const duplicateByEmail = nurses.find((n) => String(n.email || '').trim().toLowerCase() === normalizedEmail);
+        const activeNurseId = String(nurseId || '').trim();
+        const duplicateByEmail = nurses.find((n) => {
+          if (n.isStaff || n.isPlatformUser) return false;
+          if (String(n.email || '').trim().toLowerCase() !== normalizedEmail) return false;
+          if (activeNurseId && String(n.id) === activeNurseId) return false;
+          return true;
+        });
         if (duplicateByEmail) {
           setApiError('A nurse with this email already exists. Please use a different email address.');
           return;
         }
 
-        const duplicateByMmcPin = nurses.find((n) => String(n.license || '').trim().toLowerCase() === normalizedMmcPin);
+        const duplicateByMmcPin = nurses.find((n) => {
+          if (n.isStaff || n.isPlatformUser) return false;
+          if (!normalizedMmcPin || String(n.license || '').trim().toLowerCase() !== normalizedMmcPin) return false;
+          if (activeNurseId && String(n.id) === activeNurseId) return false;
+          return true;
+        });
         if (normalizedMmcPin && duplicateByMmcPin) {
           setApiError('A nurse with this MMC Pin No. already exists. Please use a different pin.');
           return;
@@ -1379,7 +1477,96 @@ export default function Workforce() {
   const isLastStep = step === STEPS.length - 1;
   const allCompleted = completedSteps.length === STEPS.length;
 
+  const registrationModal = showModal ? (
+    <div className="modal modal-open workforce-modal workforce-modal-shell" onClick={closeModal}>
+      <div className="modal-dialog modal-dialog-centered modal-dialog-scrollable workforce-modal-dialog" style={{ maxWidth: 1060 }} onClick={e => e.stopPropagation()}>
+        <div className="modal-content kh-modal-panel workforce-modal-panel" style={{ border: 'none' }}>
+
+          {/* Header */}
+          <div className="modal-header workforce-modal-header">
+            <div style={{ flex: 1 }}>
+              <div className="workforce-modal-header__top">
+                <div>
+                  <div className="workforce-modal-kicker">Nurse onboarding</div>
+                  <h6 className="modal-title workforce-modal-title">
+                    {nurseId ? 'Continue Registration' : 'Register Nurse'}
+                  </h6>
+                </div>
+                <button type="button" className="workforce-modal-close" onClick={closeModal} aria-label="Close register nurse modal"><FiX size={16} /></button>
+              </div>
+              <div className="workforce-step-tabs">
+                {STEPS.map((s, i) => {
+                  const isDone = completedSteps.includes(i);
+                  const isActive = step === i;
+                  return (
+                    <div key={s.key} className={`workforce-step-tab${isActive ? ' active' : ''}${isDone ? ' done' : ''}`}>
+                      <span className="workforce-step-tab__index">{isDone ? <FiCheck size={12} strokeWidth={3} /> : i + 1}</span>
+                      <span className="workforce-step-tab__label">{s.label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* Body */}
+          <div className="modal-body workforce-modal-body">
+            {resumingRegistration && (
+              <div className="workforce-modal-alert" style={{ background: '#eff6ff', borderColor: '#bfdbfe', color: '#1e40af' }}>
+                Loading saved registration…
+              </div>
+            )}
+            {apiError && (
+              <div className="workforce-modal-alert">
+                <FiAlertCircle size={15} /> {apiError}
+              </div>
+            )}
+            {allCompleted ? (
+              <div className="workforce-modal-success">
+                <div className="workforce-modal-success__icon">
+                  <FiCheck size={28} style={{ color: '#fff', strokeWidth: 3 }} />
+                </div>
+                <div className="workforce-modal-success__title">Nurse Registered Successfully!</div>
+                <div className="workforce-modal-success__text">All steps have been completed. The nurse has been added to the system.</div>
+                <button className="btn btn-primary workforce-modal-primary-btn" onClick={closeModal}>Close</button>
+              </div>
+            ) : resumingRegistration ? (
+              <div className="workforce-form-stage" style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--kh-text-muted)' }}>
+                Preparing registration form…
+              </div>
+            ) : (
+              <div className="workforce-form-stage">{stepRenderers[step]()}</div>
+            )}
+          </div>
+
+          {/* Footer */}
+          {!allCompleted && !resumingRegistration && (
+            <div className="modal-footer workforce-modal-footer">
+              <div>
+                {step > 0 && (
+                  <button className="btn btn-outline workforce-modal-secondary-btn" disabled={saving} onClick={() => setStep(step - 1)}>
+                    <FiChevronLeft size={14} style={{ marginRight: 4 }} /> Back
+                  </button>
+                )}
+              </div>
+              <div className="workforce-modal-footer__actions" style={{ display: 'flex', gap: 10 }}>
+                <button className="btn btn-outline workforce-modal-secondary-btn" onClick={closeModal}>
+                  <FiSave size={13} style={{ marginRight: 6 }} /> Save & Exit
+                </button>
+                <button className="btn btn-primary workforce-modal-primary-btn" disabled={saving} onClick={saveStep} style={{ display: 'flex', alignItems: 'center', gap: 6, opacity: saving ? 0.7 : 1 }}>
+                  {saving ? 'Saving…' : isLastStep ? <><FiCheck size={14} /> Complete Registration</> : <>Save & Continue <FiArrowRight size={14} /></>}
+                </button>
+              </div>
+            </div>
+          )}
+
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   return (
+    <>
     <motion.div className="page-wrapper workforce-page" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.24 }}>
       <div className="patients-board-shell">
         <div className="patients-hero">
@@ -1873,83 +2060,8 @@ export default function Workforce() {
         </div>
       )}
 
-      {/* ── Multi-step Registration Modal ── */}
-      {showModal && (
-        <div className="modal modal-open workforce-modal" onClick={closeModal}>
-          <div className="modal-dialog modal-dialog-centered modal-dialog-scrollable workforce-modal-dialog" style={{ maxWidth: 1060 }} onClick={e => e.stopPropagation()}>
-            <div className="modal-content kh-modal-panel workforce-modal-panel" style={{ border: 'none' }}>
-
-              {/* Header */}
-              <div className="modal-header workforce-modal-header">
-                <div style={{ flex: 1 }}>
-                  <div className="workforce-modal-header__top">
-                    <div>
-                      <div className="workforce-modal-kicker">Nurse onboarding</div>
-                      <h6 className="modal-title workforce-modal-title">Register Nurse</h6>
-                    </div>
-                    <button type="button" className="workforce-modal-close" onClick={closeModal} aria-label="Close register nurse modal"><FiX size={16} /></button>
-                  </div>
-                  <div className="workforce-step-tabs">
-                    {STEPS.map((s, i) => {
-                      const isDone = completedSteps.includes(i);
-                      const isActive = step === i;
-                      return (
-                        <div key={s.key} className={`workforce-step-tab${isActive ? ' active' : ''}${isDone ? ' done' : ''}`}>
-                          <span className="workforce-step-tab__index">{isDone ? <FiCheck size={12} strokeWidth={3} /> : i + 1}</span>
-                          <span className="workforce-step-tab__label">{s.label}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-
-              {/* Body */}
-              <div className="modal-body workforce-modal-body">
-                {apiError && (
-                  <div className="workforce-modal-alert">
-                    <FiAlertCircle size={15} /> {apiError}
-                  </div>
-                )}
-                {allCompleted ? (
-                  <div className="workforce-modal-success">
-                    <div className="workforce-modal-success__icon">
-                      <FiCheck size={28} style={{ color: '#fff', strokeWidth: 3 }} />
-                    </div>
-                    <div className="workforce-modal-success__title">Nurse Registered Successfully!</div>
-                    <div className="workforce-modal-success__text">All steps have been completed. The nurse has been added to the system.</div>
-                    <button className="btn btn-primary workforce-modal-primary-btn" onClick={closeModal}>Close</button>
-                  </div>
-                ) : (
-                  <div className="workforce-form-stage">{stepRenderers[step]()}</div>
-                )}
-              </div>
-
-              {/* Footer */}
-              {!allCompleted && (
-                <div className="modal-footer workforce-modal-footer">
-                  <div>
-                    {step > 0 && (
-                      <button className="btn btn-outline workforce-modal-secondary-btn" onClick={() => setStep(step - 1)} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <FiChevronLeft size={14} /> Back
-                      </button>
-                    )}
-                  </div>
-                  <div className="d-flex gap-2 workforce-modal-footer__actions">
-                    <button className="btn btn-outline workforce-modal-secondary-btn" onClick={closeModal}>
-                      <FiSave size={13} style={{ marginRight: 6 }} /> Save & Exit
-                    </button>
-                    <button className="btn btn-primary workforce-modal-primary-btn" disabled={saving} onClick={saveStep} style={{ display: 'flex', alignItems: 'center', gap: 6, opacity: saving ? 0.7 : 1 }}>
-                      {saving ? 'Saving…' : isLastStep ? <><FiCheck size={14} /> Complete Registration</> : <>Save & Continue <FiArrowRight size={14} /></>}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-            </div>
-          </div>
-        </div>
-      )}
     </motion.div>
+    {registrationModal && createPortal(registrationModal, document.body)}
+    </>
   );
 }
