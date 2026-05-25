@@ -341,6 +341,182 @@
   height: 6px;
   border-radius: 50%;
   background: #45b6fe;
+  flex-shrink: 0;
+}
+
+.attendance-col-patient,
+.attendance-cell-patient {
+  min-width: 140px;
+  max-width: 220px;
+}
+
+.attendance-col-patient__name {
+  display: block;
+  font-weight: 600;
+  color: var(--kh-text, #1e293b);
+}
+
+.attendance-col-patient__meta {
+  display: block;
+  font-size: 11px;
+  color: var(--kh-text-muted, #64748b);
+  margin-top: 2px;
+}
+
+.attendance-col-clock {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  min-width: 6.5rem;
+}
+
+.attendance-col-clock--in {
+  color: #1565a0;
+}
+
+.attendance-col-clock--out {
+  color: var(--kh-text, #1e293b);
+}
+
+.attendance-col-duration {
+  white-space: nowrap;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--kh-text, #1e293b);
+  min-width: 3.5rem;
+}
+
+.attendance-col-gps {
+  min-width: 180px;
+  max-width: 320px;
+  vertical-align: top;
+}
+
+.attendance-col-gps__text {
+  display: block;
+  font-size: 12px;
+  line-height: 1.45;
+  word-break: break-word;
+  white-space: normal;
+}
+
+.attendance-cell-patient__name {
+  display: block;
+  font-weight: 600;
+  color: var(--kh-text, #1e293b);
+}
+
+.attendance-cell-patient__meta {
+  display: block;
+  font-size: 11px;
+  color: var(--kh-text-muted, #64748b);
+  margin-top: 2px;
+  line-height: 1.35;
+}
+
+.attendance-cell-patient__meta--address {
+  white-space: normal;
+}
+
+.attendance-cell-clock {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  min-width: 11rem;
+}
+
+.attendance-clock-value {
+  font-weight: 700;
+  color: var(--kh-text, #1e293b);
+}
+
+.attendance-time-in .attendance-clock-value {
+  color: #1565a0;
+}
+
+.attendance-clock-empty {
+  color: var(--kh-text-muted, #64748b);
+}
+
+.attendance-cell-clock__sub {
+  display: block;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--kh-text-muted, #64748b);
+  margin-top: 2px;
+}
+
+.attendance-cell-gps {
+  min-width: 180px;
+  max-width: 320px;
+}
+
+.attendance-gps-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.attendance-gps-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  font-size: 11.5px;
+}
+
+.attendance-gps-line__label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--kh-text-muted, #64748b);
+  min-width: 24px;
+}
+
+.attendance-gps-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #1565a0;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.attendance-gps-link:hover {
+  text-decoration: underline;
+}
+
+.attendance-gps-distance {
+  font-size: 11px;
+  color: var(--kh-text-muted, #64748b);
+}
+
+.attendance-gps-duration {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--kh-text-muted, #64748b);
+}
+
+.attendance-gps-empty {
+  color: var(--kh-text-muted, #64748b);
+}
+
+.attendance-gps-text {
+  font-size: 11.5px;
+  line-height: 1.4;
+  display: block;
+  white-space: normal;
+  word-break: break-word;
+}
+
+.attendance-table tbody td.attendance-cell-patient {
+  vertical-align: top;
+}
+
+.attendance-table tbody td.attendance-cell-gps {
+  vertical-align: top;
 }
 
 .attendance-status-tag {

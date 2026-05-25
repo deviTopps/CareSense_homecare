@@ -1,0 +1,346 @@
+/* Patient profile — layout polish (CareSense brand) */
+
+.patient-profile-page {
+  --pp-accent: #45b6fe;
+  --pp-accent-dark: #2e7db8;
+  --pp-accent-soft: #f0f7fe;
+  --pp-pharm-yellow: #45b6fe;
+  --pp-pharm-yellow-hover: #2e9de8;
+}
+
+.patient-profile-page .nurse-profile-shell {
+  gap: 16px;
+}
+
+/* Top bar */
+.patient-profile-page .pp-pharm-topbar {
+  padding: 14px 18px;
+  background: #fff;
+}
+
+.patient-profile-page .pp-pharm-topbar__left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.patient-profile-page .pp-pharm-topbar__title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.patient-profile-page .pp-pharm-topbar__name {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--pp-ink, #0f172a);
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+
+.patient-profile-page .pp-pharm-topbar__meta {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--pp-ink-3, #64748b);
+}
+
+.patient-profile-page .pp-pharm-back {
+  border-radius: 10px;
+  padding: 8px 14px;
+  font-size: 13px;
+}
+
+.patient-profile-page .pp-pharm-topbar__actions {
+  gap: 8px;
+}
+
+.patient-profile-page .pp-pharm-btn-yellow {
+  padding: 9px 16px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, #45b6fe 0%, #289ff0 100%);
+  box-shadow: 0 4px 14px rgba(69, 182, 254, 0.28);
+}
+
+.patient-profile-page .pp-pharm-btn-yellow:hover {
+  background: linear-gradient(135deg, #2e9de8 0%, #1d8fd9 100%);
+  transform: translateY(-1px);
+}
+
+.patient-profile-page .pp-pharm-btn-yellow--secondary {
+  color: var(--pp-accent-dark);
+  background: var(--pp-accent-soft);
+  border: 1px solid #bae0fd;
+  box-shadow: none;
+}
+
+.patient-profile-page .pp-pharm-btn-yellow--secondary:hover {
+  background: #e8f4fe;
+  transform: none;
+}
+
+.patient-profile-page .pp-pharm-btn-yellow--danger {
+  color: #b91c1c;
+  background: #fff;
+  border: 1px solid #fecaca;
+  box-shadow: none;
+}
+
+.patient-profile-page .pp-pharm-btn-yellow--danger:hover {
+  background: #fef2f2;
+  transform: none;
+}
+
+/* Sidebar */
+@media (min-width: 1101px) {
+  .patient-profile-page .pp-pharm-sidebar {
+    position: sticky;
+    top: 16px;
+    max-height: calc(100vh - 120px);
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+}
+
+.patient-profile-page .pp-pharm-side-card {
+  border-radius: 14px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+}
+
+.patient-profile-page .pp-pharm-side-profile__photo {
+  width: 96px;
+  height: 96px;
+  border-radius: 14px;
+  position: relative;
+}
+
+.patient-profile-page .pp-pharm-side-profile__photo::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(180deg, transparent 55%, rgba(15, 23, 42, 0.35));
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.patient-profile-page .pp-pharm-side-profile__photo:hover::after,
+.patient-profile-page .pp-pharm-side-profile__photo:focus-visible::after {
+  opacity: 1;
+}
+
+.patient-profile-page .pp-pharm-side-profile__status {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  width: fit-content;
+}
+
+.patient-profile-page .pp-pharm-side-profile__status.is-active {
+  color: #047857;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+}
+
+.patient-profile-page .pp-pharm-side-profile__status.is-pending {
+  color: #b45309;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+}
+
+.patient-profile-page .pp-pharm-side-profile__reg {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--pp-ink-3, #64748b);
+  margin: 0 0 8px;
+}
+
+.patient-profile-page .pp-pharm-flag-chips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.patient-profile-page .pp-pharm-flag-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid transparent;
+}
+
+.patient-profile-page .pp-pharm-flag-chip--alert {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #b91c1c;
+}
+
+.patient-profile-page .pp-pharm-flag-chip--warn {
+  background: #fffbeb;
+  border-color: #fde68a;
+  color: #b45309;
+}
+
+.patient-profile-page .pp-pharm-side-quick__btn {
+  border-radius: 10px;
+  color: var(--pp-accent-dark);
+}
+
+.patient-profile-page .pp-pharm-side-quick__btn:hover {
+  background: var(--pp-accent-soft);
+  border-color: #bae0fd;
+}
+
+/* Tabs */
+.patient-profile-page .pp-pharm-tabs-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+.patient-profile-page .pp-pharm-tabs {
+  flex-wrap: nowrap;
+  min-width: min-content;
+  padding: 10px 12px !important;
+  background: #f8fafc !important;
+  border-bottom: 1px solid #e8edf3 !important;
+  border-radius: 18px 18px 0 0;
+}
+
+.patient-profile-page .pp-pharm-tabs .nurse-profile-tab {
+  flex-shrink: 0;
+  white-space: nowrap;
+  padding: 9px 14px !important;
+  font-size: 12.5px !important;
+}
+
+.patient-profile-page .pp-pharm-tabs .nurse-profile-tab.active {
+  color: var(--pp-accent-dark) !important;
+  box-shadow: 0 2px 8px rgba(69, 182, 254, 0.12) !important;
+}
+
+.patient-profile-page .pp-pharm-tab-plus {
+  border: 1px dashed #cbd5e1 !important;
+  background: transparent !important;
+  color: var(--pp-accent-dark) !important;
+}
+
+.patient-profile-page .pp-pharm-tab-plus:hover {
+  background: var(--pp-accent-soft) !important;
+  border-color: #45b6fe !important;
+}
+
+.patient-profile-page .pp-pharm-board {
+  border: 1px solid #e8edf3;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+}
+
+.patient-profile-page .nurse-profile-board__content {
+  padding: 20px 22px !important;
+  background: #fafbfc;
+}
+
+/* Panels */
+.patient-profile-page .pp-pharm-panel {
+  border-radius: 14px;
+}
+
+.patient-profile-page .pp-pharm-panel__section-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--pp-accent-dark);
+}
+
+.patient-profile-page .pp-pharm-panel__section-title::before {
+  content: '';
+  width: 3px;
+  height: 14px;
+  border-radius: 2px;
+  background: var(--pp-accent);
+  flex-shrink: 0;
+}
+
+.patient-profile-page .pp-pharm-field-value {
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.patient-profile-page .pp-pharm-faux-select {
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.patient-profile-page .pp-pharm-used-table thead th {
+  background: #f0f7fe;
+  color: var(--pp-accent-dark);
+}
+
+/* Loading / empty */
+.patient-profile-page--loading,
+.patient-profile-page--empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 50vh;
+  gap: 12px;
+}
+
+.patient-profile-page__spinner {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 4px solid #dbeafe;
+  border-top-color: #45b6fe;
+  animation: pp-profile-spin 0.9s linear infinite;
+}
+
+@keyframes pp-profile-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 767px) {
+  .patient-profile-page .pp-pharm-topbar__actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .patient-profile-page .pp-pharm-btn-yellow {
+    flex: 1;
+    min-width: 0;
+    text-align: center;
+  }
+
+  .patient-profile-page .pp-pharm-side-profile {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+
+  .patient-profile-page .pp-pharm-side-profile__facts {
+    width: 100%;
+  }
+
+  .patient-profile-page .pp-pharm-side-profile__status {
+    margin-left: auto;
+    margin-right: auto;
+  }
+}

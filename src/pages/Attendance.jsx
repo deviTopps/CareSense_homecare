@@ -5,40 +5,20 @@ import { getUser, getToken } from '../api';
 import {
   clockInAttendance,
   clockOutAttendance,
-  fetchNurseDailyAttendance,
-  fetchNurseMonthlyAttendance,
-  flattenNurseDailyAttendanceResponse,
-  flattenNurseMonthlyAttendanceResponse,
+  attendanceSummaryFromDailyResponse,
+  fetchAllNursesAttendanceRecords,
+  getAttendanceColumnValues,
+  mapAttendanceRecordToTableRow,
+  pickAttendanceField,
+  resolveNurseIdForAttendance,
 } from '../utils/attendance';
 import './Attendance.css';
 
 const ACTIVE_ATTENDANCE_SESSION_KEY = 'attendanceActiveSessionId';
 
-const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-
 function pickFirst(obj, keys) {
   for (const k of keys) {
     if (obj[k] != null && obj[k] !== '') return obj[k];
-  }
-  return null;
-}
-
-function resolveNurseIdFromUser(u) {
-  if (u && typeof u === 'object') {
-    const id = u.nurseId ?? u.nurse_id ?? u.nurse?.id ?? u.nurse?._id ?? u.id ?? u._id;
-    if (id != null && id !== '') {
-      const s = String(id).trim();
-      if (s) return s;
-    }
-  }
-  try {
-    const t = getToken();
-    if (!t) return null;
-    const payload = JSON.parse(atob(t.split('.')[1]));
-    const j = payload.nurseId ?? payload.nurse_id ?? payload.userId ?? payload.id ?? payload._id;
-    if (j != null && String(j).trim()) return String(j).trim();
-  } catch {
-    /* ignore */
   }
   return null;
 }
@@ -139,6 +119,167 @@ function formatHHMMFromApi(raw) {
   return typeof raw === 'string' ? raw : String(raw);
 }
 
+function parseLatLngPair(lat, lng) {
+  if (lat == null || lng == null || lat === '' || lng === '') return null;
+  const la = Number(lat);
+  const ln = Number(lng);
+  if (Number.isNaN(la) || Number.isNaN(ln)) return null;
+  return { lat: la, lng: ln };
+}
+
+function gpsFromLocationObject(loc) {
+  if (!loc || typeof loc !== 'object') return null;
+  return parseLatLngPair(
+    loc.latitude ?? loc.lat ?? loc.Latitude,
+    loc.longitude ?? loc.lng ?? loc.lon ?? loc.Longitude,
+  );
+}
+
+/** Clock-in / clock-out GPS from common API field names. */
+function extractGpsForKind(src, kind) {
+  if (!src || typeof src !== 'object') return null;
+  const stems = kind === 'in'
+    ? ['clockIn', 'clockedIn', 'checkIn', 'check_in', 'clock_in', 'start']
+    : ['clockOut', 'clockedOut', 'checkOut', 'check_out', 'clock_out', 'end'];
+
+  for (const stem of stems) {
+    const gps = parseLatLngPair(
+      src[`${stem}Latitude`] ?? src[`${stem}_latitude`] ?? src[`${stem}Lat`] ?? src[`${stem}_lat`],
+      src[`${stem}Longitude`] ?? src[`${stem}_longitude`] ?? src[`${stem}Lng`] ?? src[`${stem}_lng`],
+    );
+    if (gps) return gps;
+
+    const loc = src[`${stem}Location`] ?? src[`${stem}Gps`] ?? src[`${stem}GPS`] ?? src[`${stem}Coordinates`];
+    const fromLoc = gpsFromLocationObject(loc);
+    if (fromLoc) return fromLoc;
+  }
+  return null;
+}
+
+function formatClockForTable(raw, dateFallback) {
+  if (raw == null || raw === '') return { time: null, sub: null };
+  if (typeof raw === 'string' && raw.includes('T')) {
+    const d = new Date(raw);
+    if (!Number.isNaN(d.getTime())) {
+      const time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+      const date = d.toISOString().slice(0, 10);
+      return {
+        time,
+        sub: date !== dateFallback ? date : null,
+      };
+    }
+  }
+  const time = formatHHMMFromApi(raw);
+  return { time: time || String(raw), sub: null };
+}
+
+/** Human-readable clock time for table (date + time when API sends ISO). */
+function formatClockTimeLabel(raw, fallbackDate) {
+  if (raw == null || raw === '') return null;
+  if (typeof raw === 'number' && Number.isFinite(raw)) {
+    const d = new Date(raw > 1e12 ? raw : raw * 1000);
+    if (!Number.isNaN(d.getTime())) {
+      return d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+    }
+  }
+  if (typeof raw === 'string' && (raw.includes('T') || /^\d{4}-\d{2}-\d{2}/.test(raw))) {
+    const d = new Date(raw);
+    if (!Number.isNaN(d.getTime())) {
+      return d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+    }
+  }
+  const hm = formatHHMMFromApi(raw);
+  if (hm) {
+    const d = String(fallbackDate || '').trim();
+    return d ? `${d} ${hm}` : hm;
+  }
+  return typeof raw === 'string' ? raw : null;
+}
+
+function AttendanceClockCell({ label, variant }) {
+  if (!label) return <span className="attendance-clock-empty">—</span>;
+  return (
+    <span className={variant === 'in' ? 'attendance-time-in' : 'attendance-cell-clock'}>
+      {variant === 'in' && <span className="attendance-time-dot" aria-hidden />}
+      <strong className="attendance-clock-value">{label}</strong>
+    </span>
+  );
+}
+
+function AttendancePatientCell({ name, id, registrationNumber }) {
+  const display = String(name || '').trim() || '—';
+  return (
+    <div className="attendance-cell-patient">
+      <span className="attendance-cell-patient__name">{display}</span>
+      {registrationNumber && (
+        <span className="attendance-cell-patient__meta">Reg: {registrationNumber}</span>
+      )}
+      {id && id !== display && (
+        <span className="attendance-cell-patient__meta">ID: {id}</span>
+      )}
+    </div>
+  );
+}
+
+function formatGpsCoordinates(gps) {
+  if (!gps) return null;
+  return `${gps.lat.toFixed(5)}, ${gps.lng.toFixed(5)}`;
+}
+
+function mapsUrlForGps(gps) {
+  if (!gps) return null;
+  return `https://www.google.com/maps?q=${gps.lat},${gps.lng}`;
+}
+
+function AttendanceGpsCell({ gpsIn, gpsOut, gps, distance, locationIn, locationOut }) {
+  const lines = [];
+  const hasOut = Boolean(locationOut || gpsOut);
+
+  if (locationIn) {
+    lines.push({ label: hasOut ? 'In' : 'Location', text: String(locationIn), gps: gpsIn });
+  } else if (gpsIn) {
+    lines.push({ label: hasOut ? 'In' : 'GPS', text: formatGpsCoordinates(gpsIn), gps: gpsIn });
+  }
+
+  if (locationOut) lines.push({ label: 'Out', text: String(locationOut), gps: gpsOut });
+  else if (gpsOut) lines.push({ label: 'Out', text: formatGpsCoordinates(gpsOut), gps: gpsOut });
+
+  if (!lines.length && gps) {
+    lines.push({ label: 'GPS', text: formatGpsCoordinates(gps), gps });
+  }
+
+  if (!lines.length) {
+    if (distance) return <span className="attendance-gps-distance">{distance}</span>;
+    return <span className="attendance-gps-empty">—</span>;
+  }
+
+  return (
+    <div className="attendance-gps-cell">
+      {lines.map(({ label, text, gps: g }) => (
+        <div key={label} className="attendance-gps-line">
+          <span className="attendance-gps-line__label">{label}</span>
+          {g && mapsUrlForGps(g) ? (
+            <a
+              href={mapsUrlForGps(g)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="attendance-gps-link"
+              onClick={(e) => e.stopPropagation()}
+              title={text}
+            >
+              <FiMapPin size={12} aria-hidden />
+              <span className="attendance-gps-text">{text}</span>
+            </a>
+          ) : (
+            <span className="attendance-gps-text" title={text}>{text}</span>
+          )}
+        </div>
+      ))}
+      {distance && <span className="attendance-gps-distance">{distance}</span>}
+    </div>
+  );
+}
+
 /** Milliseconds since epoch from API value, or null. */
 function extractTimestampMs(raw) {
   if (raw == null || raw === '') return null;
@@ -220,11 +361,8 @@ function attendanceRowFromApiResponse(data, user) {
   const now = new Date();
   const serverId = extractServerAttendanceId(data);
   const id = serverId || `clk-${now.getTime()}`;
-  const clockInRaw = pickFirst(src, ['clockIn', 'clockInTime', 'clockedInAt', 'checkInTime']);
-  let clockIn = formatHHMMFromApi(clockInRaw);
-  if (!clockIn) {
-    clockIn = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-  }
+  const clockInRaw = pickAttendanceField(src, 'in') ?? pickFirst(src, ['clockIn', 'clockInTime', 'clockedInAt', 'checkInTime']);
+  const clockIn = formatHHMMFromApi(clockInRaw);
 
   let dateVal = pickFirst(src, ['date', 'visitDate']);
   if (dateVal && typeof dateVal === 'string' && dateVal.includes('T')) {
@@ -235,23 +373,58 @@ function attendanceRowFromApiResponse(data, user) {
   }
   if (!dateVal) dateVal = now.toISOString().slice(0, 10);
 
-  const patientRaw = pickFirst(src, ['patientName', 'patient']);
-  const patient = patientRaw != null && patientRaw !== ''
-    ? resolveNamedField(patientRaw, '—')
-    : (src.patientId != null ? String(src.patientId) : '—');
+  const patientObj = src.patient && typeof src.patient === 'object' && !Array.isArray(src.patient)
+    ? src.patient
+    : null;
+  const patientRaw = pickFirst(src, ['patientName', 'patientFullName', 'patient']);
+  const patientName = patientRaw != null && patientRaw !== ''
+    ? resolveNamedField(patientRaw, '')
+    : (patientObj
+      ? [patientObj.firstName, patientObj.lastName].filter(Boolean).join(' ').trim() || patientObj.name || ''
+      : '');
+  const patientId = pickFirst(src, ['patientId', 'patient_id', 'patientUuid'])
+    || (patientObj ? pickFirst(patientObj, ['id', '_id', 'patientId']) : null);
+  const patientRegistration = patientObj
+    ? pickFirst(patientObj, ['registrationNumber', 'registration_number', 'mrn'])
+    : pickFirst(src, ['registrationNumber', 'registration_number']);
+  const patientPhone = pickFirst(src, ['patientPhone', 'patient_phone', 'phone'])
+    || (patientObj ? pickFirst(patientObj, ['phone', 'phoneNumber', 'mobile']) : null);
+  const patientAddress = pickFirst(src, ['patientAddress', 'patient_address', 'address'])
+    || (patientObj ? pickFirst(patientObj, ['address', 'residentialAddress']) : null);
+  const locationIn = pickFirst(src, ['location', 'clockInLocation', 'clock_in_location']);
+  const locationOut = pickFirst(src, ['clockOutLocation', 'clock_out_location']);
+  const patient = patientName
+    || (patientId != null ? String(patientId) : '—');
+
   const lat = pickFirst(src, ['latitude', 'lat']);
   const lng = pickFirst(src, ['longitude', 'lng', 'lon']);
-  let gps = null;
-  if (lat != null && lng != null) {
-    const la = Number(lat);
-    const ln = Number(lng);
-    if (!Number.isNaN(la) && !Number.isNaN(ln)) gps = { lat: la, lng: ln };
-  }
-  const statusRaw = (pickFirst(src, ['status']) || 'verified').toString().toLowerCase();
-  const status = ['verified', 'flagged', 'missed'].includes(statusRaw) ? statusRaw : 'verified';
+  let gps = parseLatLngPair(lat, lng);
+  const gpsIn = extractGpsForKind(src, 'in');
+  const gpsOut = extractGpsForKind(src, 'out');
+  if (!gps && gpsIn) gps = gpsIn;
+  const statusRaw = (pickFirst(src, ['status']) || '').toString().toLowerCase();
+  let status = 'verified';
+  if (src.flaggedForReview === true) status = 'flagged';
+  else if (statusRaw === 'missed') status = 'missed';
+  else if (statusRaw === 'flagged') status = 'flagged';
+  else if (statusRaw === 'clocked-out' || statusRaw === 'completed') status = 'verified';
 
-  const clockOutRaw = pickFirst(src, ['clockOut', 'clockOutTime', 'clockedOutAt', 'checkOutTime']);
+  const clockOutRaw = pickAttendanceField(src, 'out') ?? pickFirst(src, ['clockOut', 'clockOutTime', 'clockedOutAt', 'checkOutTime']);
   const clockOut = formatHHMMFromApi(clockOutRaw);
+  const dateStr = typeof dateVal === 'string' ? dateVal.slice(0, 10) : '';
+  const clockInApiDisplay = pickFirst(src, ['clockInDisplay']);
+  const clockOutApiDisplay = pickFirst(src, ['clockOutDisplay']);
+  const clockInDisplay = formatClockForTable(clockInRaw, dateStr);
+  const clockOutDisplay = formatClockForTable(clockOutRaw, dateStr);
+  const clockInTimeLabel = (clockInApiDisplay != null ? String(clockInApiDisplay) : null)
+    || formatClockTimeLabel(clockInRaw, dateStr)
+    || clockInDisplay?.time
+    || null;
+  const clockOutTimeLabel = (clockOutApiDisplay != null ? String(clockOutApiDisplay) : null)
+    || formatClockTimeLabel(clockOutRaw, dateStr)
+    || clockOutDisplay?.time
+    || null;
+  const patientServed = patientName || patient;
 
   const clockInMs = extractTimestampMs(clockInRaw);
   const clockOutMs = extractTimestampMs(clockOutRaw);
@@ -263,35 +436,84 @@ function attendanceRowFromApiResponse(data, user) {
     'totalMinutes',
     'minutesWorked',
     'workedMinutes',
+    'totalDurationMinutes',
   ]));
   if (durationMinutesFromApi == null) {
     const hrs = coerceNonNegativeMinutes(pickFirst(src, ['durationHours', 'totalHours', 'hoursWorked']));
     if (hrs != null) durationMinutesFromApi = hrs * 60;
   }
 
+  const nurseId = pickFirst(src, ['nurseId', 'nurse_id', 'nurseUuid'])
+    || (src.nurse && typeof src.nurse === 'object' ? pickFirst(src.nurse, ['id', '_id', 'uuid', 'nurseId']) : null);
+
   return {
     id,
+    nurseId: nurseId != null ? String(nurseId).trim() : '',
     nurse,
     patient,
+    patientServed: patientServed || '—',
+    patientName: patientName || patientServed || '—',
+    patientId: patientId != null ? String(patientId).trim() : '',
+    patientRegistration: patientRegistration != null ? String(patientRegistration).trim() : '',
+    patientPhone: patientPhone != null ? String(patientPhone).trim() : '',
+    patientAddress: patientAddress != null ? String(patientAddress).trim() : '',
     date: typeof dateVal === 'string' ? dateVal.slice(0, 10) : dateVal,
     clockIn,
     clockOut: clockOut || null,
+    clockInDisplay,
+    clockOutDisplay,
+    clockInTimeLabel,
+    clockOutTimeLabel,
     clockInMs,
     clockOutMs,
     durationMinutesFromApi,
     gps,
+    gpsIn,
+    gpsOut,
+    locationIn: locationIn != null ? String(locationIn).trim() : '',
+    locationOut: locationOut != null ? String(locationOut).trim() : '',
     distance: src.distanceFromPatient != null ? `${src.distanceFromPatient}` : (src.distance != null ? String(src.distance) : null),
     status,
     region: pickFirst(src, ['region']) || '—',
+    _daySummary: Boolean(src._daySummary),
+    _fromDailyApi: true,
   };
 }
 
-function attendanceListFromDailyResponse(json) {
-  return flattenNurseDailyAttendanceResponse(json);
+/** Query for GET /attendance/nurse/:id/daily?date=YYYY-MM-DD (all nurses aggregated). */
+function buildNursesAttendanceQuery(dateYYYYMMDD, selectedYear) {
+  const date = String(dateYYYYMMDD || '').trim();
+  const year = String(selectedYear || '').trim();
+  const now = new Date();
+  let resolvedDate = date;
+  if (!resolvedDate) {
+    if (year) {
+      resolvedDate = year === String(now.getFullYear())
+        ? now.toISOString().slice(0, 10)
+        : `${year}-01-01`;
+    } else {
+      resolvedDate = now.toISOString().slice(0, 10);
+    }
+  }
+  return {
+    date: resolvedDate,
+    month: resolvedDate.slice(0, 7),
+  };
 }
 
-function attendanceListFromMonthlyResponse(json) {
-  return flattenNurseMonthlyAttendanceResponse(json);
+function isCompletedAttendanceRow(row) {
+  if (!row) return false;
+  if (row._daySummary) return true;
+  const dur = coerceNonNegativeMinutes(row.durationMinutesFromApi);
+  if (dur != null && dur > 0) return true;
+  if (!row.clockIn) return false;
+  const clockOut = row.clockOut;
+  return clockOut != null && String(clockOut).trim() !== '' && clockOut !== '—';
+}
+
+function isDisplayableAttendanceRow(row) {
+  if (!row) return false;
+  return true;
 }
 
 function resolveNamedField(val, fallbackStr) {
@@ -363,7 +585,7 @@ export default function Attendance() {
   const user = getUser();
   const authToken = getToken();
   const nurseIdResolved = useMemo(
-    () => resolveNurseIdFromUser(getUser()),
+    () => resolveNurseIdForAttendance(getUser()),
     [
       authToken,
       user?.nurseId,
@@ -377,31 +599,25 @@ export default function Attendance() {
   const [selected, setSelected] = useState(null);
   const [statusFilter, setStatusFilter] = useState('All');
   const [nurseFilter, setNurseFilter] = useState('All Nurses');
-  const [selectedDate, setSelectedDate] = useState('');        // specific date YYYY-MM-DD
-  const [selectedMonth, setSelectedMonth] = useState('');       // 0-11
-  const [selectedYear, setSelectedYear] = useState('');         // e.g. 2026
+  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [selectedYear, setSelectedYear] = useState('');
   const [page, setPage] = useState(1);
   const perPage = 10;
 
   const [apiRecords, setApiRecords] = useState([]);
-  const [includeGps, setIncludeGps] = useState(true);
   const [clockInLoading, setClockInLoading] = useState(false);
   const [clockOutLoading, setClockOutLoading] = useState(false);
   const [sessionError, setSessionError] = useState('');
   const [sessionSuccess, setSessionSuccess] = useState('');
   const [activeAttendanceId, setActiveAttendanceId] = useState(null);
 
-  const [dailyRecords, setDailyRecords] = useState([]);
-  const [monthlyRecords, setMonthlyRecords] = useState([]);
+  const [attendanceRecords, setAttendanceRecords] = useState([]);
   const [listLoading, setListLoading] = useState(false);
   const [listError, setListError] = useState('');
-  const lastDailyQueryRef = useRef(null);
+  const [listMeta, setListMeta] = useState(null);
   const lastMonthlyQueryRef = useRef(null);
 
-  const serverRecords = useMemo(
-    () => (selectedDate ? dailyRecords : monthlyRecords),
-    [selectedDate, dailyRecords, monthlyRecords],
-  );
+  const serverRecords = attendanceRecords;
 
   const allRecords = useMemo(() => {
     const map = new Map();
@@ -410,13 +626,17 @@ export default function Attendance() {
     return sortRecordsByDateDesc(Array.from(map.values()));
   }, [serverRecords, apiRecords]);
 
-  /** Open shift id from server-backed lists when this tab never stored clock-in uuid. */
   const inferredOpenAttendanceId = useMemo(
     () =>
-      deriveOpenAttendanceIdFromRecords(dailyRecords)
-      || deriveOpenAttendanceIdFromRecords(monthlyRecords)
+      deriveOpenAttendanceIdFromRecords(
+        attendanceRecords.filter((r) => {
+          const rid = String(r.nurseId || '').trim();
+          const nid = String(nurseIdResolved || '').trim();
+          return !nid || !rid || rid === nid;
+        }),
+      )
       || deriveOpenAttendanceIdFromRecords(apiRecords),
-    [dailyRecords, monthlyRecords, apiRecords],
+    [attendanceRecords, apiRecords, nurseIdResolved],
   );
 
   const displayOpenAttendanceId = useMemo(() => {
@@ -454,130 +674,90 @@ export default function Attendance() {
 
   /* Derive available years */
   const years = useMemo(() => {
-    const ySet = new Set(allRecords.map(r => r.date.slice(0, 4)));
+    const ySet = new Set(allRecords.map((r) => (r.date ? String(r.date).slice(0, 4) : '')).filter(Boolean));
+    if (listMeta?.year) ySet.add(String(listMeta.year));
     return ['', ...Array.from(ySet).sort().reverse()];
-  }, [allRecords]);
+  }, [allRecords, listMeta]);
 
-  /* Filter records */
+  /* Client filters — date is applied via API reload, not here (avoids hiding loaded rows). */
   const filtered = useMemo(() => {
-    return allRecords.filter(r => {
-      if (statusFilter !== 'All' && r.status !== statusFilter.toLowerCase()) return false;
+    return allRecords.filter((r) => {
+      if (statusFilter === 'Verified' && r.status !== 'verified') return false;
+      if (statusFilter === 'Flagged' && r.status !== 'flagged') return false;
+      if (statusFilter === 'Missed' && r.status !== 'missed') return false;
       if (nurseFilter !== 'All Nurses' && r.nurse !== nurseFilter) return false;
-      if (selectedDate && r.date !== selectedDate) return false;
-      if (selectedYear && !selectedDate) {
-        if (r.date.slice(0, 4) !== selectedYear) return false;
-        if (selectedMonth !== '' && r.date.slice(5, 7) !== String(Number(selectedMonth) + 1).padStart(2, '0')) return false;
-      }
       return true;
     });
-  }, [statusFilter, nurseFilter, selectedDate, selectedMonth, selectedYear, allRecords]);
+  }, [statusFilter, nurseFilter, allRecords]);
 
   const onUnauthorized = useCallback(() => {
     navigate('/login', { replace: true });
   }, [navigate]);
 
-  const loadMonthlyAttendance = useCallback(async (year, month1to12) => {
+  const loadAllNursesAttendance = useCallback(async (dateYYYYMMDD, year) => {
     setListLoading(true);
     setListError('');
-    const nid = String(nurseIdResolved || '').trim();
-    if (!nid) {
-      setListLoading(false);
-      setMonthlyRecords([]);
-      return;
-    }
-    const y = Number(year);
-    const m = Number(month1to12);
-    if (!Number.isFinite(y) || !Number.isFinite(m) || m < 1 || m > 12) {
-      setListLoading(false);
-      setListError('Invalid month.');
-      return;
-    }
-    const monthParam = `${y}-${String(m).padStart(2, '0')}`;
+    const query = buildNursesAttendanceQuery(dateYYYYMMDD, year);
     try {
-      const body = await fetchNurseMonthlyAttendance(nid, { month: monthParam }, onUnauthorized);
-      const list = attendanceListFromMonthlyResponse(body);
+      const {
+        sessions,
+        source,
+        dailyBody,
+        nursesFetched,
+        date: loadedDate,
+      } = await fetchAllNursesAttendanceRecords(
+        { month: query.month, date: query.date },
+        onUnauthorized,
+      );
       const u = getUser();
-      const rows = list.map((item) => attendanceRowFromApiResponse(item, u));
-      setMonthlyRecords(sortRecordsByDateDesc(rows));
-      lastMonthlyQueryRef.current = { year: y, month: m, monthParam };
+      const rows = sessions.map((item) => {
+        const mapped = mapAttendanceRecordToTableRow(
+          item && typeof item === 'object' ? item : null,
+        );
+        return mapped || attendanceRowFromApiResponse(item, u);
+      });
+      const tableRows = rows.filter(Boolean);
+      setAttendanceRecords(sortRecordsByDateDesc(tableRows));
+      const nurseNames = new Set(rows.map((r) => r.nurse).filter(Boolean));
+      const summaryBody = dailyBody || {};
+      setListMeta({
+        ...attendanceSummaryFromDailyResponse(summaryBody, { date: loadedDate, month: query.month }),
+        parsedSessionCount: sessions.length,
+        nurseCount: nurseNames.size || nursesFetched,
+        month: query.month,
+        loadDate: loadedDate,
+        loadSource: source,
+        nursesFetched,
+      });
+      lastMonthlyQueryRef.current = query;
+      if (!sessions.length && typeof console !== 'undefined' && console.warn) {
+        console.warn('[Attendance] No sessions after monthly + per-nurse daily fetch', {
+          query,
+          source,
+          nursesFetched,
+        });
+      }
     } catch (e) {
-      setListError(e.message || 'Could not load monthly attendance.');
-      setMonthlyRecords([]);
+      setListError(e.message || 'Could not load nurses attendance.');
+      setAttendanceRecords([]);
+      setListMeta(null);
     } finally {
       setListLoading(false);
     }
-  }, [onUnauthorized, nurseIdResolved]);
-
-  const loadDailyAttendance = useCallback(async (dateYYYYMMDD) => {
-    setListLoading(true);
-    setListError('');
-    const nid = String(nurseIdResolved || '').trim();
-    if (!nid) {
-      setListLoading(false);
-      setDailyRecords([]);
-      return;
-    }
-    const date = String(dateYYYYMMDD || '').trim();
-    if (!date) {
-      setListLoading(false);
-      return;
-    }
-    try {
-      const body = await fetchNurseDailyAttendance(nid, { date }, onUnauthorized);
-      const list = attendanceListFromDailyResponse(body);
-      const u = getUser();
-      const rows = list.map((item) => attendanceRowFromApiResponse(item, u));
-      setDailyRecords(sortRecordsByDateDesc(rows));
-      lastDailyQueryRef.current = { nurseId: nid, date };
-    } catch (e) {
-      setListError(e.message || 'Could not load daily attendance.');
-      setDailyRecords([]);
-    } finally {
-      setListLoading(false);
-    }
-  }, [onUnauthorized, nurseIdResolved]);
+  }, [onUnauthorized]);
 
   const reloadAttendanceLists = useCallback(() => {
-    if (selectedDate) {
-      void loadDailyAttendance(selectedDate);
-      return;
-    }
-    const q = lastMonthlyQueryRef.current;
-    if (q?.year != null && q?.month != null) {
-      void loadMonthlyAttendance(q.year, q.month);
-      return;
-    }
-    const now = new Date();
-    void loadMonthlyAttendance(now.getFullYear(), now.getMonth() + 1);
-  }, [selectedDate, loadDailyAttendance, loadMonthlyAttendance]);
+    void loadAllNursesAttendance(selectedDate, selectedYear);
+  }, [selectedDate, selectedYear, loadAllNursesAttendance]);
 
   useEffect(() => {
-    if (!nurseIdResolved) {
-      setDailyRecords([]);
-      setMonthlyRecords([]);
-      setListError('');
-      return;
-    }
-    if (selectedDate) {
-      loadDailyAttendance(selectedDate);
-      return;
-    }
-    const now = new Date();
-    if (selectedYear && selectedMonth !== '') {
-      loadMonthlyAttendance(Number(selectedYear), Number(selectedMonth) + 1);
-      return;
-    }
-    if (selectedYear) {
-      loadMonthlyAttendance(Number(selectedYear), now.getMonth() + 1);
-      return;
-    }
-    loadMonthlyAttendance(now.getFullYear(), now.getMonth() + 1);
-  }, [nurseIdResolved, selectedDate, selectedYear, selectedMonth, loadDailyAttendance, loadMonthlyAttendance]);
+    loadAllNursesAttendance(selectedDate, selectedYear);
+  }, [selectedDate, selectedYear, loadAllNursesAttendance]);
 
   const handleClockIn = async () => {
     setSessionError('');
     setSessionSuccess('');
-    const nid = String(nurseIdResolved || resolveNurseIdFromUser(getUser()) || '').trim();
+    const nid = String(nurseIdResolved || resolveNurseIdForAttendance(getUser()) || '').trim();
     if (!nid) {
       setSessionError('Clock-in requires a nurse ID on your account (or in your login token). Contact your administrator.');
       return;
@@ -585,12 +765,10 @@ export default function Attendance() {
     setClockInLoading(true);
     try {
       let coords = null;
-      if (includeGps) {
-        try {
-          coords = await readGeoPosition();
-        } catch {
-          /* optional: still allow clock-in without coordinates */
-        }
+      try {
+        coords = await readGeoPosition();
+      } catch {
+        /* still allow clock-in without coordinates */
       }
       const payload = {
         nurseId: nid,
@@ -648,12 +826,10 @@ export default function Attendance() {
     setClockOutLoading(true);
     try {
       let coords = null;
-      if (includeGps) {
-        try {
-          coords = await readGeoPosition();
-        } catch {
-          /* optional */
-        }
+      try {
+        coords = await readGeoPosition();
+      } catch {
+        /* optional */
       }
       const payload = {
         ...(coords && {
@@ -703,25 +879,22 @@ export default function Attendance() {
 
   const resetFilters = () => {
     setStatusFilter('All'); setNurseFilter('All Nurses');
-    setSelectedDate(''); setSelectedMonth(''); setSelectedYear('');
+    setSelectedDate(''); setSelectedYear('');
     setPage(1);
   };
 
-  const hasFilters = statusFilter !== 'All' || nurseFilter !== 'All Nurses' || selectedDate || selectedMonth !== '' || selectedYear;
+  const hasFilters = statusFilter !== 'All' || nurseFilter !== 'All Nurses' || selectedDate || selectedYear;
   const userDisplayName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.email || 'user';
   const onShift = Boolean(displayOpenAttendanceId);
 
-  const monthlyPeriodLabel = useMemo(() => {
-    if (selectedDate) return '';
-    const now = new Date();
-    if (selectedYear && selectedMonth !== '') {
-      return `${selectedYear}-${String(Number(selectedMonth) + 1).padStart(2, '0')}`;
-    }
-    if (selectedYear) {
-      return `${selectedYear}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    }
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  }, [selectedDate, selectedYear, selectedMonth]);
+  const periodLabel = useMemo(() => {
+    if (selectedDate) return selectedDate;
+    if (listMeta?.loadDate) return listMeta.loadDate;
+    if (listMeta?.periodLabel) return listMeta.periodLabel;
+    if (listMeta?.month) return listMeta.month;
+    if (selectedYear) return selectedYear;
+    return 'Today';
+  }, [selectedDate, selectedYear, listMeta]);
 
   const statusTagClass = (status) => {
     if (status === 'verified') return 'attendance-status-tag attendance-status-tag--verified';
@@ -745,7 +918,7 @@ export default function Attendance() {
             )}
             {!nurseIdResolved && user && (
               <p className="attendance-shift__meta" style={{ marginTop: 8, color: '#b45309' }}>
-                No nurse ID on this account. Contact your administrator if records do not load.
+                No nurse ID on this account — you can view all nurses&apos; attendance below, but clock in/out requires an ID from your administrator.
               </p>
             )}
           </div>
@@ -768,28 +941,38 @@ export default function Attendance() {
             </button>
           </div>
         </div>
-        <div className="attendance-shift__footer">
-          <label className="attendance-gps-toggle">
-            <input type="checkbox" checked={includeGps} onChange={(e) => setIncludeGps(e.target.checked)} />
-            Share location when clocking in or out
-          </label>
-          <span className="attendance-shift__hint">GPS is optional if your browser blocks location access.</span>
-        </div>
         {sessionError && <div className="attendance-alert attendance-alert--error">{sessionError}</div>}
         {sessionSuccess && <div className="attendance-alert attendance-alert--success">{sessionSuccess}</div>}
       </section>
 
       <section className="attendance-records kh-card attendance-table-card">
         <div className="attendance-records__head">
-          <h3>{selectedDate ? 'Daily sessions' : 'Monthly sessions'}</h3>
+          <h3>All nurses — attendance records</h3>
           <span className="attendance-records__count">
             {listLoading ? 'Loading…' : `${filtered.length} record${filtered.length === 1 ? '' : 's'}`}
-            {!listLoading && monthlyPeriodLabel && (
-              <span style={{ marginLeft: 6 }}>· {monthlyPeriodLabel}</span>
+            {!listLoading && listMeta?.nurseCount != null && (
+              <span style={{ marginLeft: 6 }}>· {listMeta.nurseCount} nurse{listMeta.nurseCount === 1 ? '' : 's'}</span>
+            )}
+            {!listLoading && (
+              <span style={{ marginLeft: 6 }}>· {periodLabel}</span>
             )}
           </span>
         </div>
         {listError && <div className="attendance-alert--warn">{listError}</div>}
+        {!listLoading && !listError && filtered.length === 0 && attendanceRecords.length === 0 && (
+          <p className="attendance-records__hint">
+            {listMeta?.parsedSessionCount > 0
+              ? `Found ${listMeta.parsedSessionCount} session(s) in the API but could not map them to table rows.`
+              : `No attendance records for ${listMeta?.periodLabel || periodLabel}.${listMeta?.nursesFetched ? ` Checked ${listMeta.nursesFetched} nurse(s) via daily API.` : ''}`}
+            {hasFilters ? ' Try clearing Year/Date filters.' : ' Change the visit date above or confirm nurses have clock-in/out visits for that day.'}
+          </p>
+        )}
+        {!listLoading && !listError && attendanceRecords.length > 0 && filtered.length === 0 && (
+          <p className="attendance-records__hint">
+            {attendanceRecords.length} record{attendanceRecords.length === 1 ? '' : 's'} loaded for {periodLabel} but hidden by filters.
+            {hasFilters ? ' Clear Year/Date, Nurse, or Status filters to see them.' : ''}
+          </p>
+        )}
 
         <div className="attendance-filters">
           <div className="attendance-field">
@@ -799,11 +982,15 @@ export default function Attendance() {
             </select>
           </div>
           <div className="attendance-field">
-            <label>Date</label>
+            <label>Visit date</label>
             <input
               type="date"
-              value={selectedDate}
-              onChange={(e) => { setSelectedDate(e.target.value); setSelectedMonth(''); setSelectedYear(''); setPage(1); }}
+              value={selectedDate || listMeta?.loadDate || ''}
+              onChange={(e) => {
+                setSelectedDate(e.target.value);
+                setSelectedYear('');
+                setPage(1);
+              }}
             />
           </div>
           <span className="attendance-filters__or">or</span>
@@ -815,22 +1002,10 @@ export default function Attendance() {
                 setSelectedYear(e.target.value);
                 setSelectedDate('');
                 setPage(1);
-                if (!e.target.value) setSelectedMonth('');
               }}
             >
               <option value="">All years</option>
               {years.filter(Boolean).map((y) => <option key={y} value={y}>{y}</option>)}
-            </select>
-          </div>
-          <div className="attendance-field">
-            <label>Month</label>
-            <select
-              value={selectedMonth}
-              onChange={(e) => { setSelectedMonth(e.target.value); setSelectedDate(''); setPage(1); }}
-              disabled={!selectedYear}
-            >
-              <option value="">All months</option>
-              {MONTHS.map((m, i) => <option key={i} value={i}>{m}</option>)}
             </select>
           </div>
           <div className="attendance-field" style={{ marginLeft: 'auto' }}>
@@ -863,7 +1038,11 @@ export default function Attendance() {
                   <FiSearch size={32} />
                 </span>
                 <div className="attendance-empty__title">No records found</div>
-                <p style={{ fontSize: 12.5, marginTop: 4, marginBottom: 0 }}>Try a different date or clear your filters.</p>
+                <p style={{ fontSize: 12.5, marginTop: 4, marginBottom: 0 }}>
+                  {attendanceRecords.length > 0
+                    ? `${attendanceRecords.length} visit(s) loaded for ${periodLabel} but hidden by Nurse or Status filters. Click Clear.`
+                    : `No visits for ${periodLabel}. Pick a date above (e.g. 2026-05-25) and wait for loads to finish.`}
+                </p>
               </div>
             ) : (
               <>
@@ -871,36 +1050,46 @@ export default function Attendance() {
                   <table className="attendance-table">
                     <thead>
                       <tr>
-                        {['#', 'Date', 'Nurse', 'Patient', 'In', 'Out', 'Duration', 'GPS', 'Status'].map((h) => (
+                        {['#', 'Date', 'Nurse', 'Patient served', 'Clock in time', 'Clock out time', 'Duration', 'GPS'].map((h) => (
                           <th key={h}>{h}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
-                      {paged.map((r, idx) => (
-                        <tr
-                          key={r.id}
-                          className={selected?.id === r.id ? 'is-selected' : ''}
-                          onClick={() => setSelected(r)}
-                        >
-                          <td className="col-num">{(page - 1) * perPage + idx + 1}</td>
-                          <td>{r.date}</td>
-                          <td>{r.nurse}</td>
-                          <td>{r.patient}</td>
-                          <td>
-                            {r.clockIn ? (
-                              <span className="attendance-time-in">
-                                <span className="attendance-time-dot" />
-                                {r.clockIn}
-                              </span>
-                            ) : '—'}
-                          </td>
-                          <td>{r.clockOut || '—'}</td>
-                          <td>{formatAttendanceDuration(r)}</td>
-                          <td style={{ color: 'var(--kh-text-muted)' }}>{r.distance || '—'}</td>
-                          <td><span className={statusTagClass(r.status)}>{r.status}</span></td>
-                        </tr>
-                      ))}
+                      {paged.map((r, idx) => {
+                        const cols = getAttendanceColumnValues(r);
+                        return (
+                          <tr
+                            key={r.id}
+                            className={selected?.id === r.id ? 'is-selected' : ''}
+                            onClick={() => setSelected(r)}
+                          >
+                            <td className="col-num">{(page - 1) * perPage + idx + 1}</td>
+                            <td>{r.date}</td>
+                            <td>{r.nurse}</td>
+                            <td className="attendance-col-patient">
+                              <span className="attendance-col-patient__name">{cols.patientServed}</span>
+                              {r.patientRegistration && (
+                                <span className="attendance-col-patient__meta">
+                                  Reg: {r.patientRegistration}
+                                </span>
+                              )}
+                            </td>
+                            <td className="attendance-col-clock attendance-col-clock--in">
+                              {cols.clockIn}
+                            </td>
+                            <td className="attendance-col-clock attendance-col-clock--out">
+                              {cols.clockOut}
+                            </td>
+                            <td className="attendance-col-duration">
+                              {String(r.duration || '').trim() || formatAttendanceDuration(r)}
+                            </td>
+                            <td className="attendance-col-gps">
+                              <span className="attendance-col-gps__text">{cols.gps}</span>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -949,9 +1138,10 @@ export default function Attendance() {
                 </div>
                 {[
                   { label: 'Nurse', value: selected.nurse },
-                  { label: 'Patient', value: selected.patient },
-                  { label: 'Region', value: selected.region },
+                  { label: 'Patient', value: selected.patientName || selected.patient },
+                  { label: 'Patient ID', value: selected.patientId || '—' },
                   { label: 'Date', value: selected.date },
+                  { label: 'Duration', value: formatAttendanceDuration(selected) },
                 ].map((item) => (
                   <div key={item.label} className="attendance-detail__row">
                     <label>{item.label}</label>
@@ -961,12 +1151,12 @@ export default function Attendance() {
                 <div className="attendance-timeline">
                   <div className="attendance-timeline__grid">
                     <div className="attendance-timeline__cell">
-                      <span>Clock in</span>
-                      <strong>{selected.clockIn || '—'}</strong>
+                      <span>Clock in time</span>
+                      <strong>{selected.clockInTimeLabel || selected.clockIn || '—'}</strong>
                     </div>
                     <div className="attendance-timeline__cell">
-                      <span>Clock out</span>
-                      <strong>{selected.clockOut || '—'}</strong>
+                      <span>Clock out time</span>
+                      <strong>{selected.clockOutTimeLabel || selected.clockOut || '—'}</strong>
                     </div>
                   </div>
                   <div className="attendance-timeline__cell" style={{ marginTop: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -974,18 +1164,18 @@ export default function Attendance() {
                     <strong>{formatAttendanceDuration(selected)}</strong>
                   </div>
                 </div>
-                {selected.gps && (
+                {(selected.gpsIn || selected.gpsOut || selected.gps) && (
                   <div className="attendance-timeline" style={{ marginTop: 12 }}>
                     <div className="attendance-detail__row">
                       <label><FiMapPin size={11} style={{ marginRight: 4 }} />GPS</label>
-                      <p style={{ marginBottom: 4 }}>
-                        {selected.gps.lat.toFixed(4)}, {selected.gps.lng.toFixed(4)}
-                      </p>
-                      {selected.distance && (
-                        <p style={{ fontSize: 12, color: 'var(--kh-text-muted)', margin: 0 }}>
-                          Distance: {selected.distance}
-                        </p>
-                      )}
+                      <AttendanceGpsCell
+                        gpsIn={selected.gpsIn}
+                        gpsOut={selected.gpsOut}
+                        gps={selected.gps}
+                        distance={selected.distance}
+                        locationIn={selected.locationIn}
+                        locationOut={selected.locationOut}
+                      />
                     </div>
                   </div>
                 )}
