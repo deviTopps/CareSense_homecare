@@ -122,6 +122,145 @@ const patientsData = [
 const painLabels = ['No Pain', 'Mild', 'Moderate', 'Severe'];
 const painColors = ['#45B6FE', '#d97706', '#ea580c', '#ef4444'];
 
+const MEDICATION_FREQUENCY_OPTIONS = ['OD', 'BD', 'TDS', 'QDS', 'PRN', 'ON', 'Weekly', 'Stat'];
+
+const MEDICATION_FREQUENCY_ALIASES = {
+  od: 'OD',
+  'once daily': 'OD',
+  'once a day': 'OD',
+  '1x daily': 'OD',
+  daily: 'OD',
+  bd: 'BD',
+  bid: 'BD',
+  'twice daily': 'BD',
+  '2x daily': 'BD',
+  tds: 'TDS',
+  tid: 'TDS',
+  'three times daily': 'TDS',
+  '3x daily': 'TDS',
+  qds: 'QDS',
+  qid: 'QDS',
+  'four times daily': 'QDS',
+  '4x daily': 'QDS',
+  prn: 'PRN',
+  'as needed': 'PRN',
+  on: 'ON',
+  'once nightly': 'ON',
+  'at night': 'ON',
+  nightly: 'ON',
+  weekly: 'Weekly',
+  stat: 'Stat',
+  immediate: 'Stat',
+};
+
+function inferFrequencyFromTimes(times) {
+  const count = Array.isArray(times) ? times.filter(Boolean).length : 0;
+  if (count === 1) return 'OD';
+  if (count === 2) return 'BD';
+  if (count === 3) return 'TDS';
+  if (count === 4) return 'QDS';
+  return '';
+}
+
+function normalizeMedicationFrequency(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+
+  const upper = raw.toUpperCase();
+  if (MEDICATION_FREQUENCY_OPTIONS.includes(upper)) return upper;
+
+  const titled = raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
+  if (MEDICATION_FREQUENCY_OPTIONS.includes(titled)) return titled;
+
+  const alias = MEDICATION_FREQUENCY_ALIASES[raw.toLowerCase()];
+  if (alias) return alias;
+
+  const timesMatch = raw.match(/(\d+)\s*(?:times?|x)\s*(?:\/|per)?\s*day/i);
+  if (timesMatch) {
+    return inferFrequencyFromTimes(Array.from({ length: Number(timesMatch[1]) || 0 }, () => '08:00'));
+  }
+
+  return raw;
+}
+
+function resolveMedicationFrequency(rawMedication, fallback = {}) {
+  const raw = rawMedication && typeof rawMedication === 'object' ? rawMedication : {};
+  const reminderTimes = Array.isArray(raw?.reminders?.times) ? raw.reminders.times : [];
+  const fallbackTimes = Array.isArray(fallback?.time)
+    ? fallback.time
+    : Array.isArray(fallback?.times)
+      ? fallback.times
+      : reminderTimes;
+  const times = Array.isArray(raw?.time) ? raw.time.filter(Boolean) : fallbackTimes.filter(Boolean);
+
+  const candidates = [
+    raw?.frequency,
+    raw?.dosingFrequency,
+    raw?.doseFrequency,
+    raw?.freq,
+    raw?.schedule,
+    raw?.regimen,
+    raw?.reminders?.frequency,
+    fallback?.frequency,
+  ];
+
+  for (const candidate of candidates) {
+    const normalized = normalizeMedicationFrequency(candidate);
+    if (normalized) return normalized;
+  }
+
+  return inferFrequencyFromTimes(times) || '';
+}
+
+function frequencyToDefaultTimes(frequency, existingTimes = []) {
+  const kept = Array.isArray(existingTimes) ? existingTimes.filter(Boolean).map(normalizeMedicationTimeValue) : [];
+  if (kept.length > 0) return kept;
+
+  switch (String(frequency || '').trim().toUpperCase()) {
+    case 'OD':
+      return ['08:00'];
+    case 'BD':
+      return ['08:00', '20:00'];
+    case 'TDS':
+      return ['08:00', '14:00', '20:00'];
+    case 'QDS':
+      return ['08:00', '12:00', '16:00', '20:00'];
+    case 'ON':
+      return ['20:00'];
+    case 'WEEKLY':
+      return ['08:00'];
+    default:
+      return ['08:00'];
+  }
+}
+
+function parseLegacyMedicationEntry(entry) {
+  const tokens = String(entry || '').trim().split(/\s+/).filter(Boolean);
+  if (!tokens.length) {
+    return { drug: '', dosage: '—', frequency: '—' };
+  }
+
+  const last = tokens[tokens.length - 1];
+  const normalizedFreq = normalizeMedicationFrequency(last);
+  const looksLikeFrequency = Boolean(
+    normalizedFreq
+    && (
+      MEDICATION_FREQUENCY_OPTIONS.includes(normalizedFreq)
+      || MEDICATION_FREQUENCY_ALIASES[last.toLowerCase()]
+    ),
+  );
+
+  if (looksLikeFrequency && tokens.length >= 2) {
+    return {
+      drug: tokens.slice(0, -2).join(' ') || entry,
+      dosage: tokens[tokens.length - 2] || '—',
+      frequency: normalizedFreq,
+    };
+  }
+
+  return { drug: entry, dosage: '—', frequency: '—' };
+}
+
 /* ── EHR components ── */
 const YN = ({ val }) => (
   <span style={{
@@ -1056,7 +1195,7 @@ function createPatientUpdateForm(profile, fallbackId) {
       anySpeechImpairment: Boolean(person?.communication?.speech),
       anyVisualImpairment: Boolean(person?.communication?.visual),
       anyUnderstandingDifficulties: Boolean(person?.communication?.understanding),
-      communicationNotes: '',
+      communicationNotes: person?.sectionCommunicationStyle?.communicationNotes || '',
     },
     infectionControl: {
       InfectionCarePlanCompletion: Boolean(person?.infection?.riskPlan),
@@ -1146,6 +1285,237 @@ function createPatientUpdateForm(profile, fallbackId) {
   };
 }
 
+function applyNestedFormUpdate(prev, path, value) {
+  const keys = String(path || '').split('.').filter(Boolean);
+  if (!keys.length) return prev;
+
+  const next = { ...prev };
+  let cursor = next;
+  let source = prev;
+
+  for (let index = 0; index < keys.length - 1; index += 1) {
+    const key = keys[index];
+    cursor[key] = { ...(source?.[key] || {}) };
+    cursor = cursor[key];
+    source = source?.[key] || {};
+  }
+
+  cursor[keys[keys.length - 1]] = value;
+  return next;
+}
+
+function getNestedFormValue(form, path) {
+  const keys = String(path || '').split('.').filter(Boolean);
+  return keys.reduce((acc, key) => (acc && typeof acc === 'object' ? acc[key] : undefined), form);
+}
+
+async function patchPatientEndpoint(path, payload) {
+  const response = await apiFetch(path, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+
+  const responseText = await response.text().catch(() => '');
+  let data = {};
+  if (responseText) {
+    try {
+      data = JSON.parse(responseText);
+    } catch {
+      data = { message: responseText };
+    }
+  }
+
+  if (!response.ok) {
+    throw new Error(data?.message || data?.error || `Failed request: ${path}`);
+  }
+
+  return data;
+}
+
+function prunePatchPayload(value) {
+  if (value === undefined || value === '') return undefined;
+  if (Array.isArray(value)) {
+    const next = value.map(prunePatchPayload).filter((item) => item !== undefined);
+    return next.length ? next : undefined;
+  }
+  if (value && typeof value === 'object') {
+    const nextEntries = Object.entries(value)
+      .map(([key, item]) => [key, prunePatchPayload(item)])
+      .filter(([, item]) => item !== undefined);
+    return nextEntries.length ? Object.fromEntries(nextEntries) : undefined;
+  }
+  return value;
+}
+
+async function persistProfileSection(sectionId, form, patientIdForPatch) {
+  const toBooleanString = (value) => (value ? 'true' : 'false');
+  const yesNo = (value) => (value === true ? 'Yes' : value === false ? 'No' : '');
+  const optionalBoolean = (value) => (value === true || value === false ? value : undefined);
+  const optionalText = (value) => {
+    const normalized = String(value ?? '').trim();
+    return normalized ? normalized : undefined;
+  };
+
+  switch (sectionId) {
+    case 'clinical:communication':
+      await patchPatientEndpoint('/patients/communication-style', {
+        patientId: patientIdForPatch,
+        anyCommunicationNeeds: Boolean(form.communicationStyle.anyCommunicationNeeds),
+        anyHearingNeeds: Boolean(form.communicationStyle.anyHearingNeeds),
+        anySpeechImpairment: Boolean(form.communicationStyle.anySpeechImpairment),
+        anyVisualImpairment: Boolean(form.communicationStyle.anyVisualImpairment),
+        anyUnderstandingDifficulties: Boolean(form.communicationStyle.anyUnderstandingDifficulties),
+        communicationNotes: form.communicationStyle.communicationNotes,
+      });
+      return 'Communication updated.';
+    case 'clinical:infection':
+    case 'clinical:diabetes':
+      await patchPatientEndpoint('/patients/infection-control', {
+        patientId: patientIdForPatch,
+        InfectionCarePlanCompletion: Boolean(form.infectionControl.InfectionCarePlanCompletion),
+        anyDiabetes: Boolean(form.infectionControl.anyDiabetes),
+        DiabetesCarePlanCompletion: Boolean(form.infectionControl.DiabetesCarePlanCompletion),
+        isThePatientBedBound: Boolean(form.infectionControl.isThePatientBedBound),
+      });
+      return sectionId === 'clinical:infection' ? 'Infection control updated.' : 'Diabetes management updated.';
+    case 'clinical:breathing':
+    case 'clinical:pain':
+      await patchPatientEndpoint('/patients/breath-pain', {
+        patientId: patientIdForPatch,
+        anyBreathingDifficulties: Boolean(form.breathPain.anyBreathingDifficulties),
+        homeOxygenNeeded: Boolean(form.breathPain.homeOxygenNeeded),
+        isSmoker: Boolean(form.breathPain.isSmoker),
+        everSmoked: Boolean(form.breathPain.everSmoked),
+        painPresent: toBooleanString(form.breathPain.painPresent),
+        anagelsiaPrescribed: Boolean(form.breathPain.anagelsiaPrescribed),
+        locationOfPain: form.breathPain.locationOfPain,
+        painScore: form.breathPain.painScore,
+      });
+      return sectionId === 'clinical:breathing' ? 'Breathing assessment updated.' : 'Pain assessment updated.';
+    case 'clinical:psychological': {
+      const payload = prunePatchPayload({
+        patientId: patientIdForPatch,
+        psychologicalNeeds: {
+          psychologicalNeeds: yesNo(form.hygienePsych.psychologicalNeeds.psychologicalNeeds),
+          depressionHistory: yesNo(form.hygienePsych.psychologicalNeeds.depressionHistory),
+          anxietyhistory: yesNo(form.hygienePsych.psychologicalNeeds.anxietyhistory),
+          signDementia: yesNo(form.hygienePsych.psychologicalNeeds.signDementia),
+          psychologicalNotes: form.hygienePsych.psychologicalNeeds.psychologicalNotes,
+        },
+      });
+      await patchPatientEndpoint('/patients/sleep-nutrition', payload);
+      return 'Psychological assessment updated.';
+    }
+    case 'clinical:skin':
+    case 'clinical:mobility':
+      try {
+        await patchPatientEndpoint('/patients/skin-mobility', {
+          patientId: patientIdForPatch,
+          skinIntegrity: {
+            openWounds: Boolean(form.skinMobility.skinIntegrity.openWounds),
+            pressureUlcer: Boolean(form.skinMobility.skinIntegrity.pressureUlcer),
+            gradeAdmission: form.skinMobility.skinIntegrity.gradeAdmission,
+            securityItems: form.skinMobility.skinIntegrity.securityItems,
+          },
+          handlingAssessment: {
+            isPatientMobile: Boolean(form.skinMobility.handlingAssessment.isPatientMobile),
+            isEquipmentNeeded: Boolean(form.skinMobility.handlingAssessment.isEquipmentNeeded),
+            numberOfStaffNeeded: Number(form.skinMobility.handlingAssessment.numberOfStaffNeeded) || 0,
+            moveInBed: Boolean(form.skinMobility.handlingAssessment.moveInBed),
+            moveInBedEquipment: form.skinMobility.handlingAssessment.moveInBedEquipment,
+            mobilityFromBedToChair: Boolean(form.skinMobility.handlingAssessment.mobilityFromBedToChair),
+            mobilityFromBedToChairEquipment: form.skinMobility.handlingAssessment.mobilityFromBedToChairEquipment,
+            mobilityToWashroom: Boolean(form.skinMobility.handlingAssessment.mobilityToWashroom),
+            mobilityToWashroomEquipment: form.skinMobility.handlingAssessment.mobilityToWashroomEquipment,
+          },
+        });
+      } catch {
+        await patchPatientEndpoint('/patients/initial-vitals', {
+          patientId: patientIdForPatch,
+          skinIntegrity: {
+            openWounds: Boolean(form.skinMobility.skinIntegrity.openWounds),
+            pressureUlcer: Boolean(form.skinMobility.skinIntegrity.pressureUlcer),
+            gradeAdmission: form.skinMobility.skinIntegrity.gradeAdmission,
+            securityItems: form.skinMobility.skinIntegrity.securityItems,
+          },
+          handlingAssessment: {
+            isPatientMobile: Boolean(form.skinMobility.handlingAssessment.isPatientMobile),
+            isEquipmentNeeded: Boolean(form.skinMobility.handlingAssessment.isEquipmentNeeded),
+            numberOfStaffNeeded: Number(form.skinMobility.handlingAssessment.numberOfStaffNeeded) || 0,
+            moveInBed: Boolean(form.skinMobility.handlingAssessment.moveInBed),
+            moveInBedEquipment: form.skinMobility.handlingAssessment.moveInBedEquipment,
+            mobilityFromBedToChair: Boolean(form.skinMobility.handlingAssessment.mobilityFromBedToChair),
+            mobilityFromBedToChairEquipment: form.skinMobility.handlingAssessment.mobilityFromBedToChairEquipment,
+            mobilityToWashroom: Boolean(form.skinMobility.handlingAssessment.mobilityToWashroom),
+            mobilityToWashroomEquipment: form.skinMobility.handlingAssessment.mobilityToWashroomEquipment,
+          },
+        });
+      }
+      return sectionId === 'clinical:skin' ? 'Skin integrity updated.' : 'Mobility assessment updated.';
+    case 'care:sleep':
+    case 'care:nutrition':
+    case 'care:hygiene':
+    case 'care:bladder': {
+      const sleepNutritionPayload = prunePatchPayload({
+        patientId: patientIdForPatch,
+        sleep: {
+          wakeUpAtNight: optionalBoolean(form.sleepNutrition.sleep.wakeUpAtNight),
+          UseOfNightSedation: optionalBoolean(form.sleepNutrition.sleep.UseOfNightSedation),
+          userSleepWell: optionalBoolean(form.sleepNutrition.sleep.userSleepWell),
+          RestDuringTheDay: optionalBoolean(form.sleepNutrition.sleep.RestDuringTheDay),
+          usualTimeToWakeUp: optionalText(form.sleepNutrition.sleep.usualTimeToWakeUp),
+          bestSleepingPosition: optionalText(form.sleepNutrition.sleep.bestSleepingPosition),
+        },
+        nutrition: {
+          allergy: optionalBoolean(form.sleepNutrition.nutrition.allergy),
+          specialDiet: optionalBoolean(form.sleepNutrition.nutrition.specialDiet),
+          needHelpInEating: optionalBoolean(form.sleepNutrition.nutrition.needHelpInEating),
+          feedingAid: optionalBoolean(form.sleepNutrition.nutrition.feedingAid),
+          swallowingDifficulties: optionalBoolean(form.sleepNutrition.nutrition.swallowingDifficulties),
+          dietType: optionalText(form.sleepNutrition.nutrition.dietType),
+          ngTube: optionalBoolean(form.sleepNutrition.nutrition.ngTube),
+          nutritionConcerns: optionalText(form.sleepNutrition.nutrition.nutritionConcerns),
+        },
+        personal: {
+          hygieneNeeds: yesNo(form.hygienePsych.personal.hygieneNeeds),
+          mouthCarePlan: yesNo(form.hygienePsych.personal.mouthCarePlan),
+          diabeteFoot: yesNo(form.hygienePsych.personal.diabeteFoot),
+        },
+        bladderBowel: {
+          bladderDysfunction: yesNo(form.hygienePsych.bladderBowel.bladderDysfunction),
+          catheterDescription: form.hygienePsych.bladderBowel.catheterDescription,
+          catheterPlan: yesNo(form.hygienePsych.bladderBowel.catheterPlan),
+          incontinentPads: yesNo(form.hygienePsych.bladderBowel.incontinentPads),
+        },
+      });
+      await patchPatientEndpoint('/patients/sleep-nutrition', sleepNutritionPayload);
+      const labels = {
+        'care:sleep': 'Sleep record updated.',
+        'care:nutrition': 'Nutrition record updated.',
+        'care:hygiene': 'Personal hygiene updated.',
+        'care:bladder': 'Bladder & bowel record updated.',
+      };
+      return labels[sectionId] || 'Lifestyle record updated.';
+    }
+    case 'care:physician':
+    case 'care:emergency':
+      await patchPatientEndpoint('/patients/next-of-kin', {
+        patientId: patientIdForPatch,
+        fullName: form.nextOfKin.fullName,
+        relationship: form.nextOfKin.relationship,
+        contactOne: form.nextOfKin.contactOne,
+        contactTwo: form.nextOfKin.contactTwo,
+        spiritualNeed: form.nextOfKin.spiritualNeed,
+        personalDoctor: form.nextOfKin.personalDoctor,
+        personalDoctorFacility: form.nextOfKin.personalDoctorFacility,
+        personalDoctorContact: form.nextOfKin.personalDoctorContact,
+      });
+      return sectionId === 'care:physician' ? 'Physician contact updated.' : 'Emergency contact updated.';
+    default:
+      throw new Error('Unknown section.');
+  }
+}
+
 function toTitleCase(value) {
   return String(value || '')
     .toLowerCase()
@@ -1212,18 +1582,49 @@ function createMedicationReminderState(source = {}) {
   };
 }
 
+function extractMedicationApiId(rawMedication, fallback = {}, patientId = '') {
+  const raw = rawMedication && typeof rawMedication === 'object' ? rawMedication : {};
+  const exclude = new Set([
+    String(patientId || '').trim().toLowerCase(),
+    String(raw?.patientId || raw?.patientID || raw?.patient_id || '').trim().toLowerCase(),
+    String(fallback?.patientId || '').trim().toLowerCase(),
+  ].filter(Boolean));
+
+  const candidates = [
+    raw?.medicationId,
+    raw?.id,
+    raw?._id,
+    fallback?.medicationId,
+    fallback?.id,
+    fallback?._id,
+  ]
+    .map((value) => String(value || '').trim())
+    .filter((value) => value && !exclude.has(value.toLowerCase()) && !/^existing-/i.test(value));
+
+  const uuid = candidates.find(isUuidV4ish);
+  if (uuid) return uuid;
+
+  const mongoId = candidates.find(isLikelyMongoObjectId);
+  if (mongoId) return mongoId;
+
+  return candidates.find((value) => !/^\d{13}$/.test(value)) || '';
+}
+
 function normalizeMedicationRecord(rawMedication, fallback = {}) {
   const raw = rawMedication && typeof rawMedication === 'object' ? rawMedication : {};
   const fallbackTimes = Array.isArray(fallback?.time) ? fallback.time.filter(Boolean) : [];
   const times = Array.isArray(raw?.time) ? raw.time.filter(Boolean) : fallbackTimes;
   const patientId = raw?.patientId || raw?.patientID || raw?.patient_id || raw?.patient?.id || raw?.patient?._id || raw?.patient?.patientId || fallback?.patientId || '';
+  const frequency = resolveMedicationFrequency(raw, fallback) || 'Scheduled';
+  const apiMedicationId = extractMedicationApiId(raw, fallback, patientId);
 
   return {
-    id: raw?.id || raw?.medicationId || fallback?.id || fallback?.medicationId || Date.now(),
+    id: apiMedicationId || fallback?.id || fallback?.medicationId || Date.now(),
+    medicationId: apiMedicationId || String(raw?.medicationId || fallback?.medicationId || '').trim(),
     patientId,
     drug: raw?.drug || fallback?.drug || '',
     dosage: raw?.dosage || fallback?.dosage || '',
-    frequency: raw?.frequency || fallback?.frequency || (times.length > 0 ? `${times.length} time${times.length > 1 ? 's' : ''}/day` : 'Scheduled'),
+    frequency,
     route: toTitleCase(raw?.intake || fallback?.intake || fallback?.route || 'Oral'),
     notes: raw?.notes || fallback?.notes || '',
     reminders: times.length > 0 ? {
@@ -2051,6 +2452,10 @@ export default function PatientProfile() {
   const [latestRecordedVital, setLatestRecordedVital] = useState(null);
   const [latestVitalLoading, setLatestVitalLoading] = useState(false);
   const [profileUpdateForm, setProfileUpdateForm] = useState(() => createPatientUpdateForm(null, effectivePatientId));
+  const [editingProfileCard, setEditingProfileCard] = useState(null);
+  const [cardEditForm, setCardEditForm] = useState(null);
+  const [cardSectionError, setCardSectionError] = useState('');
+  const [savingProfileCard, setSavingProfileCard] = useState(false);
   const currentUser = getUser();
   const currentUserName = String(
     currentUser?.name
@@ -2418,8 +2823,13 @@ export default function PatientProfile() {
   const [deletingNoteId, setDeletingNoteId] = useState(null);
   const currentNurseId = resolveCurrentNurseId(currentUser, parseJwtPayload(getToken()));
 
-  const FREQ_OPTIONS = ['OD', 'BD', 'TDS', 'QDS', 'PRN', 'ON', 'Weekly', 'Stat'];
   const ROUTE_OPTIONS = ['Oral', 'IV', 'IM', 'SC', 'Topical', 'Inhaled', 'Rectal', 'Sublingual'];
+  const medicationFrequencySelectValue = normalizeMedicationFrequency(medForm.frequency) || medForm.frequency || '';
+  const medicationFrequencyOptions = useMemo(() => {
+    const extras = [medicationFrequencySelectValue]
+      .filter((value) => value && !MEDICATION_FREQUENCY_OPTIONS.includes(value));
+    return [...MEDICATION_FREQUENCY_OPTIONS, ...extras];
+  }, [medicationFrequencySelectValue]);
 
   const loadDrugCatalog = useCallback(async () => {
     setDrugCatalogLoading(true);
@@ -2513,13 +2923,16 @@ export default function PatientProfile() {
   const openMedicationEditor = (medication) => {
     if (!medication) return;
 
-    setEditingMedicationId(medication.id);
+    const medicationKey = extractMedicationApiId(medication, medication, effectivePatientId)
+      || medication.medicationId
+      || medication.id;
+    setEditingMedicationId(medicationKey);
     setMedicationSaveError('');
     setShowMedForm(true);
     setMedForm({
       drug: medication.drug || '',
       dosage: medication.dosage || '',
-      frequency: medication.frequency || '',
+      frequency: resolveMedicationFrequency(medication, medication) || '',
       route: medication.route || 'Oral',
       notes: medication.notes || '',
     });
@@ -2538,45 +2951,112 @@ export default function PatientProfile() {
     const currentUser = getUser();
     const addedBy = currentUser?.id || currentUser?._id || currentUser?.userId || currentUser?.staffId || undefined;
     const defaultReminder = createMedicationReminderState(editingMedicationId ? reminderForm : {});
+    const normalizedFrequency = normalizeMedicationFrequency(medForm.frequency) || medForm.frequency;
+    const scheduleTimes = frequencyToDefaultTimes(normalizedFrequency, defaultReminder.times)
+      .filter(Boolean)
+      .map(formatMedicationApiTime);
     const medicationPayload = {
       patientId: effectivePatientId,
       prescribedBy: 'external',
       drug: medForm.drug,
       dosage: medForm.dosage,
+      frequency: normalizedFrequency,
       intake: medForm.route.toLowerCase(),
       startDate: defaultReminder.startDate,
       endDate: defaultReminder.endDate || null,
       active: true,
-      time: defaultReminder.times.filter(Boolean).map(formatMedicationApiTime),
+      time: scheduleTimes,
       ...(addedBy ? { addedBy } : {}),
     };
 
     try {
-      const response = await apiFetch(
-        editingMedicationId ? `/medications/${encodeURIComponent(editingMedicationId)}` : '/medications',
-        {
-        method: editingMedicationId ? 'PATCH' : 'POST',
-        body: JSON.stringify(medicationPayload),
-      });
-
-      const responseText = await response.text().catch(() => '');
+      let response = null;
       let data = {};
-      if (responseText) {
-        try {
-          data = JSON.parse(responseText);
-        } catch {
-          data = { message: responseText };
-        }
-      }
 
-      if (!response.ok) {
-        throw new Error(data?.message || data?.error || 'Unable to save medication.');
+      if (editingMedicationId) {
+        const editingMed = addedMeds.find((item) => (
+          String(item.id) === String(editingMedicationId)
+          || String(item.medicationId) === String(editingMedicationId)
+        ));
+        const medicationApiId = extractMedicationApiId(editingMed, { id: editingMedicationId }, effectivePatientId);
+
+        if (!medicationApiId) {
+          throw new Error(
+            editingMed?.source === 'existing'
+              ? 'Medications imported from the patient summary cannot be edited here. Remove and re-add them in Medications.'
+              : 'This medication has no server ID. Remove it and add it again before editing.',
+          );
+        }
+
+        const patchPayload = {
+          ...medicationPayload,
+          medicationId: medicationApiId,
+          id: medicationApiId,
+        };
+        const patchCandidates = [
+          {
+            path: `/medications/${encodeURIComponent(effectivePatientId)}`,
+            body: patchPayload,
+          },
+          {
+            path: `/medications/${encodeURIComponent(medicationApiId)}`,
+            body: patchPayload,
+          },
+        ];
+
+        let lastError = 'Unable to update medication.';
+        for (const candidate of patchCandidates) {
+          const attempt = await apiFetch(candidate.path, {
+            method: 'PATCH',
+            body: JSON.stringify(candidate.body),
+          });
+          const responseText = await attempt.text().catch(() => '');
+          let attemptData = {};
+          if (responseText) {
+            try {
+              attemptData = JSON.parse(responseText);
+            } catch {
+              attemptData = { message: responseText };
+            }
+          }
+          if (attempt.ok) {
+            response = attempt;
+            data = attemptData;
+            break;
+          }
+          lastError = attemptData?.message || attemptData?.error || lastError;
+        }
+
+        if (!response?.ok) {
+          throw new Error(lastError);
+        }
+      } else {
+        const postResponse = await apiFetch('/medications', {
+          method: 'POST',
+          body: JSON.stringify(medicationPayload),
+        });
+        const responseText = await postResponse.text().catch(() => '');
+        if (responseText) {
+          try {
+            data = JSON.parse(responseText);
+          } catch {
+            data = { message: responseText };
+          }
+        }
+        response = postResponse;
+        if (!response.ok) {
+          throw new Error(data?.message || data?.error || 'Unable to save medication.');
+        }
       }
 
       const savedMedication = normalizeMedicationRecord(data?.medication || data?.data || data, {
         id: editingMedicationId || undefined,
+        medicationId: editingMedicationId || undefined,
+        patientId: effectivePatientId,
         ...medForm,
         ...medicationPayload,
+        frequency: normalizedFrequency,
+        time: scheduleTimes,
         reminderType: defaultReminder.reminderType,
         notifyNurse: defaultReminder.notifyNurse,
         notifyPatient: defaultReminder.notifyPatient,
@@ -2586,7 +3066,13 @@ export default function PatientProfile() {
 
       setAddedMeds(prev => {
         const next = editingMedicationId
-          ? mergeMedicationRecords([...prev.filter(item => item.id !== editingMedicationId), savedMedication])
+          ? mergeMedicationRecords([
+            ...prev.filter((item) => (
+              String(item.id) !== String(editingMedicationId)
+              && String(item.medicationId) !== String(editingMedicationId)
+            )),
+            savedMedication,
+          ])
           : mergeMedicationRecords([...prev, savedMedication]);
         setCachedPatientMedications(effectivePatientId, next);
         return next;
@@ -2666,7 +3152,7 @@ export default function PatientProfile() {
       {
         path: `/medications/${encodeURIComponent(effectivePatientId)}`,
         body: {
-          medicationId: medicationToDelete.id,
+          medicationId: extractMedicationApiId(medicationToDelete, medicationToDelete, effectivePatientId) || medicationToDelete.id,
           patientId: effectivePatientId,
           drug: medicationToDelete.drug,
         },
@@ -2732,37 +3218,65 @@ export default function PatientProfile() {
 
     if (currentMedication) {
       try {
-        const response = await apiFetch(`/medications/${encodeURIComponent(medId)}`, {
-          method: 'PATCH',
-          body: JSON.stringify({
-            patientId: effectivePatientId,
-            prescribedBy: currentMedication.prescribedBy || 'external',
-            drug: currentMedication.drug,
-            dosage: currentMedication.dosage,
-            intake: String(currentMedication.route || 'Oral').toLowerCase(),
-            startDate: reminderForm.startDate,
-            endDate: reminderForm.endDate || null,
-            active: currentMedication.active ?? true,
-            time: reminderForm.times.filter(Boolean).map(formatMedicationApiTime),
-          }),
-        });
-
-        const responseText = await response.text().catch(() => '');
-        let data = {};
-        if (responseText) {
-          try {
-            data = JSON.parse(responseText);
-          } catch {
-            data = { message: responseText };
-          }
+        const medicationFrequency = resolveMedicationFrequency(currentMedication, currentMedication);
+        const medicationApiId = extractMedicationApiId(currentMedication, currentMedication, effectivePatientId);
+        if (!medicationApiId) {
+          throw new Error('This medication has no server ID. Re-save the medication before setting reminders.');
         }
 
-        if (!response.ok) {
-          throw new Error(data?.message || data?.error || 'Unable to save medication reminder.');
+        const reminderPayload = {
+          patientId: effectivePatientId,
+          medicationId: medicationApiId,
+          id: medicationApiId,
+          prescribedBy: currentMedication.prescribedBy || 'external',
+          drug: currentMedication.drug,
+          dosage: currentMedication.dosage,
+          frequency: medicationFrequency,
+          intake: String(currentMedication.route || 'Oral').toLowerCase(),
+          startDate: reminderForm.startDate,
+          endDate: reminderForm.endDate || null,
+          active: currentMedication.active ?? true,
+          time: reminderForm.times.filter(Boolean).map(formatMedicationApiTime),
+        };
+
+        const patchCandidates = [
+          { path: `/medications/${encodeURIComponent(effectivePatientId)}`, body: reminderPayload },
+          { path: `/medications/${encodeURIComponent(medicationApiId)}`, body: reminderPayload },
+        ];
+
+        let response = null;
+        let data = {};
+        let lastError = 'Unable to save medication reminder.';
+
+        for (const candidate of patchCandidates) {
+          const attempt = await apiFetch(candidate.path, {
+            method: 'PATCH',
+            body: JSON.stringify(candidate.body),
+          });
+          const responseText = await attempt.text().catch(() => '');
+          let attemptData = {};
+          if (responseText) {
+            try {
+              attemptData = JSON.parse(responseText);
+            } catch {
+              attemptData = { message: responseText };
+            }
+          }
+          if (attempt.ok) {
+            response = attempt;
+            data = attemptData;
+            break;
+          }
+          lastError = attemptData?.message || attemptData?.error || lastError;
+        }
+
+        if (!response?.ok) {
+          throw new Error(lastError);
         }
 
         const updatedMedication = normalizeMedicationRecord(data?.medication || data?.data || data, {
           ...currentMedication,
+          frequency: medicationFrequency,
           time: reminderForm.times.filter(Boolean).map(formatMedicationApiTime),
           startDate: reminderForm.startDate,
           endDate: reminderForm.endDate,
@@ -4445,43 +4959,7 @@ export default function PatientProfile() {
       const normalized = String(value ?? '').trim();
       return normalized ? normalized : undefined;
     };
-    const pruneEmpty = (value) => {
-      if (value === undefined || value === '') return undefined;
-      if (Array.isArray(value)) {
-        const next = value.map(pruneEmpty).filter(item => item !== undefined);
-        return next.length ? next : undefined;
-      }
-      if (value && typeof value === 'object') {
-        const nextEntries = Object.entries(value)
-          .map(([key, item]) => [key, pruneEmpty(item)])
-          .filter(([, item]) => item !== undefined);
-        return nextEntries.length ? Object.fromEntries(nextEntries) : undefined;
-      }
-      return value;
-    };
-
-    const patchJson = async (path, payload) => {
-      const response = await apiFetch(path, {
-        method: 'PATCH',
-        body: JSON.stringify(payload),
-      });
-
-      const responseText = await response.text().catch(() => '');
-      let data = {};
-      if (responseText) {
-        try {
-          data = JSON.parse(responseText);
-        } catch {
-          data = { message: responseText };
-        }
-      }
-
-      if (!response.ok) {
-        throw new Error(data?.message || data?.error || `Failed request: ${path}`);
-      }
-
-      return data;
-    };
+    const pruneEmpty = prunePatchPayload;
 
     try {
       const patientIdForPatch = resolvePatientMutationId(
@@ -4492,7 +4970,7 @@ export default function PatientProfile() {
         throw new Error('Patient ID is required before updating patient information. Open the patient from the list again or refresh the page.');
       }
 
-      await patchJson('/patients/personal-info', {
+      await patchPatientEndpoint('/patients/personal-info', {
         patientId: patientIdForPatch,
         registrationNumber: profileUpdateForm.personalInfo.registrationNumber,
         dateOfAssessment: profileUpdateForm.personalInfo.dateOfAssessment,
@@ -4509,7 +4987,7 @@ export default function PatientProfile() {
         email: profileUpdateForm.personalInfo.email,
       });
 
-      await patchJson('/patients/next-of-kin', {
+      await patchPatientEndpoint('/patients/next-of-kin', {
         patientId: patientIdForPatch,
         fullName: profileUpdateForm.nextOfKin.fullName,
         relationship: profileUpdateForm.nextOfKin.relationship,
@@ -4521,20 +4999,20 @@ export default function PatientProfile() {
         personalDoctorContact: profileUpdateForm.nextOfKin.personalDoctorContact,
       });
 
-      await patchJson('/patients/admission-checklist', {
+      await patchPatientEndpoint('/patients/admission-checklist', {
         patientId: patientIdForPatch,
         clientHandBookGiven: Boolean(profileUpdateForm.admissionChecklist.clientHandBookGiven),
         admittingNurse: profileUpdateForm.admissionChecklist.admittingNurse,
         infectionControlSupplies: Boolean(profileUpdateForm.admissionChecklist.infectionControlSupplies),
       });
 
-      await patchJson('/patients/medical-history', {
+      await patchPatientEndpoint('/patients/medical-history', {
         patientId: patientIdForPatch,
         anyMedicalHistory: Boolean(profileUpdateForm.medicalHistory.anyMedicalHistory),
         medicalHistoryDescription: profileUpdateForm.medicalHistory.medicalHistoryDescription,
       });
 
-      await patchJson('/patients/communication-style', {
+      await patchPatientEndpoint('/patients/communication-style', {
         patientId: patientIdForPatch,
         anyCommunicationNeeds: Boolean(profileUpdateForm.communicationStyle.anyCommunicationNeeds),
         anyHearingNeeds: Boolean(profileUpdateForm.communicationStyle.anyHearingNeeds),
@@ -4544,7 +5022,7 @@ export default function PatientProfile() {
         communicationNotes: profileUpdateForm.communicationStyle.communicationNotes,
       });
 
-      await patchJson('/patients/infection-control', {
+      await patchPatientEndpoint('/patients/infection-control', {
         patientId: patientIdForPatch,
         InfectionCarePlanCompletion: Boolean(profileUpdateForm.infectionControl.InfectionCarePlanCompletion),
         anyDiabetes: Boolean(profileUpdateForm.infectionControl.anyDiabetes),
@@ -4552,7 +5030,7 @@ export default function PatientProfile() {
         isThePatientBedBound: Boolean(profileUpdateForm.infectionControl.isThePatientBedBound),
       });
 
-      await patchJson('/patients/breath-pain', {
+      await patchPatientEndpoint('/patients/breath-pain', {
         patientId: patientIdForPatch,
         anyBreathingDifficulties: Boolean(profileUpdateForm.breathPain.anyBreathingDifficulties),
         homeOxygenNeeded: Boolean(profileUpdateForm.breathPain.homeOxygenNeeded),
@@ -4605,11 +5083,11 @@ export default function PatientProfile() {
       });
 
       if (sleepNutritionPayload?.sleep || sleepNutritionPayload?.nutrition) {
-        await patchJson('/patients/sleep-nutrition', sleepNutritionPayload);
+        await patchPatientEndpoint('/patients/sleep-nutrition', sleepNutritionPayload);
       }
 
       try {
-        await patchJson('/patients/skin-mobility', {
+        await patchPatientEndpoint('/patients/skin-mobility', {
           patientId: patientIdForPatch,
           skinIntegrity: {
             openWounds: Boolean(profileUpdateForm.skinMobility.skinIntegrity.openWounds),
@@ -4630,7 +5108,7 @@ export default function PatientProfile() {
           },
         });
       } catch {
-        await patchJson('/patients/initial-vitals', {
+        await patchPatientEndpoint('/patients/initial-vitals', {
           patientId: patientIdForPatch,
           skinIntegrity: {
             openWounds: Boolean(profileUpdateForm.skinMobility.skinIntegrity.openWounds),
@@ -4652,7 +5130,7 @@ export default function PatientProfile() {
         });
       }
 
-      await patchJson('/patients/initial-vitals', {
+      await patchPatientEndpoint('/patients/initial-vitals', {
         patientId: patientIdForPatch,
         bloodPressure: profileUpdateForm.initialVitals.bloodPressure,
         bloodSugar: profileUpdateForm.initialVitals.bloodSugar,
@@ -5018,6 +5496,13 @@ export default function PatientProfile() {
   }, [showUpdateModal, p, effectivePatientId]);
 
   useEffect(() => {
+    if ((tab === 'clinical' || tab === 'care') || !editingProfileCard) return;
+    setEditingProfileCard(null);
+    setCardEditForm(null);
+    setCardSectionError('');
+  }, [tab, editingProfileCard]);
+
+  useEffect(() => {
     if (!profileUpdateSuccess) {
       setShowProfileSaveAlert(false);
       return undefined;
@@ -5180,11 +5665,17 @@ export default function PatientProfile() {
     .filter(Boolean);
   const existingMedicationEntries = medicationList
     .map((entry, index) => {
-      const parts = entry.split(' ');
-      const drug = parts.slice(0, -2).join(' ') || entry;
-      const dose = parts.length >= 3 ? parts[parts.length - 2] : '—';
-      const freq = parts.length >= 3 ? parts[parts.length - 1] : '—';
-      return { id: `existing-${index}`, drug, dosage: dose, frequency: freq, route: 'Oral', notes: '', source: 'existing', originalIndex: index };
+      const parsed = parseLegacyMedicationEntry(entry);
+      return {
+        id: `existing-${index}`,
+        drug: parsed.drug,
+        dosage: parsed.dosage,
+        frequency: parsed.frequency,
+        route: 'Oral',
+        notes: '',
+        source: 'existing',
+        originalIndex: index,
+      };
     })
     .filter(item => !deletedExistingMeds.includes(item.originalIndex));
   const existingMedicationSignatures = new Set(existingMedicationEntries.map(buildMedicationSignature));
@@ -5348,6 +5839,145 @@ export default function PatientProfile() {
         <option value="true">Yes</option>
         <option value="false">No</option>
       </select>
+    </div>
+  );
+
+  const startProfileCardEdit = (cardId) => {
+    if (!p) return;
+    setEditingProfileCard(cardId);
+    setCardEditForm(createPatientUpdateForm(p, effectivePatientId));
+    setCardSectionError('');
+  };
+
+  const cancelProfileCardEdit = () => {
+    setEditingProfileCard(null);
+    setCardEditForm(null);
+    setCardSectionError('');
+  };
+
+  const setCardEditField = (path, value) => {
+    setCardEditForm((prev) => applyNestedFormUpdate(prev, path, value));
+  };
+
+  const getCardEditValue = (path) => getNestedFormValue(cardEditForm, path);
+
+  const saveProfileCard = async () => {
+    if (!editingProfileCard || !cardEditForm) return;
+
+    setSavingProfileCard(true);
+    setCardSectionError('');
+
+    try {
+      const patientIdForPatch = resolvePatientMutationId(
+        rawPatientApiRef.current,
+        cardEditForm?.patientId || remotePatient?.patientId || effectivePatientId,
+      );
+      if (!patientIdForPatch) {
+        throw new Error('Patient ID is required. Reload the profile and try again.');
+      }
+
+      const successMessage = await persistProfileSection(editingProfileCard, cardEditForm, patientIdForPatch);
+
+      const latestResponse = await apiFetch(`/patients/${patientIdForPatch}`, { method: 'GET' });
+      const latestPayload = await latestResponse.json().catch(() => ({}));
+      if (latestResponse.ok) {
+        const latestRawPatient = latestPayload?.patient || latestPayload?.data || latestPayload;
+        rawPatientApiRef.current = latestRawPatient && typeof latestRawPatient === 'object' ? latestRawPatient : null;
+        const hydratedProfile = await hydratePatientProfile(latestRawPatient, patientIdForPatch);
+        setRemotePatient(hydratedProfile);
+      }
+
+      cancelProfileCardEdit();
+      setProfileUpdateSuccess(successMessage);
+    } catch (error) {
+      setCardSectionError(error?.message || 'Unable to save changes.');
+    } finally {
+      setSavingProfileCard(false);
+    }
+  };
+
+  const isCardEditing = (cardId) => editingProfileCard === cardId;
+
+  const renderProfileCardActions = (cardId) => (
+    isCardEditing(cardId) ? (
+      <div className="patient-profile-card-edit-actions">
+        <button
+          type="button"
+          className="patient-profile-card-edit-actions__btn patient-profile-card-edit-actions__btn--primary"
+          onClick={saveProfileCard}
+          disabled={savingProfileCard}
+        >
+          {savingProfileCard ? 'Saving…' : 'Save'}
+        </button>
+        <button
+          type="button"
+          className="patient-profile-card-edit-actions__btn"
+          onClick={cancelProfileCardEdit}
+          disabled={savingProfileCard}
+        >
+          Cancel
+        </button>
+      </div>
+    ) : (
+      <button
+        type="button"
+        className="nurse-profile-inline-btn"
+        onClick={() => startProfileCardEdit(cardId)}
+        disabled={Boolean(editingProfileCard) || savingProfileCard}
+      >
+        <FiEdit2 size={12} /> Edit
+      </button>
+    )
+  );
+
+  const renderCardSectionError = (cardId) => (
+    isCardEditing(cardId) && cardSectionError ? (
+      <div className="patient-profile-card-edit-error">{cardSectionError}</div>
+    ) : null
+  );
+
+  const renderCardTriState = (path) => {
+    const val = getCardEditValue(path);
+    return (
+      <select
+        className="form-select form-control-kh patient-profile-card-edit-field"
+        value={val === true ? 'true' : val === false ? 'false' : 'unset'}
+        onChange={(event) => {
+          const next = event.target.value;
+          setCardEditField(path, next === 'unset' ? null : next === 'true');
+        }}
+      >
+        <option value="unset">No data</option>
+        <option value="true">Yes</option>
+        <option value="false">No</option>
+      </select>
+    );
+  };
+
+  const renderCardBool = (path) => (
+    <select
+      className="form-select form-control-kh patient-profile-card-edit-field"
+      value={getCardEditValue(path) ? 'true' : 'false'}
+      onChange={(event) => setCardEditField(path, event.target.value === 'true')}
+    >
+      <option value="true">Yes</option>
+      <option value="false">No</option>
+    </select>
+  );
+
+  const renderCardText = (path, type = 'text') => (
+    <input
+      type={type}
+      className="form-control form-control-kh patient-profile-card-edit-field"
+      value={getCardEditValue(path) ?? ''}
+      onChange={(event) => setCardEditField(path, event.target.value)}
+    />
+  );
+
+  const renderCardEditRow = (label, path, kind = 'tristate') => (
+    <div className="patient-profile-card-edit-row">
+      <span>{label}</span>
+      {kind === 'text' ? renderCardText(path) : kind === 'bool' ? renderCardBool(path) : renderCardTriState(path)}
     </div>
   );
 
@@ -5968,8 +6598,18 @@ export default function PatientProfile() {
       {tab === 'clinical' && (
         <div className="row g-3">
           <div className="col-lg-6">
-            <Panel title="Communication" icon={<FiUser size={14} />}>
-              {hasCommunicationData ? (
+            <Panel title="Communication" icon={<FiUser size={14} />} action={renderProfileCardActions('clinical:communication')}>
+              {renderCardSectionError('clinical:communication')}
+              {isCardEditing('clinical:communication') ? (
+                <div className="patient-profile-card-edit-form">
+                  {renderCardEditRow('Communication Needs', 'communicationStyle.anyCommunicationNeeds', 'bool')}
+                  {renderCardEditRow('Hearing Impairment', 'communicationStyle.anyHearingNeeds', 'bool')}
+                  {renderCardEditRow('Speech Impairment', 'communicationStyle.anySpeechImpairment', 'bool')}
+                  {renderCardEditRow('Visual Impairment', 'communicationStyle.anyVisualImpairment', 'bool')}
+                  {renderCardEditRow('Understanding Issues', 'communicationStyle.anyUnderstandingDifficulties', 'bool')}
+                  {renderCardEditRow('Notes', 'communicationStyle.communicationNotes', 'text')}
+                </div>
+              ) : hasCommunicationData ? (
                 <>
                   <DataRow label="Communication Needs"><YN val={p.communication.needs} /></DataRow>
                   <DataRow label="Hearing Impairment"><YN val={p.communication.hearing} /></DataRow>
@@ -5981,8 +6621,14 @@ export default function PatientProfile() {
               ) : <NoDataState />}
             </Panel>
 
-            <Panel title="Infection Control" icon={<FiShield size={14} />}>
-              {hasInfectionControlData ? (
+            <Panel title="Infection Control" icon={<FiShield size={14} />} action={renderProfileCardActions('clinical:infection')}>
+              {renderCardSectionError('clinical:infection')}
+              {isCardEditing('clinical:infection') ? (
+                <div className="patient-profile-card-edit-form">
+                  {renderCardEditRow('Risk Assessment Plan', 'infectionControl.InfectionCarePlanCompletion', 'bool')}
+                  <DataRow label="Diarrhea on Admission"><YN val={p.infection.diarrhea} /></DataRow>
+                </div>
+              ) : hasInfectionControlData ? (
                 <>
                   <DataRow label="Risk Assessment Plan"><YN val={p.infection.riskPlan} /></DataRow>
                   <DataRow label="Diarrhea on Admission"><YN val={p.infection.diarrhea} /></DataRow>
@@ -5990,8 +6636,15 @@ export default function PatientProfile() {
               ) : <NoDataState />}
             </Panel>
 
-            <Panel title="Diabetes Management" icon={<FiActivity size={14} />} accent={p.diabetes.has ? '#d97706' : undefined}>
-              {hasInfectionControlData ? (
+            <Panel title="Diabetes Management" icon={<FiActivity size={14} />} accent={p.diabetes.has ? '#d97706' : undefined} action={renderProfileCardActions('clinical:diabetes')}>
+              {renderCardSectionError('clinical:diabetes')}
+              {isCardEditing('clinical:diabetes') ? (
+                <div className="patient-profile-card-edit-form">
+                  {renderCardEditRow('Diabetes Present', 'infectionControl.anyDiabetes', 'bool')}
+                  {renderCardEditRow('Care Plan Active', 'infectionControl.DiabetesCarePlanCompletion', 'bool')}
+                  {renderCardEditRow('Patient Bed Bound', 'infectionControl.isThePatientBedBound', 'bool')}
+                </div>
+              ) : (hasInfectionControlData || p.diabetes.has !== null) ? (
                 <>
                   <DataRow label="Diabetes Present"><YN val={p.diabetes.has} /></DataRow>
                   <DataRow label="Care Plan Active"><YN val={p.diabetes.carePlan} /></DataRow>
@@ -6000,8 +6653,16 @@ export default function PatientProfile() {
               ) : <NoDataState />}
             </Panel>
 
-            <Panel title="Breathing" icon={<FiActivity size={14} />}>
-              {hasBreathPainData ? (
+            <Panel title="Breathing" icon={<FiActivity size={14} />} action={renderProfileCardActions('clinical:breathing')}>
+              {renderCardSectionError('clinical:breathing')}
+              {isCardEditing('clinical:breathing') ? (
+                <div className="patient-profile-card-edit-form">
+                  {renderCardEditRow('Breathing Difficulties', 'breathPain.anyBreathingDifficulties', 'bool')}
+                  {renderCardEditRow('Home O₂ / CPAP', 'breathPain.homeOxygenNeeded', 'bool')}
+                  {renderCardEditRow('Current Smoker', 'breathPain.isSmoker', 'bool')}
+                  {renderCardEditRow('Smoking History', 'breathPain.everSmoked', 'bool')}
+                </div>
+              ) : hasBreathPainData ? (
                 <>
                   <DataRow label="Breathing Difficulties"><YN val={p.breathing.difficulties} /></DataRow>
                   <DataRow label="Home O₂ / CPAP"><YN val={p.breathing.oxygen} /></DataRow>
@@ -6012,8 +6673,16 @@ export default function PatientProfile() {
             </Panel>
           </div>
           <div className="col-lg-6">
-            <Panel title="Pain Assessment" icon={<FiAlertTriangle size={14} />} accent={p.pain.present ? painColors[p.pain.score] : undefined}>
-              {hasBreathPainData ? (
+            <Panel title="Pain Assessment" icon={<FiAlertTriangle size={14} />} accent={p.pain.present ? painColors[p.pain.score] : undefined} action={renderProfileCardActions('clinical:pain')}>
+              {renderCardSectionError('clinical:pain')}
+              {isCardEditing('clinical:pain') ? (
+                <div className="patient-profile-card-edit-form">
+                  {renderCardEditRow('Pain Present', 'breathPain.painPresent', 'bool')}
+                  {renderCardEditRow('Pain Score (0–3)', 'breathPain.painScore', 'text')}
+                  {renderCardEditRow('Location', 'breathPain.locationOfPain', 'text')}
+                  {renderCardEditRow('Analgesia Prescribed', 'breathPain.anagelsiaPrescribed', 'bool')}
+                </div>
+              ) : hasBreathPainData ? (
                 <>
                   <DataRow label="Pain Present"><YN val={p.pain.present} /></DataRow>
                   <DataRow label="Pain Score">
@@ -6039,8 +6708,16 @@ export default function PatientProfile() {
               ) : <NoDataState />}
             </Panel>
 
-            <Panel title="Psychological" icon={<FiShield size={14} />} accent={p.psych.concerns || p.psych.depression || p.psych.anxiety ? '#d97706' : undefined}>
-              {hasHygienePsychData ? (
+            <Panel title="Psychological" icon={<FiShield size={14} />} accent={p.psych.concerns || p.psych.depression || p.psych.anxiety ? '#d97706' : undefined} action={renderProfileCardActions('clinical:psychological')}>
+              {renderCardSectionError('clinical:psychological')}
+              {isCardEditing('clinical:psychological') ? (
+                <div className="patient-profile-card-edit-form">
+                  {renderCardEditRow('Concerns Flagged', 'hygienePsych.psychologicalNeeds.psychologicalNeeds', 'bool')}
+                  {renderCardEditRow('Depression', 'hygienePsych.psychologicalNeeds.depressionHistory', 'bool')}
+                  {renderCardEditRow('Anxiety', 'hygienePsych.psychologicalNeeds.anxietyhistory', 'bool')}
+                  {renderCardEditRow('Dementia / Delirium', 'hygienePsych.psychologicalNeeds.signDementia', 'bool')}
+                </div>
+              ) : hasHygienePsychData ? (
                 <>
                   <DataRow label="Concerns Flagged"><YN val={p.psych.concerns} /></DataRow>
                   <DataRow label="Depression"><YN val={p.psych.depression} /></DataRow>
@@ -6050,8 +6727,14 @@ export default function PatientProfile() {
               ) : <NoDataState />}
             </Panel>
 
-            <Panel title="Skin Integrity" icon={<FiAlertTriangle size={14} />} accent={p.skin.openWounds || p.skin.pressureUlcer ? '#ef4444' : undefined}>
-              {hasSkinMobilityData ? (
+            <Panel title="Skin Integrity" icon={<FiAlertTriangle size={14} />} accent={p.skin.openWounds || p.skin.pressureUlcer ? '#ef4444' : undefined} action={renderProfileCardActions('clinical:skin')}>
+              {renderCardSectionError('clinical:skin')}
+              {isCardEditing('clinical:skin') ? (
+                <div className="patient-profile-card-edit-form">
+                  {renderCardEditRow('Open Wounds', 'skinMobility.skinIntegrity.openWounds', 'bool')}
+                  {renderCardEditRow('Pressure Ulcer', 'skinMobility.skinIntegrity.pressureUlcer', 'bool')}
+                </div>
+              ) : hasSkinMobilityData ? (
                 <>
                   <DataRow label="Open Wounds"><YN val={p.skin.openWounds} /></DataRow>
                   <DataRow label="Pressure Ulcer"><YN val={p.skin.pressureUlcer} /></DataRow>
@@ -6059,8 +6742,16 @@ export default function PatientProfile() {
               ) : <NoDataState />}
             </Panel>
 
-            <Panel title="Mobility" icon={<FiUser size={14} />}>
-              {hasSkinMobilityData ? (
+            <Panel title="Mobility" icon={<FiUser size={14} />} action={renderProfileCardActions('clinical:mobility')}>
+              {renderCardSectionError('clinical:mobility')}
+              {isCardEditing('clinical:mobility') ? (
+                <div className="patient-profile-card-edit-form">
+                  {renderCardEditRow('Independently Mobile', 'skinMobility.handlingAssessment.isPatientMobile', 'bool')}
+                  {renderCardEditRow('Move in Bed', 'skinMobility.handlingAssessment.moveInBed', 'bool')}
+                  {renderCardEditRow('Bed to Chair', 'skinMobility.handlingAssessment.mobilityFromBedToChair', 'bool')}
+                  {renderCardEditRow('Transfer to Toilet', 'skinMobility.handlingAssessment.mobilityToWashroom', 'bool')}
+                </div>
+              ) : hasSkinMobilityData ? (
                 <>
                   <DataRow label="Independently Mobile"><YN val={p.mobility.independent} /></DataRow>
                   <DataRow label="Move in Bed"><YN val={p.mobility.bedMove} /></DataRow>
@@ -7122,12 +7813,23 @@ export default function PatientProfile() {
                                 <div className="patient-medication-modal__field">
                                   <label className="patient-medication-modal__label">Frequency *</label>
                                   <select
-                                    value={medForm.frequency}
-                                    onChange={e => setMedForm(f => ({ ...f, frequency: e.target.value }))}
+                                    value={medicationFrequencySelectValue}
+                                    onChange={(e) => {
+                                      const nextFrequency = e.target.value;
+                                      setMedForm((f) => ({ ...f, frequency: nextFrequency }));
+                                      if (!editingMedicationId) {
+                                        setReminderForm((prev) => ({
+                                          ...prev,
+                                          times: frequencyToDefaultTimes(nextFrequency, prev.times),
+                                        }));
+                                      }
+                                    }}
                                     className="patient-medication-modal__input"
                                   >
-                                    <option value="">Select</option>
-                                    {FREQ_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
+                                    <option value="">Select frequency</option>
+                                    {medicationFrequencyOptions.map((option) => (
+                                      <option key={option} value={option}>{option}</option>
+                                    ))}
                                   </select>
                                 </div>
                               </div>
@@ -7530,40 +8232,99 @@ export default function PatientProfile() {
       {tab === 'care' && (
         <div className="row g-3">
           <div className="col-lg-4">
-            <Panel title="Sleep" icon={<FiClock size={14} />}>
-              <DataRow label="Gets Up at Night"><YN val={p.sleep.nightWake} /></DataRow>
-              <DataRow label="Night Sedation"><YN val={p.sleep.sedation} /></DataRow>
-              <DataRow label="Sleeps Well"><YN val={p.sleep.sleepsWell} /></DataRow>
-              <DataRow label="Wake Time">{p.sleep.wakeTime}</DataRow>
-              <DataRow label="Best Position">{p.sleep.bestPosition}</DataRow>
+            <Panel title="Sleep" icon={<FiClock size={14} />} action={renderProfileCardActions('care:sleep')}>
+              {renderCardSectionError('care:sleep')}
+              {isCardEditing('care:sleep') ? (
+                <div className="patient-profile-card-edit-form">
+                  {renderCardEditRow('Gets Up at Night', 'sleepNutrition.sleep.wakeUpAtNight')}
+                  {renderCardEditRow('Night Sedation', 'sleepNutrition.sleep.UseOfNightSedation')}
+                  {renderCardEditRow('Sleeps Well', 'sleepNutrition.sleep.userSleepWell')}
+                  {renderCardEditRow('Wake Time', 'sleepNutrition.sleep.usualTimeToWakeUp', 'text')}
+                  {renderCardEditRow('Best Position', 'sleepNutrition.sleep.bestSleepingPosition', 'text')}
+                </div>
+              ) : (
+                <>
+                  <DataRow label="Gets Up at Night"><YN val={p.sleep.nightWake} /></DataRow>
+                  <DataRow label="Night Sedation"><YN val={p.sleep.sedation} /></DataRow>
+                  <DataRow label="Sleeps Well"><YN val={p.sleep.sleepsWell} /></DataRow>
+                  <DataRow label="Wake Time">{p.sleep.wakeTime}</DataRow>
+                  <DataRow label="Best Position">{p.sleep.bestPosition}</DataRow>
+                </>
+              )}
             </Panel>
 
-            <Panel title="Nutrition" icon={<FiHeart size={14} />}>
-              <DataRow label="Food Allergies"><YN val={p.nutrition.allergies} /></DataRow>
-              <DataRow label="Special Diet"><YN val={p.nutrition.specialDiet} /></DataRow>
-              <DataRow label="Diet Type"><span style={{ fontWeight: 600 }}>{p.nutrition.dietType}</span></DataRow>
-              <DataRow label="Eating Assistance"><YN val={p.nutrition.helpEating} /></DataRow>
-              <DataRow label="Swallowing Issues"><YN val={p.nutrition.swallowing} /></DataRow>
-              <DataRow label="NG Tube"><YN val={p.nutrition.ngTube} /></DataRow>
+            <Panel title="Nutrition" icon={<FiHeart size={14} />} action={renderProfileCardActions('care:nutrition')}>
+              {renderCardSectionError('care:nutrition')}
+              {isCardEditing('care:nutrition') ? (
+                <div className="patient-profile-card-edit-form">
+                  {renderCardEditRow('Food Allergies', 'sleepNutrition.nutrition.allergy')}
+                  {renderCardEditRow('Special Diet', 'sleepNutrition.nutrition.specialDiet')}
+                  {renderCardEditRow('Diet Type', 'sleepNutrition.nutrition.dietType', 'text')}
+                  {renderCardEditRow('Eating Assistance', 'sleepNutrition.nutrition.needHelpInEating')}
+                  {renderCardEditRow('Swallowing Issues', 'sleepNutrition.nutrition.swallowingDifficulties')}
+                  {renderCardEditRow('NG Tube', 'sleepNutrition.nutrition.ngTube')}
+                </div>
+              ) : (
+                <>
+                  <DataRow label="Food Allergies"><YN val={p.nutrition.allergies} /></DataRow>
+                  <DataRow label="Special Diet"><YN val={p.nutrition.specialDiet} /></DataRow>
+                  <DataRow label="Diet Type"><span style={{ fontWeight: 600 }}>{p.nutrition.dietType}</span></DataRow>
+                  <DataRow label="Eating Assistance"><YN val={p.nutrition.helpEating} /></DataRow>
+                  <DataRow label="Swallowing Issues"><YN val={p.nutrition.swallowing} /></DataRow>
+                  <DataRow label="NG Tube"><YN val={p.nutrition.ngTube} /></DataRow>
+                </>
+              )}
             </Panel>
           </div>
 
           <div className="col-lg-4">
-            <Panel title="Personal Hygiene" icon={<FiCheckCircle size={14} />}>
-              <DataRow label="Independent"><YN val={p.hygiene.independent} /></DataRow>
-              <DataRow label="Mouth-Care Plan"><YN val={p.hygiene.mouthCare} /></DataRow>
+            <Panel title="Personal Hygiene" icon={<FiCheckCircle size={14} />} action={renderProfileCardActions('care:hygiene')}>
+              {renderCardSectionError('care:hygiene')}
+              {isCardEditing('care:hygiene') ? (
+                <div className="patient-profile-card-edit-form">
+                  {renderCardEditRow('Independent', 'hygienePsych.personal.hygieneNeeds', 'bool')}
+                  {renderCardEditRow('Mouth-Care Plan', 'hygienePsych.personal.mouthCarePlan', 'bool')}
+                </div>
+              ) : (
+                <>
+                  <DataRow label="Independent"><YN val={p.hygiene.independent} /></DataRow>
+                  <DataRow label="Mouth-Care Plan"><YN val={p.hygiene.mouthCare} /></DataRow>
+                </>
+              )}
             </Panel>
 
-            <Panel title="Bladder & Bowel" icon={<FiActivity size={14} />}>
-              <DataRow label="Dysfunction"><YN val={p.bladder.dysfunction} /></DataRow>
-              <DataRow label="Catheter"><YN val={p.bladder.catheter} /></DataRow>
-              <DataRow label="Incontinent Pads"><YN val={p.bladder.pads} /></DataRow>
+            <Panel title="Bladder & Bowel" icon={<FiActivity size={14} />} action={renderProfileCardActions('care:bladder')}>
+              {renderCardSectionError('care:bladder')}
+              {isCardEditing('care:bladder') ? (
+                <div className="patient-profile-card-edit-form">
+                  {renderCardEditRow('Dysfunction', 'hygienePsych.bladderBowel.bladderDysfunction', 'bool')}
+                  {renderCardEditRow('Catheter', 'hygienePsych.bladderBowel.catheterPlan', 'bool')}
+                  {renderCardEditRow('Incontinent Pads', 'hygienePsych.bladderBowel.incontinentPads', 'bool')}
+                </div>
+              ) : (
+                <>
+                  <DataRow label="Dysfunction"><YN val={p.bladder.dysfunction} /></DataRow>
+                  <DataRow label="Catheter"><YN val={p.bladder.catheter} /></DataRow>
+                  <DataRow label="Incontinent Pads"><YN val={p.bladder.pads} /></DataRow>
+                </>
+              )}
             </Panel>
 
-            <Panel title="Physician Contact" icon={<FiPhone size={14} />}>
-              <DataRow label="Doctor">{p.doctor.name}</DataRow>
-              <DataRow label="Facility">{p.doctor.facility}</DataRow>
-              <DataRow label="Phone">{p.doctor.phone}</DataRow>
+            <Panel title="Physician Contact" icon={<FiPhone size={14} />} action={renderProfileCardActions('care:physician')}>
+              {renderCardSectionError('care:physician')}
+              {isCardEditing('care:physician') ? (
+                <div className="patient-profile-card-edit-form">
+                  {renderCardEditRow('Doctor', 'nextOfKin.personalDoctor', 'text')}
+                  {renderCardEditRow('Facility', 'nextOfKin.personalDoctorFacility', 'text')}
+                  {renderCardEditRow('Phone', 'nextOfKin.personalDoctorContact', 'text')}
+                </div>
+              ) : (
+                <>
+                  <DataRow label="Doctor">{p.doctor.name}</DataRow>
+                  <DataRow label="Facility">{p.doctor.facility}</DataRow>
+                  <DataRow label="Phone">{p.doctor.phone}</DataRow>
+                </>
+              )}
             </Panel>
           </div>
 
@@ -7592,12 +8353,24 @@ export default function PatientProfile() {
               ].filter(c => c.active).length === 0 && (
                 <div style={{ fontSize: 12.5, color: 'var(--kh-text-muted)', padding: '8px 0' }}>No active care protocols</div>
               )}
+              <p className="patient-profile-card-edit-hint">Derived from clinical and lifestyle records. Edit the related sections to update.</p>
             </Panel>
 
-            <Panel title="Emergency Contact" icon={<FiAlertTriangle size={14} />} accent="#d97706">
-              <DataRow label="Name">{p.emergency.name}</DataRow>
-              <DataRow label="Relationship">{p.emergency.relationship}</DataRow>
-              <DataRow label="Phone">{p.emergency.phone}</DataRow>
+            <Panel title="Emergency Contact" icon={<FiAlertTriangle size={14} />} accent="#d97706" action={renderProfileCardActions('care:emergency')}>
+              {renderCardSectionError('care:emergency')}
+              {isCardEditing('care:emergency') ? (
+                <div className="patient-profile-card-edit-form">
+                  {renderCardEditRow('Name', 'nextOfKin.fullName', 'text')}
+                  {renderCardEditRow('Relationship', 'nextOfKin.relationship', 'text')}
+                  {renderCardEditRow('Phone', 'nextOfKin.contactOne', 'text')}
+                </div>
+              ) : (
+                <>
+                  <DataRow label="Name">{p.emergency.name}</DataRow>
+                  <DataRow label="Relationship">{p.emergency.relationship}</DataRow>
+                  <DataRow label="Phone">{p.emergency.phone}</DataRow>
+                </>
+              )}
             </Panel>
           </div>
         </div>
