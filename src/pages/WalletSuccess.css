@@ -1,0 +1,119 @@
+.wallet-success {
+  min-height: 100vh;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 28px 16px 40px;
+  background: linear-gradient(180deg, rgba(245, 176, 39, 0.14), rgba(248, 250, 252, 0.96) 55%, rgba(248, 250, 252, 1));
+}
+
+.wallet-success__card {
+  width: min(560px, 96vw);
+  border-radius: 18px;
+  background: #fff;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  box-shadow: 0 16px 50px rgba(15, 23, 42, 0.08);
+  padding: 22px 20px 18px;
+}
+
+.wallet-success__icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  background: rgba(34, 197, 94, 0.12);
+  color: #16a34a;
+  margin-bottom: 12px;
+}
+
+.wallet-success__title {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 900;
+  color: #0f172a;
+}
+
+.wallet-success__subtitle {
+  margin: 6px 0 0;
+  font-size: 0.92rem;
+  color: rgba(15, 23, 42, 0.7);
+}
+
+.wallet-success__details {
+  margin-top: 18px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(248, 250, 252, 0.9);
+  overflow: hidden;
+}
+
+.wallet-success__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+}
+
+.wallet-success__row + .wallet-success__row {
+  border-top: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.wallet-success__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: rgba(15, 23, 42, 0.7);
+}
+
+.wallet-success__value {
+  font-size: 0.95rem;
+  font-weight: 900;
+  color: #0f172a;
+}
+
+.wallet-success__value--mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  font-weight: 800;
+  font-size: 0.9rem;
+}
+
+.wallet-success__actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+  flex-wrap: wrap;
+}
+
+.wallet-success__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-weight: 900;
+  font-size: 0.9rem;
+  text-decoration: none;
+  border: 1px solid transparent;
+}
+
+.wallet-success__btn--primary {
+  background: #0f172a;
+  color: #fff;
+}
+
+.wallet-success__btn--ghost {
+  background: #fff;
+  border-color: rgba(148, 163, 184, 0.45);
+  color: #0f172a;
+}
+
+.wallet-success__btn--ghost:hover {
+  background: rgba(248, 250, 252, 1);
+}
+

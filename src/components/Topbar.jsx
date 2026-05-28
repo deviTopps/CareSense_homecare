@@ -23,6 +23,7 @@ function avatarSrcFromUser(user) {
 
 const pageMeta = {
   '/':           { title: 'Dashboard',              sub: 'Real-time homecare overview' },
+  '/dashboard':  { title: 'Dashboard',              sub: 'Real-time homecare overview' },
   '/scheduling': { title: 'Care Visits',              sub: 'Schedule patient visits — weekly, biweekly & more' },
   '/nurse-scheduling': { title: 'Scheduling', sub: 'Nurse rotation scheduling & shift assignments' },
   '/clinical':   { title: 'Emergency Cases', sub: '' },
@@ -30,6 +31,9 @@ const pageMeta = {
   '/attendance': { title: 'Attendance',              sub: 'GPS-verified visit records' },
   '/patients':   { title: 'Patients',                sub: 'Enrolment & records' },
   '/enquiries': { title: 'Enquiries', sub: '' },
+  '/reports':   { title: 'Reports',                 sub: 'Generated medical reports' },
+  '/billing':   { title: 'Billing',                 sub: 'Manage billing information and view receipts' },
+  '/account':   { title: 'Settings',                sub: 'Account and preferences' },
 };
 
 export default function Topbar({ onToggleSidebar, onLogout, user }) {

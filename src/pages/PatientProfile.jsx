@@ -2894,6 +2894,91 @@ function formatMedicationApiTime(value) {
   return `${hours}:${minutes}${suffix}`;
 }
 
+/** API dates may be ISO strings; <input type="date"> requires YYYY-MM-DD. */
+function normalizeMedicationDateForInput(value) {
+  if (value === null || value === undefined) return '';
+  const raw = String(value).trim();
+  if (!raw) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  const isoPrefix = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (isoPrefix) return isoPrefix[1];
+  const parsed = new Date(raw);
+  if (!Number.isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10);
+  return '';
+}
+
+function buildMedicationApiPatchPayload({
+  medicationId,
+  drug,
+  dosage,
+  intake,
+  startDate,
+  endDate,
+  time,
+  addedBy,
+  prescribedBy = 'external',
+  drugRef = null,
+  active = true,
+}) {
+  const normalizedStart = normalizeMedicationDateForInput(startDate);
+  const normalizedEnd = normalizeMedicationDateForInput(endDate);
+  return {
+    medicationId,
+    prescribedBy,
+    drug,
+    drugRef,
+    dosage,
+    intake: String(intake || 'oral').toLowerCase(),
+    startDate: normalizedStart || new Date().toISOString().slice(0, 10),
+    endDate: normalizedEnd || null,
+    active,
+    time: (Array.isArray(time) ? time : []).filter(Boolean).map(formatMedicationApiTime),
+    ...(addedBy ? { addedBy } : {}),
+  };
+}
+
+async function fetchMedicationById(medicationId) {
+  const id = encodeURIComponent(String(medicationId || '').trim());
+  if (!id) throw new Error('Medication id is required.');
+  const response = await apiFetch(`/medications/${id}`, { method: 'GET', quiet: true });
+  const responseText = await response.text().catch(() => '');
+  let payload = {};
+  if (responseText) {
+    try {
+      payload = JSON.parse(responseText);
+    } catch {
+      payload = { message: responseText };
+    }
+  }
+  if (!response.ok) {
+    throw new Error(payload?.message || payload?.error || 'Unable to load medication.');
+  }
+  return payload?.medication || payload?.data || payload;
+}
+
+async function enrichMedicationListWithDetails(items, patientId = '') {
+  if (!Array.isArray(items) || items.length === 0) return [];
+
+  const enriched = await Promise.all(items.map(async (item) => {
+    const normalized = normalizeMedicationRecord(item, { patientId });
+    const medicationId = extractMedicationApiId(normalized, normalized, patientId);
+    const hasStartDate = Boolean(normalizeMedicationDateForInput(normalized.startDate));
+
+    if (!medicationId || hasStartDate) {
+      return normalized;
+    }
+
+    try {
+      const fullRecord = await fetchMedicationById(medicationId);
+      return normalizeMedicationRecord(fullRecord, normalized);
+    } catch {
+      return normalized;
+    }
+  }));
+
+  return enriched;
+}
+
 function createMedicationReminderState(source = {}) {
   const reminderSource = source?.reminders || {};
   const times = Array.isArray(source?.time)
@@ -2904,8 +2989,18 @@ function createMedicationReminderState(source = {}) {
 
   return {
     times: times.filter(Boolean).map(normalizeMedicationTimeValue),
-    startDate: source?.startDate || reminderSource?.startDate || new Date().toISOString().slice(0, 10),
-    endDate: source?.endDate || reminderSource?.endDate || '',
+    startDate: normalizeMedicationDateForInput(
+      source?.startDate
+      || source?.start_date
+      || reminderSource?.startDate
+      || reminderSource?.start_date,
+    ) || new Date().toISOString().slice(0, 10),
+    endDate: normalizeMedicationDateForInput(
+      source?.endDate
+      || source?.end_date
+      || reminderSource?.endDate
+      || reminderSource?.end_date,
+    ),
     reminderType: source?.reminderType || reminderSource?.reminderType || 'daily',
     notifyNurse: source?.notifyNurse ?? reminderSource?.notifyNurse ?? true,
     notifyPatient: source?.notifyPatient ?? reminderSource?.notifyPatient ?? false,
@@ -2947,6 +3042,12 @@ function normalizeMedicationRecord(rawMedication, fallback = {}) {
   const patientId = raw?.patientId || raw?.patientID || raw?.patient_id || raw?.patient?.id || raw?.patient?._id || raw?.patient?.patientId || fallback?.patientId || '';
   const frequency = resolveMedicationFrequency(raw, fallback) || 'Scheduled';
   const apiMedicationId = extractMedicationApiId(raw, fallback, patientId);
+  const startDate = normalizeMedicationDateForInput(
+    raw?.startDate || raw?.start_date || fallback?.startDate || fallback?.start_date,
+  ) || new Date().toISOString().slice(0, 10);
+  const endDate = normalizeMedicationDateForInput(
+    raw?.endDate || raw?.end_date || fallback?.endDate || fallback?.end_date,
+  );
 
   return {
     id: apiMedicationId || fallback?.id || fallback?.medicationId || Date.now(),
@@ -2957,17 +3058,18 @@ function normalizeMedicationRecord(rawMedication, fallback = {}) {
     frequency,
     route: toTitleCase(raw?.intake || fallback?.intake || fallback?.route || 'Oral'),
     notes: raw?.notes || fallback?.notes || '',
+    time: times,
     reminders: times.length > 0 ? {
       reminderType: fallback?.reminderType || 'daily',
       times,
       notifyNurse: fallback?.notifyNurse ?? true,
       notifyPatient: fallback?.notifyPatient ?? false,
-      startDate: raw?.startDate || fallback?.startDate || new Date().toISOString().slice(0, 10),
-      endDate: raw?.endDate || fallback?.endDate || '',
+      startDate,
+      endDate,
     } : null,
     active: raw?.active ?? fallback?.active ?? true,
-    startDate: raw?.startDate || fallback?.startDate || new Date().toISOString().slice(0, 10),
-    endDate: raw?.endDate || fallback?.endDate || '',
+    startDate,
+    endDate,
     prescribedBy: raw?.prescribedBy || fallback?.prescribedBy || 'external',
     source: 'api',
   };
@@ -3041,27 +3143,58 @@ function buildMedicationSignature(medication) {
   ].join('|');
 }
 
-function mergeMedicationRecords(records) {
-  const result = [];
-  const seenIds = new Set();
-  const seenSignatures = new Set();
+function medicationRecordRichnessScore(medication) {
+  if (!medication) return 0;
+  let score = 0;
+  if (normalizeMedicationDateForInput(medication.startDate)) score += 4;
+  if (normalizeMedicationDateForInput(medication.endDate)) score += 2;
+  const times = Array.isArray(medication.time) && medication.time.length
+    ? medication.time
+    : medication?.reminders?.times;
+  if (Array.isArray(times) && times.length > 0) score += 2;
+  if (medication.medicationId) score += 1;
+  return score;
+}
 
-  records.forEach(record => {
+function mergeMedicationRecordFields(primary, secondary) {
+  const richer = medicationRecordRichnessScore(secondary) > medicationRecordRichnessScore(primary)
+    ? { ...primary, ...secondary }
+    : { ...secondary, ...primary };
+  const mergedTimes = (Array.isArray(richer.time) && richer.time.length
+    ? richer.time
+    : Array.isArray(primary?.time) && primary.time.length
+      ? primary.time
+      : secondary?.time) || [];
+  return normalizeMedicationRecord(
+    {
+      ...richer,
+      startDate: normalizeMedicationDateForInput(richer.startDate || primary?.startDate || secondary?.startDate),
+      endDate: normalizeMedicationDateForInput(richer.endDate || primary?.endDate || secondary?.endDate) || '',
+      time: mergedTimes,
+    },
+    richer,
+  );
+}
+
+function mergeMedicationRecords(records) {
+  const byKey = new Map();
+
+  records.forEach((record) => {
     if (!record || !record.drug) return;
     const normalized = normalizeMedicationRecord(record, record);
-    const idKey = String(normalized.id || '').trim();
+    const idKey = String(normalized.medicationId || normalized.id || '').trim();
     const signature = buildMedicationSignature(normalized);
+    const mapKey = idKey || `sig:${signature}`;
 
-    if ((idKey && seenIds.has(idKey)) || seenSignatures.has(signature)) {
+    if (byKey.has(mapKey)) {
+      byKey.set(mapKey, mergeMedicationRecordFields(byKey.get(mapKey), normalized));
       return;
     }
 
-    if (idKey) seenIds.add(idKey);
-    seenSignatures.add(signature);
-    result.push(normalized);
+    byKey.set(mapKey, normalized);
   });
 
-  return result;
+  return Array.from(byKey.values());
 }
 
 function normalizeDrugOption(rawDrug) {
@@ -3879,10 +4012,11 @@ export default function PatientProfile() {
     try {
       const embedded = extractMedicationRowsFromPatientPayload(rawPatientApiRef.current);
       if (embedded.length > 0) {
-        const patientMedicationItems = embedded
-          .map(item => normalizeMedicationRecord(item, { patientId: patientIdValue }))
-          .filter(item => item.drug);
-        const mergedItems = mergeMedicationRecords([...patientMedicationItems, ...cachedItems]);
+        const patientMedicationItems = await enrichMedicationListWithDetails(
+          embedded.filter((item) => item?.drug || item?.medicationId || item?.id),
+          patientIdValue,
+        );
+        const mergedItems = mergeMedicationRecords([...cachedItems, ...patientMedicationItems]);
         setAddedMeds(mergedItems);
         setCachedPatientMedications(patientIdValue, mergedItems);
         return;
@@ -3921,10 +4055,11 @@ export default function PatientProfile() {
       }
 
       if (patientMedicationResponse?.ok) {
-        const patientMedicationItems = extractMedicationList(patientMedicationPayload)
-          .map(item => normalizeMedicationRecord(item, { patientId: patientIdValue }))
-          .filter(item => item.drug);
-        const mergedItems = mergeMedicationRecords([...patientMedicationItems, ...cachedItems]);
+        const patientMedicationItems = await enrichMedicationListWithDetails(
+          extractMedicationList(patientMedicationPayload),
+          patientIdValue,
+        );
+        const mergedItems = mergeMedicationRecords([...cachedItems, ...patientMedicationItems]);
         setAddedMeds(mergedItems);
         setCachedPatientMedications(patientIdValue, mergedItems);
         return;
@@ -4296,11 +4431,12 @@ export default function PatientProfile() {
       patientId: effectivePatientId,
       prescribedBy: 'external',
       drug: medForm.drug,
+      drugRef: null,
       dosage: medForm.dosage,
       frequency: normalizedFrequency,
       intake: medForm.route.toLowerCase(),
-      startDate: defaultReminder.startDate,
-      endDate: defaultReminder.endDate || null,
+      startDate: normalizeMedicationDateForInput(defaultReminder.startDate) || defaultReminder.startDate,
+      endDate: normalizeMedicationDateForInput(defaultReminder.endDate) || null,
       active: true,
       time: scheduleTimes,
       ...(addedBy ? { addedBy } : {}),
@@ -4325,47 +4461,41 @@ export default function PatientProfile() {
           );
         }
 
-        const patchPayload = {
-          ...medicationPayload,
+        const updatePayload = buildMedicationApiPatchPayload({
           medicationId: medicationApiId,
-          id: medicationApiId,
-        };
-        const patchCandidates = [
-          {
-            path: `/medications/${encodeURIComponent(effectivePatientId)}`,
-            body: patchPayload,
-          },
-          {
-            path: `/medications/${encodeURIComponent(medicationApiId)}`,
-            body: patchPayload,
-          },
-        ];
+          drug: medForm.drug,
+          dosage: medForm.dosage,
+          intake: medForm.route,
+          startDate: defaultReminder.startDate,
+          endDate: defaultReminder.endDate,
+          time: scheduleTimes,
+          addedBy,
+        });
 
-        let lastError = 'Unable to update medication.';
-        for (const candidate of patchCandidates) {
-          const attempt = await apiFetch(candidate.path, {
-            method: 'PATCH',
-            body: JSON.stringify(candidate.body),
-          });
-          const responseText = await attempt.text().catch(() => '');
-          let attemptData = {};
-          if (responseText) {
-            try {
-              attemptData = JSON.parse(responseText);
-            } catch {
-              attemptData = { message: responseText };
-            }
+        const patchResponse = await apiFetch(`/medications/${encodeURIComponent(medicationApiId)}`, {
+          method: 'PATCH',
+          body: JSON.stringify(updatePayload),
+        });
+        const responseText = await patchResponse.text().catch(() => '');
+        if (responseText) {
+          try {
+            data = JSON.parse(responseText);
+          } catch {
+            data = { message: responseText };
           }
-          if (attempt.ok) {
-            response = attempt;
-            data = attemptData;
-            break;
-          }
-          lastError = attemptData?.message || attemptData?.error || lastError;
+        }
+        response = patchResponse;
+        if (!response.ok) {
+          throw new Error(data?.message || data?.error || 'Unable to update medication.');
         }
 
-        if (!response?.ok) {
-          throw new Error(lastError);
+        try {
+          const refreshed = await fetchMedicationById(medicationApiId);
+          if (refreshed && typeof refreshed === 'object') {
+            data = refreshed;
+          }
+        } catch {
+          // PATCH succeeded; use response body if GET is unavailable
         }
       } else {
         const postResponse = await apiFetch('/medications', {
@@ -4397,8 +4527,8 @@ export default function PatientProfile() {
         reminderType: defaultReminder.reminderType,
         notifyNurse: defaultReminder.notifyNurse,
         notifyPatient: defaultReminder.notifyPatient,
-        startDate: defaultReminder.startDate,
-        endDate: defaultReminder.endDate,
+        startDate: normalizeMedicationDateForInput(defaultReminder.startDate) || defaultReminder.startDate,
+        endDate: normalizeMedicationDateForInput(defaultReminder.endDate) || defaultReminder.endDate || '',
       });
 
       setAddedMeds(prev => {
@@ -4561,62 +4691,53 @@ export default function PatientProfile() {
           throw new Error('This medication has no server ID. Re-save the medication before setting reminders.');
         }
 
-        const reminderPayload = {
-          patientId: effectivePatientId,
+        const currentUser = getUser();
+        const addedBy = currentUser?.id || currentUser?._id || currentUser?.userId || currentUser?.staffId || undefined;
+        const reminderPayload = buildMedicationApiPatchPayload({
           medicationId: medicationApiId,
-          id: medicationApiId,
-          prescribedBy: currentMedication.prescribedBy || 'external',
           drug: currentMedication.drug,
           dosage: currentMedication.dosage,
-          frequency: medicationFrequency,
-          intake: String(currentMedication.route || 'Oral').toLowerCase(),
+          intake: currentMedication.route || 'Oral',
           startDate: reminderForm.startDate,
-          endDate: reminderForm.endDate || null,
+          endDate: reminderForm.endDate,
+          time: reminderForm.times,
+          addedBy,
+          prescribedBy: currentMedication.prescribedBy || 'external',
           active: currentMedication.active ?? true,
-          time: reminderForm.times.filter(Boolean).map(formatMedicationApiTime),
-        };
+        });
 
-        const patchCandidates = [
-          { path: `/medications/${encodeURIComponent(effectivePatientId)}`, body: reminderPayload },
-          { path: `/medications/${encodeURIComponent(medicationApiId)}`, body: reminderPayload },
-        ];
-
-        let response = null;
+        const patchResponse = await apiFetch(`/medications/${encodeURIComponent(medicationApiId)}`, {
+          method: 'PATCH',
+          body: JSON.stringify(reminderPayload),
+        });
+        const responseText = await patchResponse.text().catch(() => '');
         let data = {};
-        let lastError = 'Unable to save medication reminder.';
-
-        for (const candidate of patchCandidates) {
-          const attempt = await apiFetch(candidate.path, {
-            method: 'PATCH',
-            body: JSON.stringify(candidate.body),
-          });
-          const responseText = await attempt.text().catch(() => '');
-          let attemptData = {};
-          if (responseText) {
-            try {
-              attemptData = JSON.parse(responseText);
-            } catch {
-              attemptData = { message: responseText };
-            }
+        if (responseText) {
+          try {
+            data = JSON.parse(responseText);
+          } catch {
+            data = { message: responseText };
           }
-          if (attempt.ok) {
-            response = attempt;
-            data = attemptData;
-            break;
-          }
-          lastError = attemptData?.message || attemptData?.error || lastError;
+        }
+        if (!patchResponse.ok) {
+          throw new Error(data?.message || data?.error || 'Unable to save medication reminder.');
         }
 
-        if (!response?.ok) {
-          throw new Error(lastError);
+        try {
+          const refreshed = await fetchMedicationById(medicationApiId);
+          if (refreshed && typeof refreshed === 'object') {
+            data = refreshed;
+          }
+        } catch {
+          // use PATCH response
         }
 
         const updatedMedication = normalizeMedicationRecord(data?.medication || data?.data || data, {
           ...currentMedication,
           frequency: medicationFrequency,
           time: reminderForm.times.filter(Boolean).map(formatMedicationApiTime),
-          startDate: reminderForm.startDate,
-          endDate: reminderForm.endDate,
+          startDate: normalizeMedicationDateForInput(reminderForm.startDate) || reminderForm.startDate,
+          endDate: normalizeMedicationDateForInput(reminderForm.endDate) || reminderForm.endDate || '',
           reminderType: reminderForm.reminderType,
           notifyNurse: reminderForm.notifyNurse,
           notifyPatient: reminderForm.notifyPatient,
@@ -6774,14 +6895,16 @@ export default function PatientProfile() {
       return;
     }
 
+    // POST /assignments accepts a nurse identifier (Mongo `_id` when available, otherwise UUID).
+    // Some `/nurses` payloads only include UUIDs (e.g. `nurseId`) and no 24-char ObjectId.
     const nurseIdForAssignment = resolveMongoIdFromCandidates(selectedNurse.idsForMatch)
       || String(selectedNurse.mongoId || '').trim()
+      || String(selectedNurse.uuid || '').trim()
+      || String(selectedNurse.id || '').trim()
       || '';
 
     if (!nurseIdForAssignment) {
-      setAssignedNurseActionError(
-        'Selected nurse has no MongoDB id. The assignment API requires the nurse\'s 24-character database _id from GET /nurses.',
-      );
+      setAssignedNurseActionError('Selected nurse is missing an id from GET /nurses.');
       setAssignedNurseActionSuccess('');
       return;
     }
@@ -9337,6 +9460,28 @@ export default function PatientProfile() {
                                   </select>
                                 </div>
                               </div>
+                              <div className="col-md-4">
+                                <div className="patient-medication-modal__field">
+                                  <label className="patient-medication-modal__label">Start Date</label>
+                                  <input
+                                    type="date"
+                                    value={reminderForm.startDate}
+                                    onChange={e => setReminderForm(f => ({ ...f, startDate: e.target.value }))}
+                                    className="patient-medication-modal__input"
+                                  />
+                                </div>
+                              </div>
+                              <div className="col-md-4">
+                                <div className="patient-medication-modal__field">
+                                  <label className="patient-medication-modal__label">End Date</label>
+                                  <input
+                                    type="date"
+                                    value={reminderForm.endDate}
+                                    onChange={e => setReminderForm(f => ({ ...f, endDate: e.target.value }))}
+                                    className="patient-medication-modal__input"
+                                  />
+                                </div>
+                              </div>
                               <div className="col-12">
                                 <div className="patient-medication-modal__field">
                                   <label className="patient-medication-modal__label">Notes</label>
@@ -9614,6 +9759,8 @@ export default function PatientProfile() {
                           <th>Dosage</th>
                           <th>Frequency</th>
                           <th>Route</th>
+                          <th>Start</th>
+                          <th>End</th>
                           <th>Reminder</th>
                           <th>Status</th>
                           <th>Action</th>
@@ -9632,6 +9779,8 @@ export default function PatientProfile() {
                             <td>{med.dosage || '—'}</td>
                             <td>{med.frequency || '—'}</td>
                             <td>{med.route || '—'}</td>
+                            <td>{normalizeMedicationDateForInput(med.startDate) || '—'}</td>
+                            <td>{normalizeMedicationDateForInput(med.endDate) || '—'}</td>
                             <td><span className="patient-medications-table__reminder is-muted">No reminder</span></td>
                             <td><span className="patient-medications-table__status">Active</span></td>
                             <td>
@@ -9663,6 +9812,8 @@ export default function PatientProfile() {
                               <td>{med.dosage || '—'}</td>
                               <td>{med.frequency || '—'}</td>
                               <td>{med.route || '—'}</td>
+                              <td>{normalizeMedicationDateForInput(med.startDate) || '—'}</td>
+                              <td>{normalizeMedicationDateForInput(med.endDate) || '—'}</td>
                               <td>
                                 {med.reminders ? (
                                   <div className="patient-medications-table__badges">
@@ -9679,7 +9830,7 @@ export default function PatientProfile() {
                                   </div>
                                 ) : (
                                   <button
-                                    onClick={() => { setShowReminderForm(med.id); setReminderForm({ times: ['08:00'], startDate: new Date().toISOString().slice(0, 10), endDate: '', reminderType: 'daily', notifyNurse: true, notifyPatient: false }); }}
+                                    onClick={() => { setShowReminderForm(med.id); setReminderForm(createMedicationReminderState(med)); }}
                                     className="patient-medications-table__action"
                                   >
                                     <FiBell size={12} /> Set Reminder

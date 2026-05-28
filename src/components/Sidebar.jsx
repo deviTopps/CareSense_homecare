@@ -18,6 +18,7 @@ import {
   FiAward,
   FiMoon,
   FiSun,
+  FiCreditCard,
 } from '../icons/hugeicons-feather';
 
 const sidebarGroups = [
@@ -38,6 +39,7 @@ const sidebarGroups = [
     title: 'Account',
     items: [
       { to: '/account', icon: FiSettings, label: 'Settings' },
+      { to: '/billing', icon: FiCreditCard, label: 'Billing' },
     ],
   },
 ];
@@ -218,10 +220,10 @@ export default function Sidebar({
                   <p className="sidebar-plan-card__agency">{agencyName}</p>
                 </div>
                 <NavLink
-                  to="/account"
+                  to="/billing"
                   className="sidebar-plan-card__link"
                   onClick={onClose}
-                  title="Plan and billing settings"
+                  title="Plan and billing"
                 >
                   <span>Manage plan</span>
                   <FiChevronRight size={14} aria-hidden />
