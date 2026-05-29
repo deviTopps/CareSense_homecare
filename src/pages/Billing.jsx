@@ -18,17 +18,7 @@ import {
 } from '../utils/wallet';
 import './Billing.css';
 
-const ORDER_HISTORY = [
-  { id: '1', date: 'Oct. 21, 2021', type: 'Pro Annual', amount: '£299.00' },
-  { id: '2', date: 'Aug. 21, 2021', type: 'Pro Portfolio', amount: '£149.00' },
-  { id: '3', date: 'July. 21, 2021', type: 'Sponsored Post', amount: '£49.00' },
-  { id: '4', date: 'Jun. 21, 2021', type: 'Sponsored Post', amount: '£49.00' },
-  { id: '5', date: 'May. 21, 2021', type: 'Pro Annual', amount: '£299.00' },
-  { id: '6', date: 'Apr. 21, 2021', type: 'Sponsored Post', amount: '£49.00' },
-];
-
-const INITIAL_VISIBLE = 4;
-const PAGE_SIZE = 2;
+const ORDER_HISTORY = [];
 
 function currencySymbolFromUser(user) {
   const currency =
@@ -109,8 +99,6 @@ export default function Billing() {
   const renewalLabel = `Renews on ${formatRenewalDate()}`;
   const currencySymbol = currencySymbolFromUser(user);
 
-  const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE);
-  const [activeOrderId, setActiveOrderId] = useState('2');
   const [statusMessage, setStatusMessage] = useState('');
   const [wallet, setWallet] = useState(() => readWallet(user));
   const [walletLoading, setWalletLoading] = useState(true);
@@ -171,18 +159,6 @@ export default function Billing() {
 
     return undefined;
   }, [loadWallet, showStatus]);
-
-  const visibleOrders = ORDER_HISTORY.slice(0, visibleCount);
-  const canLoadMore = visibleCount < ORDER_HISTORY.length;
-  const totalShown = visibleOrders.length;
-
-  const handleLoadMore = () => {
-    setVisibleCount((count) => Math.min(count + PAGE_SIZE, ORDER_HISTORY.length));
-  };
-
-  const handleDownload = (order) => {
-    showStatus(`Preparing receipt for ${order.type}…`);
-  };
 
   const openTopUp = () => {
     setTopUpError('');
@@ -307,58 +283,63 @@ export default function Billing() {
                 <h2 id="billing-order-history" className="billing-panel__title">Order History</h2>
                 <p className="billing-panel__desc">Manage billing information and view receipts</p>
               </div>
-              <span className="billing-panel__badge">{totalShown} of {ORDER_HISTORY.length}</span>
+              {ORDER_HISTORY.length > 0 ? (
+                <span className="billing-panel__badge">{ORDER_HISTORY.length} orders</span>
+              ) : null}
             </div>
 
-            <div className="billing-order-list" role="table" aria-label="Order history">
-              <div className="billing-order-list__header" role="row">
-                <span role="columnheader">Date</span>
-                <span role="columnheader">Type</span>
-                <span role="columnheader" className="billing-order-list__col-amount">Amount</span>
-                <span role="columnheader" className="billing-order-list__col-action">Receipt</span>
+            {ORDER_HISTORY.length === 0 ? (
+              <div className="billing-order-empty">
+                <p className="billing-order-empty__title">No orders yet</p>
+                <p className="billing-order-empty__text">
+                  When you subscribe or make a payment, your invoices will appear here.
+                </p>
               </div>
+            ) : (
+              <>
+                <div className="billing-order-list" role="table" aria-label="Order history">
+                  <div className="billing-order-list__header" role="row">
+                    <span role="columnheader">Date</span>
+                    <span role="columnheader">Type</span>
+                    <span role="columnheader" className="billing-order-list__col-amount">Amount</span>
+                    <span role="columnheader" className="billing-order-list__col-action">Receipt</span>
+                  </div>
 
-              <ul className="billing-order-list__body">
-                {visibleOrders.map((order, index) => (
-                  <motion.li
-                    key={order.id}
-                    role="row"
-                    className={`billing-order-row${activeOrderId === order.id ? ' is-active' : ''}`}
-                    onMouseEnter={() => setActiveOrderId(order.id)}
-                    onFocus={() => setActiveOrderId(order.id)}
-                    initial={{ opacity: 0, y: 6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.2, delay: index * 0.04 }}
-                  >
-                    <span className="billing-order-row__date" role="cell">{order.date}</span>
-                    <span className="billing-order-row__type" role="cell">
-                      <span className={`billing-type-badge billing-type-badge--${planTypeVariant(order.type)}`}>
-                        {order.type}
-                      </span>
-                    </span>
-                    <span className="billing-order-row__amount billing-order-list__col-amount" role="cell">
-                      {order.amount}
-                    </span>
-                    <span className="billing-order-row__action billing-order-list__col-action" role="cell">
-                      <button
-                        type="button"
-                        className="billing-btn billing-btn--ghost"
-                        onClick={() => handleDownload(order)}
+                  <ul className="billing-order-list__body">
+                    {ORDER_HISTORY.map((order, index) => (
+                      <motion.li
+                        key={order.id}
+                        role="row"
+                        className="billing-order-row"
+                        initial={{ opacity: 0, y: 6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.2, delay: index * 0.04 }}
                       >
-                        <FiDownload size={14} aria-hidden />
-                        Download
-                      </button>
-                    </span>
-                  </motion.li>
-                ))}
-              </ul>
-            </div>
-
-            {canLoadMore ? (
-              <button type="button" className="billing-load-more" onClick={handleLoadMore}>
-                Load more
-              </button>
-            ) : null}
+                        <span className="billing-order-row__date" role="cell">{order.date}</span>
+                        <span className="billing-order-row__type" role="cell">
+                          <span className={`billing-type-badge billing-type-badge--${planTypeVariant(order.type)}`}>
+                            {order.type}
+                          </span>
+                        </span>
+                        <span className="billing-order-row__amount billing-order-list__col-amount" role="cell">
+                          {order.amount}
+                        </span>
+                        <span className="billing-order-row__action billing-order-list__col-action" role="cell">
+                          <button
+                            type="button"
+                            className="billing-btn billing-btn--ghost"
+                            onClick={() => showStatus(`Preparing receipt for ${order.type}…`)}
+                          >
+                            <FiDownload size={14} aria-hidden />
+                            Download
+                          </button>
+                        </span>
+                      </motion.li>
+                    ))}
+                  </ul>
+                </div>
+              </>
+            )}
           </section>
 
           <section className="billing-panel" aria-labelledby="billing-wallet">

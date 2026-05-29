@@ -563,6 +563,27 @@
   white-space: nowrap;
 }
 
+.billing-order-empty {
+  padding: 28px 8px 12px;
+  text-align: center;
+}
+
+.billing-order-empty__title {
+  margin: 0 0 6px;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--billing-text);
+}
+
+.billing-order-empty__text {
+  margin: 0;
+  max-width: 320px;
+  margin-inline: auto;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--billing-muted);
+}
+
 .billing-wallet-empty {
   padding: 14px 4px 2px;
 }
