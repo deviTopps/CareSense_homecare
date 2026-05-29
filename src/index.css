@@ -1,4 +1,4 @@
-﻿/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
    Kulobal Homecare â€” Premium SaaS Design System
    Colors: #45B6FE (primary), #2E7DB8 (secondary), #fff
    â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
@@ -252,12 +252,12 @@ button, input, select, textarea {
 
 .kh-bs-theme .sidebar-brand {
   padding: 12px 12px 10px;
-  min-height: 64px;
+  min-height: 66px;
 }
 
 .kh-bs-theme .sidebar-brand__logo {
-  max-width: 200px;
-  height: 52px;
+  max-width: 210px;
+  height: 56px;
 }
 
 .kh-bs-theme .sidebar-collapse-btn {
@@ -400,7 +400,7 @@ body.sidebar-resizing {
   justify-content: space-between;
   overflow: hidden;
   gap: 12px;
-  min-height: 76px;
+  min-height: 80px;
 }
 
 .sidebar-brand__identity {
@@ -415,8 +415,8 @@ body.sidebar-resizing {
 .sidebar-brand__logo {
   display: block;
   width: 100%;
-  max-width: 220px;
-  height: 58px;
+  max-width: 240px;
+  height: 64px;
   object-fit: contain;
   object-position: left center;
 }
@@ -667,8 +667,8 @@ body.sidebar-resizing {
 }
 
 .sidebar.collapsed .sidebar-brand__logo {
-  max-width: 50px;
-  height: 50px;
+  max-width: 54px;
+  height: 54px;
   object-position: center;
 }
 
@@ -1284,7 +1284,7 @@ body.sidebar-resizing {
   background: var(--bs-primary); color: #fff;
   border: 1px solid var(--bs-primary); border-radius: .5rem; padding: 10px 22px;
   font-size: 14px; font-weight: 700; transition: all 0.2s ease;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.01em; font-family: 'Manrope', sans-serif;
 }
 
 .btn-kh-primary:hover {

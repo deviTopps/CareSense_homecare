@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { FiMenu, FiX } from '../icons/hugeicons-feather';
+import { BRAND_LOGO_SRC } from '../constants/brandAssets';
 import './LandingPage.css';
 
 /* animation presets */
@@ -151,7 +152,7 @@ export default function LandingPage() {
           className="nav-brand"
           onClick={() => setNavOpen(false)}
         >
-          <img src="/Blue_Logo.png" alt="CareSense" className="nav-logo" />
+          <img src={BRAND_LOGO_SRC} alt="CareSense" className="nav-logo" />
         </a>
         <ul
           className="nav-links"
@@ -582,7 +583,7 @@ export default function LandingPage() {
       <footer className="lp-footer">
         <div className="footer-grid">
           <div className="footer-brand">
-            <a href="/"><img src="/Blue_Logo.png" alt="CareSense" className="nav-logo" /></a>
+            <a href="/"><img src={BRAND_LOGO_SRC} alt="CareSense" className="nav-logo" /></a>
             <p>Smart homecare management for agencies, care teams, and healthcare operators.</p>
           </div>
           <div className="footer-col">

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { NavLink } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
+import { BRAND_LOGO_SRC } from '../constants/brandAssets';
 import {
   FiGrid,
   FiCalendar,
@@ -25,21 +26,21 @@ const sidebarGroups = [
   {
     title: 'Menu',
     items: [
-      { to: '/dashboard', icon: FiGrid, label: 'Dashboard' },
-      { to: '/patients', icon: FiActivity, label: 'Patients' },
-      { to: '/workforce', icon: FiUsers, label: 'Nurses' },
-      { to: '/scheduling', icon: FiCalendar, label: 'Care Visits' },
-      { to: '/enquiries', icon: FiMessageCircle, label: 'Enquiries' },
-      { to: '/clinical', icon: FiAlertCircle, label: 'Emergency Cases' },
-      { to: '/attendance', icon: FiClock, label: 'Attendance' },
-      { to: '/reports', icon: FiFolder, label: 'Reports' },
+      { to: '/dashboard', icon: FiGrid, label: 'Dashboard', guideTarget: 'nav-dashboard' },
+      { to: '/patients', icon: FiActivity, label: 'Patients', guideTarget: 'nav-patients' },
+      { to: '/workforce', icon: FiUsers, label: 'Nurses', guideTarget: 'nav-workforce' },
+      { to: '/scheduling', icon: FiCalendar, label: 'Care Visits', guideTarget: 'nav-scheduling' },
+      { to: '/enquiries', icon: FiMessageCircle, label: 'Enquiries', guideTarget: 'nav-enquiries' },
+      { to: '/clinical', icon: FiAlertCircle, label: 'Emergency Cases', guideTarget: 'nav-clinical' },
+      { to: '/attendance', icon: FiClock, label: 'Attendance', guideTarget: 'nav-attendance' },
+      { to: '/reports', icon: FiFolder, label: 'Reports', guideTarget: 'nav-reports' },
     ],
   },
   {
     title: 'Account',
     items: [
-      { to: '/account', icon: FiSettings, label: 'Settings' },
-      { to: '/billing', icon: FiCreditCard, label: 'Billing' },
+      { to: '/account', icon: FiSettings, label: 'Settings', guideTarget: 'nav-account' },
+      { to: '/billing', icon: FiCreditCard, label: 'Billing', guideTarget: 'nav-billing' },
     ],
   },
 ];
@@ -144,7 +145,7 @@ export default function Sidebar({
           <div className="sidebar-brand">
             <div className="sidebar-brand__identity">
               <img
-                src={isCollapsed ? '/Blue_Logo Only.png' : '/Blue_Logo.png'}
+                src={BRAND_LOGO_SRC}
                 alt="CareSense"
                 className="sidebar-brand__logo"
               />
@@ -175,6 +176,7 @@ export default function Sidebar({
                         className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`}
                         onClick={onClose}
                         title={item.label}
+                        {...(item.guideTarget ? { 'data-guide': item.guideTarget } : {})}
                       >
                         <span className="icon"><Icon size={18} /></span>
                         <span className="sidebar-link-label">{item.label}</span>

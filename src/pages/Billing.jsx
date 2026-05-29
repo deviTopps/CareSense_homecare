@@ -84,10 +84,10 @@ function writeWallet(user, wallet) {
 function resolvePlanLabel(user) {
   const raw = user?.plan ?? user?.subscriptionPlan ?? user?.planName ?? user?.tier ?? user?.agency?.plan;
   if (raw && typeof raw === 'object') {
-    return String(raw.name || raw.label || raw.title || 'Pro Annual').trim() || 'Pro Annual';
+    return String(raw.name || raw.label || raw.title || 'Standard Plan').trim() || 'Standard Plan';
   }
   const label = String(raw || '').trim();
-  return label || 'Pro Annual';
+  return label || 'Standard Plan';
 }
 
 function formatRenewalDate() {
@@ -105,7 +105,7 @@ function planTypeVariant(type) {
 
 export default function Billing() {
   const user = useMemo(() => getUser(), []);
-  const planName = resolvePlanLabel(user);
+  const planName = 'Standard Plan';
   const renewalLabel = `Renews on ${formatRenewalDate()}`;
   const currencySymbol = currencySymbolFromUser(user);
 

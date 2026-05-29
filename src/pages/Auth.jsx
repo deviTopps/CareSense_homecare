@@ -12,6 +12,7 @@ import {
   FiFileText,
 } from '../icons/hugeicons-feather';
 import { API_BASE } from '../api';
+import { BRAND_LOGO_SRC } from '../constants/brandAssets';
 import './Auth.css';
 
 const HERO_FEATURES = [
@@ -182,7 +183,7 @@ export default function Auth({ onLogin }) {
           <div className="auth-split-hero__overlay" aria-hidden />
           <div className="auth-split-hero__content">
             <div className="auth-split-hero__brand">
-              <img src="/Blue_Logo.png" alt="CareSense" className="auth-split-hero__logo" />
+              <img src={BRAND_LOGO_SRC} alt="CareSense" className="auth-split-hero__logo" />
             </div>
             <div className="auth-split-hero__text">
               <p className="auth-split-hero__kicker">CareSense Homecare</p>

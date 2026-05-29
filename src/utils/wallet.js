@@ -165,3 +165,70 @@ export async function depositWallet({
     raw: data,
   };
 }
+
+function resolvePaymentRecord(payload) {
+  const root = payload && typeof payload === 'object' ? payload : {};
+  if (root.payment && typeof root.payment === 'object') return root.payment;
+  if (root.data && typeof root.data === 'object') {
+    if (root.data.payment && typeof root.data.payment === 'object') return root.data.payment;
+    if (!Array.isArray(root.data)) return root.data;
+  }
+  return root;
+}
+
+export function normalizePaymentVerification(payload, reference = '') {
+  const root = payload && typeof payload === 'object' ? payload : {};
+  const payment = resolvePaymentRecord(payload);
+
+  const amount = Number(
+    payment.amount
+    ?? payment.paidAmount
+    ?? payment.paid_amount
+    ?? root.amount
+    ?? root.data?.amount,
+  );
+
+  const status = String(payment.status || root.status || root.data?.status || '').toLowerCase();
+  const verified = root.success === true
+    || root.verified === true
+    || status === 'success'
+    || status === 'successful'
+    || status === 'paid';
+
+  return {
+    verified,
+    reference: String(
+      payment.reference
+      || payment.transactionReference
+      || root.reference
+      || reference,
+    ).trim(),
+    amount: Number.isFinite(amount) ? amount : null,
+    message: root.message || root.data?.message || payment.message || '',
+  };
+}
+
+/** POST /wallet/payments/verify — confirm Paystack payment using callback reference. */
+export async function verifyWalletPayment(reference) {
+  const ref = String(reference || '').trim();
+  if (!ref) throw new Error('Payment reference is missing.');
+
+  const response = await apiFetch('/wallet/payments/verify', {
+    method: 'POST',
+    body: JSON.stringify({ reference: ref }),
+  });
+
+  const responseText = await response.text().catch(() => '');
+  const data = parseJsonResponse(response, responseText);
+  const result = normalizePaymentVerification(data, ref);
+
+  if (!response.ok) {
+    throw new Error(data?.message || data?.error || 'Unable to verify payment.');
+  }
+
+  if (!result.verified) {
+    throw new Error(result.message || 'Payment could not be verified.');
+  }
+
+  return { ...result, raw: data };
+}

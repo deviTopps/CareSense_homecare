@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'motion/react';
 import { Link, useLocation } from 'react-router-dom';
 import { FiCheckCircle, FiCreditCard, FiArrowLeft } from '../icons/hugeicons-feather';
-import { fetchWallet } from '../utils/wallet';
+import { verifyWalletPayment } from '../utils/wallet';
 import './WalletSuccess.css';
 
 function parseAmount(value) {
@@ -10,59 +10,68 @@ function parseAmount(value) {
   return Number.isFinite(n) ? n : null;
 }
 
-function currencySymbolFromCode(code) {
-  const c = String(code || '').trim().toUpperCase();
-  if (c === 'GHS') return 'GH₵';
-  if (c === 'NGN') return '₦';
-  if (c === 'USD') return '$';
-  if (c === 'EUR') return '€';
-  return '';
+function formatGhs(amount) {
+  const n = typeof amount === 'number' ? amount : Number(amount);
+  if (!Number.isFinite(n)) return 'GH₵0.00';
+  return `GH₵${n.toFixed(2)}`;
 }
 
-function formatMoney(amount, currencyCode) {
-  const n = typeof amount === 'number' ? amount : Number(amount);
-  const symbol = currencySymbolFromCode(currencyCode);
-  if (!Number.isFinite(n)) return `${symbol || ''}0.00`;
-  return `${symbol || ''}${n.toFixed(2)}${symbol ? '' : ` ${String(currencyCode || '').trim().toUpperCase() || ''}`}`.trim();
+function resolvePaymentReference(params) {
+  return String(
+    params.get('reference')
+    || params.get('trxref')
+    || params.get('ref')
+    || '',
+  ).trim();
 }
 
 export default function WalletSuccess() {
   const location = useLocation();
   const params = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const amountParam = parseAmount(params.get('amount'));
-  const currencyParam = String(params.get('currency') || 'GHS').trim().toUpperCase();
-  const reference = String(params.get('reference') || params.get('trxref') || params.get('reference') || '').trim();
+  const reference = resolvePaymentReference(params);
 
-  const [walletAmount, setWalletAmount] = useState(null);
-  const [loadingWallet, setLoadingWallet] = useState(true);
+  const [verifiedAmount, setVerifiedAmount] = useState(null);
+  const [verifying, setVerifying] = useState(true);
+  const [verifyError, setVerifyError] = useState('');
 
   useEffect(() => {
     let mounted = true;
-    setLoadingWallet(true);
-    fetchWallet()
-      .then(({ wallet }) => {
-        if (!mounted) return;
-        const latest = Array.isArray(wallet?.transactions) ? wallet.transactions[0] : null;
-        const latestAmount = Number(latest?.amount);
-        if (Number.isFinite(latestAmount) && latestAmount > 0) {
-          setWalletAmount(latestAmount);
-        }
-      })
-      .catch(() => {
-        // ignore: show query param amount
-      })
-      .finally(() => {
-        if (!mounted) return;
-        setLoadingWallet(false);
-      });
 
+    async function verifyPayment() {
+      if (!reference) {
+        if (!mounted) return;
+        setVerifyError('Missing payment reference. Return to Billing and try again.');
+        setVerifying(false);
+        return;
+      }
+
+      setVerifying(true);
+      setVerifyError('');
+
+      try {
+        const result = await verifyWalletPayment(reference);
+        if (!mounted) return;
+        const amount = result.amount ?? amountParam;
+        if (amount != null) setVerifiedAmount(amount);
+      } catch (error) {
+        if (!mounted) return;
+        setVerifyError(error?.message || 'Unable to verify payment.');
+        if (amountParam != null) setVerifiedAmount(amountParam);
+      } finally {
+        if (mounted) setVerifying(false);
+      }
+    }
+
+    verifyPayment();
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [reference, amountParam]);
 
-  const amountToShow = amountParam ?? walletAmount;
-  const amountLabel = amountToShow != null ? formatMoney(amountToShow, currencyParam) : null;
+  const amountToShow = verifiedAmount ?? amountParam;
+  const amountLabel = amountToShow != null ? formatGhs(amountToShow) : null;
+  const isVerified = !verifying && !verifyError;
 
   return (
     <motion.div
@@ -72,12 +81,24 @@ export default function WalletSuccess() {
       transition={{ duration: 0.22, ease: 'easeOut' }}
     >
       <div className="wallet-success__card">
-        <div className="wallet-success__icon" aria-hidden>
+        <div className={`wallet-success__icon${verifyError ? ' wallet-success__icon--error' : ''}`} aria-hidden>
           <FiCheckCircle size={26} />
         </div>
 
-        <h1 className="wallet-success__title">Payment successful</h1>
-        <p className="wallet-success__subtitle">Your wallet deposit has been confirmed.</p>
+        <h1 className="wallet-success__title">
+          {verifying ? 'Verifying payment…' : isVerified ? 'Payment successful' : 'Verification issue'}
+        </h1>
+        <p className="wallet-success__subtitle">
+          {verifying
+            ? 'Confirming your Paystack payment with CareSense.'
+            : isVerified
+              ? 'Your wallet deposit has been confirmed.'
+              : 'We could not confirm this payment automatically.'}
+        </p>
+
+        {verifyError ? (
+          <div className="wallet-success__error" role="alert">{verifyError}</div>
+        ) : null}
 
         <div className="wallet-success__details">
           <div className="wallet-success__row">
@@ -85,7 +106,7 @@ export default function WalletSuccess() {
               <FiCreditCard size={14} aria-hidden /> Amount paid
             </div>
             <div className="wallet-success__value">
-              {amountLabel || (loadingWallet ? 'Loading…' : '—')}
+              {verifying ? 'Verifying…' : amountLabel || '—'}
             </div>
           </div>
 
@@ -110,4 +131,3 @@ export default function WalletSuccess() {
     </motion.div>
   );
 }
-

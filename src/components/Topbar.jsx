@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useLocation, NavLink } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { FiSearch, FiBell, FiMenu, FiLogOut, FiShield, FiHelpCircle, FiSettings, FiMessageCircle } from '../icons/hugeicons-feather';
+import { useTargetedGuide } from '../context/TargetedGuideContext';
+import { isTargetedGuideDismissed } from '../context/TargetedGuideContext';
 
 function displayNameFromUser(user) {
   if (!user) return 'Account';
@@ -39,6 +41,7 @@ const pageMeta = {
 export default function Topbar({ onToggleSidebar, onLogout, user }) {
   const { pathname } = useLocation();
   const meta = pageMeta[pathname] || pageMeta['/'];
+  const { startGuide } = useTargetedGuide();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef(null);
   const displayName = displayNameFromUser(user);
@@ -61,6 +64,12 @@ export default function Topbar({ onToggleSidebar, onLogout, user }) {
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
   }, [userMenuOpen]);
+
+  useEffect(() => {
+    if (pathname !== '/dashboard' || isTargetedGuideDismissed()) return undefined;
+    const timer = window.setTimeout(() => startGuide(), 800);
+    return () => window.clearTimeout(timer);
+  }, [pathname, startGuide]);
 
   return (
     <motion.header
@@ -119,9 +128,15 @@ export default function Topbar({ onToggleSidebar, onLogout, user }) {
         </NavLink>
         <div className="topbar-divider" aria-hidden="true" />
 
-        <button type="button" className="topbar-text-btn topbar-aux-btn" aria-label="Help">
+        <button
+          type="button"
+          className="topbar-text-btn topbar-aux-btn"
+          aria-label="Open platform guide"
+          data-guide="topbar-guide"
+          onClick={startGuide}
+        >
           <FiHelpCircle size={14} aria-hidden />
-          <span className="topbar-aux-label">Help</span>
+          <span className="topbar-aux-label">Guide</span>
         </button>
         <button type="button" className="topbar-text-btn topbar-aux-btn" aria-label="Policy">
           <FiShield size={14} aria-hidden />

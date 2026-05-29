@@ -23,6 +23,8 @@ import WalletSuccess from './pages/WalletSuccess';
 import Auth from './pages/Auth';
 import LandingPage from './pages/LandingPage';
 import Privacy from './pages/Privacy';
+import { TargetedGuideProvider } from './context/TargetedGuideContext';
+import TargetedGuide from './components/TargetedGuide';
 
 /* ── Protected Route wrapper ── */
 function ProtectedRoute({ isAuthenticated, children }) {
@@ -125,6 +127,7 @@ function App() {
   const { theme, toggleTheme, isDark } = useTheme();
 
   const AuthLayout = ({ children }) => (
+    <TargetedGuideProvider>
     <div
       className={`app-layout kh-bs-theme${sidebarCollapsed ? ' sidebar-collapsed' : ''}`}
       style={sidebarCollapsed ? undefined : { '--kh-sidebar-width': `${sidebarWidth}px` }}
@@ -161,7 +164,9 @@ function App() {
         </AnimatePresence>
         <Footer />
       </div>
+      <TargetedGuide />
     </div>
+    </TargetedGuideProvider>
   );
 
   return (
