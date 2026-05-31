@@ -7439,6 +7439,187 @@ body.sidebar-resizing {
   }
 }
 
+.patients-incomplete-admissions {
+  margin-bottom: 18px;
+  padding: 16px 18px;
+  border-radius: 12px;
+  border: 1px solid #fde68a;
+  background: linear-gradient(180deg, #fffbeb 0%, #ffffff 100%);
+}
+
+.patients-incomplete-admissions__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.patients-incomplete-admissions__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.patients-incomplete-admissions__subtitle {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  color: #64748b;
+}
+
+.patients-incomplete-admissions__count {
+  flex-shrink: 0;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 12px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.patients-incomplete-admissions__list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.patients-incomplete-admissions__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: #fff;
+  border: 1px solid #fde68a;
+}
+
+.patients-incomplete-admissions__item-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.patients-incomplete-admissions__item-main strong {
+  font-size: 13.5px;
+  color: #0f172a;
+}
+
+.patients-incomplete-admissions__item-main span {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.patients-incomplete-admissions__cta {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 8px;
+  background: #45b6fe;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.patients-incomplete-admissions__cta:hover {
+  background: #2578b8;
+}
+
+.patients-incomplete-pill {
+  display: inline-flex;
+  margin-top: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.patients-admission-error {
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid #fecaca;
+  background: #fef2f2;
+  color: #b91c1c;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.patient-profile-admission-resume {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0 0 18px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid #fde68a;
+  background: linear-gradient(180deg, #fffbeb 0%, #ffffff 100%);
+}
+
+.patient-profile-admission-resume__copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.patient-profile-admission-resume__copy strong {
+  font-size: 14px;
+  color: #0f172a;
+}
+
+.patient-profile-admission-resume__copy span {
+  font-size: 12.5px;
+  color: #64748b;
+}
+
+.patient-profile-admission-resume__cta {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 14px;
+  border: none;
+  border-radius: 8px;
+  background: #45b6fe;
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.patient-profile-admission-resume__cta:hover {
+  background: #2578b8;
+}
+
+@media (max-width: 768px) {
+  .patients-incomplete-admissions__item,
+  .patient-profile-admission-resume {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .patients-incomplete-admissions__cta,
+  .patient-profile-admission-resume__cta {
+    justify-content: center;
+  }
+}
+
 /* â”€â”€ Quick links â”€â”€ */
 .db2-quick-links {
   margin-bottom: 24px;

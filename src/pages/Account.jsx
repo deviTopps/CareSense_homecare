@@ -1,18 +1,15 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   FiLock,
-  FiSave,
   FiTrash2,
   FiAlertTriangle,
   FiX,
-  FiSettings,
-  FiCreditCard,
-  FiEye,
-  FiBell,
-  FiShield,
   FiUpload,
+  FiShield,
+  FiCamera,
 } from '../icons/hugeicons-feather';
 import { getUser, changePassword, apiFetch } from '../api';
+import './Account.css';
 
 const fontStack = "'Poppins', -apple-system, BlinkMacSystemFont, sans-serif'";
 
@@ -134,22 +131,36 @@ function getInitials(user) {
   return '?';
 }
 
-const SETTINGS_NAV = [
-  { key: 'account', tabKey: 'forms', label: 'Account settings', Icon: FiSettings },
-  { key: 'billing', tabKey: 'billing', label: 'Billing & Subscription', Icon: FiCreditCard },
-  { key: 'appearance', tabKey: 'appearance', label: 'Appearance', Icon: FiEye },
-  { key: 'notifications', tabKey: 'notifications', label: 'Notifications', Icon: FiBell },
-  { key: 'privacy', tabKey: 'privacy', label: 'Privacy & Data', Icon: FiShield },
+const SETTINGS_SECTIONS = [
+  { id: 'settings-section-profile', label: 'Agency profile', Icon: FiCamera },
+  { id: 'settings-section-security', label: 'Security', Icon: FiShield },
+  { id: 'settings-section-password', label: 'Password', Icon: FiLock },
+  { id: 'settings-section-danger', label: 'Delete account', Icon: FiAlertTriangle },
 ];
 
-function SettingsSection({ id, title, subtitle, children, className = '' }) {
+function SettingsSection({
+  id,
+  title,
+  subtitle,
+  children,
+  className = '',
+  icon: Icon,
+  iconTone = 'default',
+}) {
   return (
-    <section id={id} className={['settings-section-v2', className].filter(Boolean).join(' ')}>
-      <div className="settings-section-v2__head">
-        <h2 className="settings-section-v2__title">{title}</h2>
-        {subtitle ? <p className="settings-section-v2__subtitle">{subtitle}</p> : null}
+    <section id={id} className={['settings-section-v3', className].filter(Boolean).join(' ')}>
+      <div className="settings-section-v3__head">
+        {Icon ? (
+          <span className={`settings-section-v3__icon${iconTone !== 'default' ? ` settings-section-v3__icon--${iconTone}` : ''}`}>
+            <Icon size={20} strokeWidth={1.75} aria-hidden />
+          </span>
+        ) : null}
+        <div className="settings-section-v3__head-copy">
+          <h2 className="settings-section-v3__title">{title}</h2>
+          {subtitle ? <p className="settings-section-v3__subtitle">{subtitle}</p> : null}
+        </div>
       </div>
-      <div className="settings-section-v2__body">{children}</div>
+      <div className="settings-section-v3__body">{children}</div>
     </section>
   );
 }
@@ -221,7 +232,6 @@ export default function Account() {
 
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
   const [loginAlertEnabled, setLoginAlertEnabled] = useState(true);
-  const [settingsTab, setSettingsTab] = useState('forms');
   const [agencyLogoPreview, setAgencyLogoPreview] = useState(
     persistedLogo?.previewUrl || user?.agencyLogoUrl || user?.logoUrl || user?.agencyLogo || '',
   );
@@ -392,99 +402,117 @@ export default function Account() {
   };
 
   const profileDisplayName = [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim() || '—';
+  const [activeSection, setActiveSection] = useState('settings-section-profile');
 
-  const scrollToProfileSection = useCallback(() => {
-    document.getElementById('settings-section-profile')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const scrollToSection = useCallback((sectionId) => {
+    setActiveSection(sectionId);
+    document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
+
+  useEffect(() => {
+    const sectionIds = SETTINGS_SECTIONS.map((s) => s.id);
+    const onScroll = () => {
+      const offset = 120;
+      let current = sectionIds[0];
+      for (const id of sectionIds) {
+        const el = document.getElementById(id);
+        if (el && el.getBoundingClientRect().top <= offset) {
+          current = id;
+        }
+      }
+      setActiveSection(current);
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+    return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
   return (
-    <div className="page-wrapper account-settings-page account-settings-page--v2" style={{ fontFamily: fontStack }}>
-      <div className="settings-shell-v2">
-        <header className="settings-shell-v2__header">
-          <div>
-            <h1 className="settings-shell-v2__title">Settings</h1>
-            <p className="settings-shell-v2__subtitle">
-              {user?.email || 'Signed in'}
-              {user?.role ? ` · ${user.role}` : ''}
+    <div className="page-wrapper account-settings-page account-settings-page--v3" style={{ fontFamily: fontStack }}>
+      <div className="settings-page">
+        <header className="settings-page__hero">
+          <div className="settings-page__hero-main">
+            <span className="settings-page__kicker">Workspace</span>
+            <h1 className="settings-page__title">Settings</h1>
+            <p className="settings-page__lead">
+              Manage your agency profile, sign-in security, and account access in one place.
             </p>
           </div>
-          <button type="button" className="settings-shell-v2__save-btn" onClick={scrollToProfileSection}>
-            <FiSave size={16} strokeWidth={2} aria-hidden />
-            Save changes
-          </button>
+          <div className="settings-page__user-chip">
+            <div className="settings-page__user-avatar" aria-hidden>{initials}</div>
+            <div>
+              <p className="settings-page__user-name">{profileDisplayName}</p>
+              <p className="settings-page__user-email">{user?.email || '—'}</p>
+              {user?.role ? <span className="settings-page__role-badge">{user.role}</span> : null}
+            </div>
+          </div>
         </header>
 
-        <div className="settings-nav-v2" role="tablist" aria-label="Settings sections">
-          {SETTINGS_NAV.map((item) => {
-            const isActive = settingsTab === item.tabKey;
-            return (
+        <div className="settings-page__grid">
+          <nav className="settings-page__nav" aria-label="Settings sections">
+            <span className="settings-page__nav-label">On this page</span>
+            {SETTINGS_SECTIONS.map((item) => (
               <button
-                key={item.key}
+                key={item.id}
                 type="button"
-                role="tab"
-                id={`settings-tab-${item.key}`}
-                className={`settings-nav-v2__tab${isActive ? ' is-active' : ''}`}
-                aria-selected={isActive}
-                aria-controls={`account-panel-${item.tabKey}`}
-                tabIndex={isActive ? 0 : -1}
-                onClick={() => setSettingsTab(item.tabKey)}
+                className={`settings-page__nav-link${activeSection === item.id ? ' is-active' : ''}`}
+                onClick={() => scrollToSection(item.id)}
               >
-                <item.Icon size={18} strokeWidth={1.75} aria-hidden />
-                <span>{item.label}</span>
+                <item.Icon size={16} strokeWidth={1.75} aria-hidden />
+                {item.label}
               </button>
-            );
-          })}
-        </div>
+            ))}
+          </nav>
 
-        <div
-          id="account-panel-forms"
-          role="tabpanel"
-          aria-labelledby="settings-tab-account"
-          hidden={settingsTab !== 'forms'}
-          className="settings-shell-v2__panel"
-        >
-          <div className="settings-shell-v2__content">
+          <main className="settings-page__main">
             <SettingsSection
               id="settings-section-profile"
-              title="Agency Information"
-              subtitle="Manage your agency details, contact information, and branding."
+              icon={FiCamera}
+              title="Agency profile"
+              subtitle="Your organisation details, contact information, and branding."
             >
-              <div className="settings-profile-avatar-row">
-                <div
-                  className={`settings-profile-avatar-v2 settings-profile-avatar-v2--logo${agencyLogoPreview ? ' settings-profile-avatar-v2--has-logo' : ''}${agencyLogoUploading ? ' is-uploading' : ''}`}
-                >
-                  {agencyLogoPreview ? (
-                    <img src={agencyLogoPreview} alt="Agency logo preview" className="settings-profile-logo-img" />
-                  ) : (
-                    <span aria-hidden>{initials}</span>
-                  )}
+              <div className="settings-brand-card">
+                <div className="settings-brand-card__preview">
+                  <div
+                    className={`settings-profile-avatar-v2 settings-profile-avatar-v2--logo${agencyLogoPreview ? ' settings-profile-avatar-v2--has-logo' : ''}${agencyLogoUploading ? ' is-uploading' : ''}`}
+                  >
+                    {agencyLogoPreview ? (
+                      <img src={agencyLogoPreview} alt="Agency logo" className="settings-profile-logo-img" />
+                    ) : (
+                      <span aria-hidden>{initials}</span>
+                    )}
+                  </div>
                 </div>
-                <div className="settings-profile-avatar-actions">
-                  <input
-                    ref={agencyLogoInputRef}
-                    type="file"
-                    accept="image/*"
-                    onChange={handleAgencyLogoInput}
-                    className="settings-hidden-file-input"
-                    aria-label="Upload agency logo"
-                  />
-                  <button
-                    type="button"
-                    className="settings-link-btn-v2 settings-link-btn-v2--accent"
-                    disabled={agencyLogoUploading}
-                    onClick={() => agencyLogoInputRef.current?.click()}
-                  >
-                    <FiUpload size={14} strokeWidth={2} aria-hidden />
-                    {agencyLogoUploading ? 'Uploading...' : 'Upload logo'}
-                  </button>
-                  <button
-                    type="button"
-                    className="settings-link-btn-v2 settings-link-btn-v2--muted"
-                    disabled={!agencyLogoPreview || agencyLogoUploading}
-                    onClick={handleAgencyLogoRemove}
-                  >
-                    Remove
-                  </button>
+                <div className="settings-brand-card__copy">
+                  <strong>Agency logo</strong>
+                  <p>PNG or JPG recommended. Large files are optimised automatically before upload.</p>
+                  <div className="settings-brand-card__actions">
+                    <input
+                      ref={agencyLogoInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleAgencyLogoInput}
+                      className="settings-hidden-file-input"
+                      aria-label="Upload agency logo"
+                    />
+                    <button
+                      type="button"
+                      className="settings-link-btn-v2 settings-link-btn-v2--accent"
+                      disabled={agencyLogoUploading}
+                      onClick={() => agencyLogoInputRef.current?.click()}
+                    >
+                      <FiUpload size={14} strokeWidth={2} aria-hidden />
+                      {agencyLogoUploading ? 'Uploading…' : 'Upload logo'}
+                    </button>
+                    <button
+                      type="button"
+                      className="settings-link-btn-v2 settings-link-btn-v2--muted"
+                      disabled={!agencyLogoPreview || agencyLogoUploading}
+                      onClick={handleAgencyLogoRemove}
+                    >
+                      Remove
+                    </button>
+                  </div>
                 </div>
               </div>
               {agencyLogoError ? (
@@ -497,55 +525,61 @@ export default function Account() {
                   {agencyLogoSuccess}
                 </div>
               ) : null}
-              {agencyLogoAsset?.objectKey ? (
-                <p className="settings-inline-meta">Stored media key: {agencyLogoAsset.objectKey}</p>
-              ) : null}
 
-              <SettingsFormRow label="Name" htmlFor="settings-profile-fullname">
-                <input
-                  id="settings-profile-fullname"
-                  className="settings-input-v2"
-                  type="text"
-                  defaultValue={profileDisplayName === '—' ? '' : profileDisplayName}
-                  placeholder="Full name"
-                  autoComplete="name"
-                />
-              </SettingsFormRow>
-              <SettingsFormRow label="Email" htmlFor="settings-profile-email">
-                <input
-                  id="settings-profile-email"
-                  className="settings-input-v2"
-                  type="email"
-                  defaultValue={user?.email || ''}
-                  placeholder="you@agency.com"
-                  autoComplete="email"
-                />
-              </SettingsFormRow>
-              <SettingsFormRow label="Phone number" htmlFor="settings-profile-phone">
-                <input
-                  id="settings-profile-phone"
-                  className="settings-input-v2"
-                  type="tel"
-                  defaultValue={user?.phone || ''}
-                  placeholder="+233 00 000 0000"
-                  autoComplete="tel"
-                />
-              </SettingsFormRow>
-              <SettingsFormRow label="Role" htmlFor="settings-profile-role">
-                <input
-                  id="settings-profile-role"
-                  className="settings-input-v2"
-                  type="text"
-                  defaultValue={user?.role || ''}
-                  placeholder="Role"
-                  disabled
-                />
-              </SettingsFormRow>
+              <div className="settings-form-grid">
+                <SettingsFormRow label="Full name" htmlFor="settings-profile-fullname">
+                  <input
+                    id="settings-profile-fullname"
+                    className="settings-input-v2"
+                    type="text"
+                    defaultValue={profileDisplayName === '—' ? '' : profileDisplayName}
+                    placeholder="Full name"
+                    autoComplete="name"
+                  />
+                </SettingsFormRow>
+                <SettingsFormRow label="Email" htmlFor="settings-profile-email">
+                  <input
+                    id="settings-profile-email"
+                    className="settings-input-v2"
+                    type="email"
+                    defaultValue={user?.email || ''}
+                    placeholder="you@agency.com"
+                    autoComplete="email"
+                  />
+                </SettingsFormRow>
+                <SettingsFormRow label="Phone" htmlFor="settings-profile-phone">
+                  <input
+                    id="settings-profile-phone"
+                    className="settings-input-v2"
+                    type="tel"
+                    defaultValue={user?.phone || ''}
+                    placeholder="+233 00 000 0000"
+                    autoComplete="tel"
+                  />
+                </SettingsFormRow>
+                <SettingsFormRow label="Role" htmlFor="settings-profile-role">
+                  <input
+                    id="settings-profile-role"
+                    className="settings-input-v2"
+                    type="text"
+                    defaultValue={user?.role || ''}
+                    placeholder="Role"
+                    disabled
+                    aria-describedby="settings-profile-role-hint"
+                  />
+                </SettingsFormRow>
+              </div>
+              <p id="settings-profile-role-hint" className="settings-inline-meta" style={{ marginTop: 12 }}>
+                Role is assigned by your organisation administrator.
+              </p>
             </SettingsSection>
 
             <SettingsSection
+              id="settings-section-security"
+              icon={FiShield}
+              iconTone="security"
               title="Security"
-              subtitle="Extra safeguards for your workspace sign-in (preferences are stored on this device until the API is connected)."
+              subtitle="Extra sign-in safeguards. Preferences are stored on this device until connected to the server."
             >
               <SettingsToggleRow
                 htmlId="settings-2fa"
@@ -564,28 +598,27 @@ export default function Account() {
             </SettingsSection>
 
             <SettingsSection
-              title="Password management"
+              id="settings-section-password"
+              icon={FiLock}
+              iconTone="password"
+              title="Password"
               subtitle="Update the password you use to sign in to CareSense."
             >
-              <div
-                className="settings-password-note"
-                id="account-password-instructions"
-                role="note"
-              >
-                <p className="settings-password-note__title">Password requirements</p>
-                <ul className="settings-password-note__list">
+              <div className="settings-password-panel" id="account-password-instructions" role="note">
+                <p className="settings-password-panel__title">Password requirements</p>
+                <ul className="settings-password-panel__list">
                   <li>At least 8 characters</li>
                   <li>Use a mix of letters, numbers, or symbols where possible</li>
                   <li>New password and confirmation must match</li>
                 </ul>
               </div>
               {passwordError ? (
-                <div className="account-settings-alert account-settings-alert--error mb-3" role="alert">
+                <div className="account-settings-alert account-settings-alert--error" role="alert">
                   {passwordError}
                 </div>
               ) : null}
               {passwordSuccess ? (
-                <div className="account-settings-alert account-settings-alert--success mb-3" role="status">
+                <div className="account-settings-alert account-settings-alert--success" role="status">
                   {passwordSuccess}
                 </div>
               ) : null}
@@ -611,7 +644,7 @@ export default function Account() {
                   autoComplete="new-password"
                 />
               </SettingsFormRow>
-              <SettingsFormRow label="Confirm new password" htmlFor="account-confirm-password">
+              <SettingsFormRow label="Confirm password" htmlFor="account-confirm-password">
                 <input
                   id="account-confirm-password"
                   className="settings-input-v2"
@@ -622,7 +655,7 @@ export default function Account() {
                   autoComplete="new-password"
                 />
               </SettingsFormRow>
-              <div className="settings-section-v2__actions">
+              <div className="settings-section-v3__actions">
                 <button
                   type="button"
                   className="settings-shell-v2__action-primary"
@@ -635,135 +668,30 @@ export default function Account() {
               </div>
             </SettingsSection>
 
-          </div>
-        </div>
-
-        {/* ── Billing tab ── */}
-        <div
-          id="account-panel-billing"
-          role="tabpanel"
-          aria-labelledby="settings-tab-billing"
-          hidden={settingsTab !== 'billing'}
-          className="settings-shell-v2__panel"
-        >
-          <div className="settings-shell-v2__content">
-            <SettingsSection title="Plan & subscription" subtitle="View your current plan and manage your subscription.">
-              <SettingsFormRow label="Current plan">
-                <div className="settings-plan-badge">Free</div>
-              </SettingsFormRow>
-              <SettingsFormRow label="Billing cycle">
-                <span className="settings-meta-text">Monthly</span>
-              </SettingsFormRow>
-              <SettingsFormRow label="Next invoice">
-                <span className="settings-meta-text">—</span>
-              </SettingsFormRow>
-            </SettingsSection>
-            <SettingsSection title="Payment method" subtitle="Add or update your payment details.">
-              <div className="settings-empty-state">
-                <FiCreditCard size={32} strokeWidth={1.5} />
-                <p>No payment method on file.</p>
-                <button type="button" className="settings-shell-v2__action-primary">Add payment method</button>
+            <section id="settings-section-danger" className="settings-danger-card" aria-labelledby="settings-danger-title">
+              <div className="settings-danger-card__inner">
+                <div className="settings-danger-card__icon-wrap">
+                  <span className="settings-danger-card__icon" aria-hidden>
+                    <FiAlertTriangle size={20} strokeWidth={1.75} />
+                  </span>
+                  <div>
+                    <h2 id="settings-danger-title" className="settings-danger-card__title">Delete account</h2>
+                    <p className="settings-danger-card__text">
+                      Permanently remove your workspace, patients, nurses, and all associated data. This cannot be undone.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="settings-danger-card__btn"
+                  onClick={() => setShowDeleteModal(true)}
+                >
+                  Delete account
+                </button>
               </div>
-            </SettingsSection>
-          </div>
+            </section>
+          </main>
         </div>
-
-        {/* ── Appearance tab ── */}
-        <div
-          id="account-panel-appearance"
-          role="tabpanel"
-          aria-labelledby="settings-tab-appearance"
-          hidden={settingsTab !== 'appearance'}
-          className="settings-shell-v2__panel"
-        >
-          <div className="settings-shell-v2__content">
-            <SettingsSection title="Theme" subtitle="Choose how CareSense looks for you.">
-              <SettingsFormRow label="Color theme" htmlFor="settings-theme">
-                <select id="settings-theme" className="settings-select-v2" defaultValue="system">
-                  <option value="light">Light</option>
-                  <option value="dark">Dark</option>
-                  <option value="system">System default</option>
-                </select>
-              </SettingsFormRow>
-            </SettingsSection>
-            <SettingsSection title="Display" subtitle="Adjust layout and density preferences.">
-              <SettingsToggleRow
-                htmlId="settings-compact"
-                label="Compact mode"
-                description="Reduce spacing and padding across the interface."
-                checked={false}
-                onChange={() => {}}
-              />
-              <SettingsToggleRow
-                htmlId="settings-animations"
-                label="Reduce animations"
-                description="Minimise motion effects throughout the app."
-                checked={false}
-                onChange={() => {}}
-              />
-            </SettingsSection>
-          </div>
-        </div>
-
-        {/* ── Notifications tab ── */}
-        <div
-          id="account-panel-notifications"
-          role="tabpanel"
-          aria-labelledby="settings-tab-notifications"
-          hidden={settingsTab !== 'notifications'}
-          className="settings-shell-v2__panel"
-        >
-          <div className="settings-shell-v2__content">
-            <SettingsSection title="Email notifications" subtitle="Control which emails CareSense sends you.">
-              <SettingsToggleRow htmlId="notif-scheduling" label="Scheduling updates" description="When visits are created, modified, or cancelled." checked={true} onChange={() => {}} />
-              <SettingsToggleRow htmlId="notif-patient" label="Patient alerts" description="Critical patient status changes and vital alerts." checked={true} onChange={() => {}} />
-              <SettingsToggleRow htmlId="notif-billing" label="Billing reminders" description="Invoice and payment-related notifications." checked={false} onChange={() => {}} />
-              <SettingsToggleRow htmlId="notif-weekly" label="Weekly summary" description="A digest of key metrics delivered every Monday." checked={true} onChange={() => {}} />
-            </SettingsSection>
-            <SettingsSection title="Push notifications" subtitle="Browser and mobile push alerts.">
-              <SettingsToggleRow htmlId="notif-push-enabled" label="Enable push notifications" description="Receive real-time alerts in your browser." checked={false} onChange={() => {}} />
-            </SettingsSection>
-          </div>
-        </div>
-
-        {/* ── Privacy & Data tab ── */}
-        <div
-          id="account-panel-privacy"
-          role="tabpanel"
-          aria-labelledby="settings-tab-privacy"
-          hidden={settingsTab !== 'privacy'}
-          className="settings-shell-v2__panel"
-        >
-          <div className="settings-shell-v2__content">
-            <SettingsSection title="Data management" subtitle="Control how your data is stored and shared.">
-              <SettingsToggleRow htmlId="privacy-analytics" label="Usage analytics" description="Help us improve CareSense by sending anonymous usage data." checked={true} onChange={() => {}} />
-              <SettingsToggleRow htmlId="privacy-crash" label="Crash reports" description="Automatically send error reports to help us fix bugs." checked={true} onChange={() => {}} />
-            </SettingsSection>
-            <SettingsSection title="Data export" subtitle="Download a copy of your workspace data.">
-              <div className="settings-empty-state">
-                <FiShield size={32} strokeWidth={1.5} />
-                <p>Request a full export of your organisation data in CSV format.</p>
-                <button type="button" className="settings-shell-v2__action-primary">Request data export</button>
-              </div>
-            </SettingsSection>
-          </div>
-        </div>
-
-        <section className="account-delete-zone" aria-labelledby="account-delete-zone-title">
-          <div className="account-delete-zone__content">
-            <h2 id="account-delete-zone-title" className="account-delete-zone__title">Delete account</h2>
-            <p className="account-delete-zone__text">
-              Permanently remove your workspace, patients, nurses, and all associated data.
-            </p>
-          </div>
-          <button
-            type="button"
-            className="account-delete-zone__btn"
-            onClick={() => setShowDeleteModal(true)}
-          >
-            Delete account
-          </button>
-        </section>
       </div>
 
       {showDeleteModal && (

@@ -125,6 +125,23 @@ export function getAdmissionDraft(patientId) {
   return entry;
 }
 
+export function findAdmissionDraftForPatient(patient) {
+  const candidates = [
+    patient?.patientId,
+    patient?.profileRouteId,
+    patient?.uuid,
+    patient?.recordId,
+    patient?.id,
+  ];
+
+  for (const candidate of candidates) {
+    const draft = getAdmissionDraft(candidate);
+    if (draft) return draft;
+  }
+
+  return null;
+}
+
 export function upsertAdmissionDraft({
   patientId,
   form,

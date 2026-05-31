@@ -28,6 +28,8 @@ import {
   resolvePatientMutationId,
 } from '../utils/patients';
 import { invalidateMedicalReportsCache } from '../utils/medicalReports';
+import { findAdmissionDraftForPatient } from '../utils/admissionDrafts';
+import { ADMISSION_SECTION_COUNT } from '../utils/admissionResume';
 import {
   buildDailyCarePlanChecklistPath,
   fetchPatientCompletedDailyCarePlans,
@@ -7214,6 +7216,29 @@ export default function PatientProfile() {
   const hasInitialVitalsData = hasMeaningfulSectionData(p.sectionInitialVitals);
   const patientStatusLabel = formatStatusLabel(p.status);
   const patientStatusClass = p.status === 'active' ? ' is-active' : ' is-pending';
+  const admissionDraft = findAdmissionDraftForPatient({
+    patientId: effectivePatientId,
+    profileRouteId: effectivePatientId,
+    id: p.id,
+  });
+  const completedAdmissionSections = [
+    Boolean(String(p.regNo || p.name || '').trim()),
+    hasNextOfKinData,
+    hasAdmissionChecklistData,
+    hasMedicalHistoryData,
+    hasCommunicationData,
+    hasInfectionControlData,
+    hasBreathPainData,
+    hasSleepNutritionData,
+    hasHygienePsychData,
+    hasSkinMobilityData,
+    hasInitialVitalsData,
+  ].filter(Boolean).length;
+  const showAdmissionResumeBanner = Boolean(
+    admissionDraft
+    || (completedAdmissionSections > 0 && completedAdmissionSections < ADMISSION_SECTION_COUNT),
+  );
+  const admissionResumeProgress = admissionDraft?.completedTabs?.length || completedAdmissionSections;
   const patientProfileDetails = [
     { label: 'Patient ID', value: p.id || '—' },
     { label: 'Date of Birth', value: p.dob || '—' },
@@ -7584,6 +7609,24 @@ export default function PatientProfile() {
             aria-label="Dismiss save alert"
           >
             <FiX size={16} />
+          </button>
+        </div>
+      )}
+      {showAdmissionResumeBanner && (
+        <div className="patient-profile-admission-resume">
+          <div className="patient-profile-admission-resume__copy">
+            <strong>Admission form incomplete</strong>
+            <span>
+              {admissionResumeProgress} of {ADMISSION_SECTION_COUNT} sections saved. Continue the client admission form where you left off.
+            </span>
+          </div>
+          <button
+            type="button"
+            className="patient-profile-admission-resume__cta"
+            onClick={() => navigate(`/patients?resume=${encodeURIComponent(effectivePatientId)}`)}
+          >
+            Continue admission
+            <FiChevronRight size={14} />
           </button>
         </div>
       )}

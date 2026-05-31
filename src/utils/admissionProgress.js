@@ -109,6 +109,35 @@ async function postOrPatch(postJson, patchJson, path, body) {
 
 const yesNo = (value) => (value === true ? 'Yes' : value === false ? 'No' : '');
 
+function hygienePsychBool(value) {
+  return value === true || value === false ? value : false;
+}
+
+export function buildHygienePsychologicalAdmissionPayload(form, patientId) {
+  return {
+    patientId,
+    personal: {
+      hygieneNeeds: hygienePsychBool(form.hygienePsych.personal.hygieneNeeds),
+      mouthCarePlan: hygienePsychBool(form.hygienePsych.personal.mouthCarePlan),
+      diabeteFoot: hygienePsychBool(form.hygienePsych.personal.diabeteFoot),
+    },
+    bladderBowel: {
+      bladderDysfunction: hygienePsychBool(form.hygienePsych.bladderBowel.bladderDysfunction),
+      catheterDescription: String(form.hygienePsych.bladderBowel.catheterDescription || ''),
+      catheterPlan: hygienePsychBool(form.hygienePsych.bladderBowel.catheterPlan),
+      incontinentPads: hygienePsychBool(form.hygienePsych.bladderBowel.incontinentPads),
+    },
+    psychologicalNeeds: {
+      psychologicalNeeds: hygienePsychBool(form.hygienePsych.psychologicalNeeds.psychologicalNeeds),
+      depressionHistory: hygienePsychBool(form.hygienePsych.psychologicalNeeds.depressionHistory),
+      anxietyhistory: hygienePsychBool(form.hygienePsych.psychologicalNeeds.anxietyhistory),
+      anxietyHistory: hygienePsychBool(form.hygienePsych.psychologicalNeeds.anxietyhistory),
+      signDementia: hygienePsychBool(form.hygienePsych.psychologicalNeeds.signDementia),
+      psychologicalNotes: String(form.hygienePsych.psychologicalNeeds.psychologicalNotes || ''),
+    },
+  };
+}
+
 export async function saveAdmissionTab(tabKey, form, patientId, api = createAdmissionApiHelpers()) {
   const { postJson, patchJson } = api;
   let resolvedPatientId = String(patientId || '').trim();
@@ -257,32 +286,12 @@ export async function saveAdmissionTab(tabKey, form, patientId, api = createAdmi
     }
     case 'hygiene': {
       if (!resolvedPatientId) throw new Error('Save personal details first to create the patient record.');
-      const hygienePsychPayload = {
-        patientId: resolvedPatientId,
-        personal: {
-          hygieneNeeds: yesNo(form.hygienePsych.personal.hygieneNeeds),
-          mouthCarePlan: yesNo(form.hygienePsych.personal.mouthCarePlan),
-          diabeteFoot: yesNo(form.hygienePsych.personal.diabeteFoot),
-        },
-        bladderBowel: {
-          bladderDysfunction: yesNo(form.hygienePsych.bladderBowel.bladderDysfunction),
-          catheterDescription: form.hygienePsych.bladderBowel.catheterDescription,
-          catheterPlan: yesNo(form.hygienePsych.bladderBowel.catheterPlan),
-          incontinentPads: yesNo(form.hygienePsych.bladderBowel.incontinentPads),
-        },
-        psychologicalNeeds: {
-          psychologicalNeeds: yesNo(form.hygienePsych.psychologicalNeeds.psychologicalNeeds),
-          depressionHistory: yesNo(form.hygienePsych.psychologicalNeeds.depressionHistory),
-          anxietyhistory: yesNo(form.hygienePsych.psychologicalNeeds.anxietyhistory),
-          signDementia: yesNo(form.hygienePsych.psychologicalNeeds.signDementia),
-          psychologicalNotes: form.hygienePsych.psychologicalNeeds.psychologicalNotes,
-        },
-      };
-      try {
-        await patchJson('/patients/sleep-nutrition', hygienePsychPayload);
-      } catch {
-        await postOrPatch(postJson, patchJson, '/patients/sleep-nutrition', hygienePsychPayload);
-      }
+      await postOrPatch(
+        postJson,
+        patchJson,
+        '/patients/hygiene-psychological',
+        buildHygienePsychologicalAdmissionPayload(form, resolvedPatientId),
+      );
       break;
     }
     case 'skin': {

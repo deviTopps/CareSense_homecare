@@ -5,7 +5,7 @@ import { motion } from 'motion/react';
 import {
   FiPlus, FiSearch, FiX, FiChevronRight, FiChevronLeft, FiChevronDown, FiCheck, FiSave,
   FiChevronsLeft, FiChevronsRight, FiUserPlus, FiCheckCircle, FiInfo, FiDownload, FiUser,
-  FiMoreHorizontal, FiTrash2, FiAlertCircle, FiRefreshCw,
+  FiMoreHorizontal, FiTrash2, FiAlertCircle, FiRefreshCw, FiFileText, FiArrowRight,
 } from '../icons/hugeicons-feather';
 import { apiFetch } from '../api';
 import {
@@ -17,20 +17,75 @@ import {
   resolvePatientMutationId,
 } from '../utils/patients';
 import {
-  buildAdmissionFormFromApiPatient,
   resolveAdmissionResumePatientId,
 } from '../utils/admissionFormFromPatient';
 import {
   collectAdmissionDraftLookupIds,
+  findAdmissionDraftForPatient,
   getAdmissionDraft,
+  listAdmissionDrafts,
   markAdmissionDraftComplete,
   upsertAdmissionDraft,
 } from '../utils/admissionDrafts';
 import {
+  ADMISSION_SECTION_COUNT,
+  buildAdmissionResumeDraft,
+  fetchAdmissionPatientBundle,
+} from '../utils/admissionResume';
+import {
   ADMISSION_TAB_KEYS,
+  buildHygienePsychologicalAdmissionPayload,
   createAdmissionApiHelpers,
   saveAdmissionProgressForTab,
+  saveAdmissionTab,
 } from '../utils/admissionProgress';
+
+function extractPatientRegistrationNumber(patient) {
+  const personal = patient?.personalInfo || patient?.personal || {};
+  return String(
+    personal.registrationNumber
+    || personal.regNo
+    || patient?.registrationNumber
+    || patient?.regNo
+    || patient?.registration_number
+    || '',
+  ).trim();
+}
+
+function buildRegistrationExcludeIds(excludePatientId) {
+  const excludeIds = new Set();
+  const add = (value) => {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (normalized) excludeIds.add(normalized);
+  };
+
+  add(excludePatientId);
+  const draft = getAdmissionDraft(excludePatientId);
+  if (draft) {
+    add(draft.patientId);
+    (draft.lookupIds || []).forEach(add);
+  }
+
+  return excludeIds;
+}
+
+async function findPatientIdByRegistration(rawRegistrationNumber) {
+  const normalized = String(rawRegistrationNumber || '').trim().toLowerCase();
+  if (!normalized) return '';
+
+  const patientList = await fetchAllPatients();
+  for (const patient of patientList) {
+    if (String(extractPatientRegistrationNumber(patient)).trim().toLowerCase() !== normalized) continue;
+    return (
+      resolvePatientMutationId(patient)
+      || extractApiPatientId(patient)
+      || String(patient?._id || patient?.id || '').trim()
+      || ''
+    );
+  }
+
+  return '';
+}
 
 const patientsData = [
   { id: 'P-1001', name: 'Kwame Boateng', age: 72, gender: 'Male', diagnosis: 'Hypertension, Type 2 Diabetes', phone: '+233 24 111 2222', address: '14 Osu Badu St, Accra', region: 'Accra', nurses: ['Efua Mensah'], emergency: 'Ama Boateng (+233 20 333 4444)', status: 'active', enrolled: '2024-06-01' },
@@ -53,6 +108,7 @@ const patientsData = [
 const ROWS_OPTIONS = [5, 10, 15];
 
 const PATIENT_ROW_ACTIONS = [
+  { value: 'continue_admission', label: 'Continue admission', icon: FiFileText, tone: 'default', disabledWhen: () => false },
   { value: 'deactivate', label: 'Deactivate', icon: FiX, tone: 'default', disabledWhen: (p) => p.status !== 'active' },
   { value: 'reactivate', label: 'Reactivate', icon: FiRefreshCw, tone: 'default', disabledWhen: (p) => p.status === 'active' },
   { value: 'report_dead', label: 'Report as dead', icon: FiAlertCircle, tone: 'warning', disabledWhen: (p) => p.status !== 'active' },
@@ -652,6 +708,22 @@ export default function Patients() {
   const [patientsLoading, setPatientsLoading] = useState(false);
   const [patientsError, setPatientsError] = useState('');
   const [avatarLoadErrors, setAvatarLoadErrors] = useState({});
+  const [incompleteAdmissions, setIncompleteAdmissions] = useState([]);
+
+  const refreshIncompleteAdmissions = useCallback(() => {
+    setIncompleteAdmissions(listAdmissionDrafts());
+  }, []);
+
+  useEffect(() => {
+    refreshIncompleteAdmissions();
+    const refresh = () => refreshIncompleteAdmissions();
+    window.addEventListener('admission-drafts-changed', refresh);
+    window.addEventListener('focus', refresh);
+    return () => {
+      window.removeEventListener('admission-drafts-changed', refresh);
+      window.removeEventListener('focus', refresh);
+    };
+  }, [refreshIncompleteAdmissions]);
 
   useEffect(() => {
     if (!partialSaveAlert) return undefined;
@@ -979,16 +1051,19 @@ export default function Patients() {
 
     try {
       const tabKey = TABS[tabIndex]?.key || ADMISSION_TAB_KEYS[tabIndex];
+      let currentPatientId = String(admissionPatientId || '').trim();
+
       if (tabKey === 'personal') {
         const reg = String(admissionForm.personal.registrationNumber || '').trim();
         if (!reg) {
           throw new Error('Enter a registration number before saving personal details.');
         }
-        if (!admissionPatientId) {
-          const exists = await checkRegistrationNumberExists(reg, admissionPatientId);
-          if (exists) {
-            throw new Error(`Registration number "${reg}" already exists in your organization.`);
-          }
+        if (!currentPatientId) {
+          currentPatientId = await findPatientIdByRegistration(reg) || '';
+        }
+        const exists = await checkRegistrationNumberExists(reg, currentPatientId);
+        if (exists) {
+          throw new Error(`Registration number "${reg}" already exists in your organization.`);
         }
       }
 
@@ -996,7 +1071,7 @@ export default function Patients() {
       const { patientId, savedSections, lookupIds } = await saveAdmissionProgressForTab(
         tabIndex,
         admissionForm,
-        admissionPatientId,
+        currentPatientId || admissionPatientId,
         api,
       );
 
@@ -1124,29 +1199,27 @@ export default function Patients() {
     setAdmissionError('');
 
     try {
-      const draft = getAdmissionDraft(resumeId);
-      if (draft) {
-        openAdmissionDraft(draft);
+      const existingDraft = getAdmissionDraft(resumeId);
+      if (existingDraft?.form) {
+        openAdmissionDraft(existingDraft);
         return;
       }
 
-      const response = await apiFetch(`/patients/${encodeURIComponent(resumeId)}`, { method: 'GET', quiet: true });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(payload?.message || payload?.error || 'Unable to load patient for admission resume.');
-      }
-
-      const raw = payload?.patient || payload?.data || payload;
+      const raw = await fetchAdmissionPatientBundle(resumeId);
       const canonicalId = resolveAdmissionResumePatientId(raw, resumeId);
-      const form = buildAdmissionFormFromApiPatient(raw, initialAdmissionForm);
+      const resumeDraft = buildAdmissionResumeDraft(raw, initialAdmissionForm, canonicalId);
       const lookupIds = collectAdmissionDraftLookupIds(canonicalId, [resumeId]);
+
+      if (!resumeDraft.completedTabs.length) {
+        throw new Error('No saved admission progress found for this patient yet. Save at least one section first.');
+      }
 
       const draftEntry = {
         patientId: canonicalId,
-        form,
-        completedTabs: [],
-        activeTab: 0,
-        savedSections: [],
+        form: resumeDraft.form,
+        completedTabs: resumeDraft.completedTabs,
+        activeTab: resumeDraft.activeTab,
+        savedSections: resumeDraft.savedSections,
         lookupIds,
       };
 
@@ -1154,7 +1227,6 @@ export default function Patients() {
       openAdmissionDraft(draftEntry);
     } catch (error) {
       setAdmissionError(error?.message || 'Unable to resume admission form.');
-      openModal();
     } finally {
       setResumingAdmission(false);
     }
@@ -1196,41 +1268,36 @@ export default function Patients() {
       return false;
     }
 
-    if (registrationCheck.checkedValue === normalized && !registrationCheck.error) {
+    const excludeIds = buildRegistrationExcludeIds(excludePatientId);
+    const cacheKey = `${normalized}::${[...excludeIds].sort().join('|')}`;
+    if (registrationCheck.checkedValue === cacheKey && !registrationCheck.error) {
       return registrationCheck.exists;
     }
 
-    setRegistrationCheck({ loading: true, exists: false, checkedValue: normalized, error: '' });
+    setRegistrationCheck({ loading: true, exists: false, checkedValue: cacheKey, error: '' });
 
     try {
       const patientList = await fetchAllPatients();
-      const exclude = String(excludePatientId || '').trim().toLowerCase();
 
       const exists = patientList.some((patient) => {
-        const candidate = patient?.registrationNumber || patient?.regNo || patient?.registration_number || '';
-        if (normalizeRegistrationNumber(candidate) !== normalized) return false;
-        if (!exclude) return true;
+        if (normalizeRegistrationNumber(extractPatientRegistrationNumber(patient)) !== normalized) {
+          return false;
+        }
+        if (excludeIds.size === 0) return true;
 
-        const identityKeys = [
-          patient?.patientId,
-          patient?._id,
-          patient?.uuid,
-          patient?.id,
-          patient?.patientUuid,
-        ]
-          .map((value) => String(value || '').trim().toLowerCase())
-          .filter(Boolean);
+        const identityKeys = collectPatientAssignmentIds(patient, excludePatientId)
+          .map((value) => String(value || '').trim().toLowerCase());
 
-        return !identityKeys.includes(exclude);
+        return !identityKeys.some((key) => excludeIds.has(key));
       });
 
-      setRegistrationCheck({ loading: false, exists, checkedValue: normalized, error: '' });
+      setRegistrationCheck({ loading: false, exists, checkedValue: cacheKey, error: '' });
       return exists;
     } catch {
       setRegistrationCheck({
         loading: false,
         exists: false,
-        checkedValue: normalized,
+        checkedValue: cacheKey,
         error: 'Could not verify now; check will run again on submit.',
       });
       return false;
@@ -1243,7 +1310,7 @@ export default function Patients() {
       setRegistrationCheck({ loading: false, exists: false, checkedValue: '', error: '' });
       return;
     }
-    await checkRegistrationNumberExists(reg);
+    await checkRegistrationNumberExists(reg, admissionPatientId);
   };
 
   const openAssignModal = (patient) => {
@@ -1476,6 +1543,11 @@ export default function Patients() {
   const handlePatientActionSelect = async (patient, actionValue) => {
     if (!patient || !actionValue) return;
 
+    if (actionValue === 'continue_admission') {
+      await resumeAdmissionForPatient(patient.patientId || patient.profileRouteId || patient.id);
+      return;
+    }
+
     if (actionValue === 'deactivate' || actionValue === 'reactivate') {
       setPatientStatusError('');
       setPatientStatusConfirm({ patient, action: actionValue });
@@ -1537,11 +1609,6 @@ export default function Patients() {
         throw new Error('Please enter a registration number before submitting the admission form.');
       }
 
-      const alreadyExists = await checkRegistrationNumberExists(typedRegistrationNumber, admissionPatientId);
-      if (alreadyExists) {
-        throw new Error(`Registration number "${typedRegistrationNumber}" already exists in your organization.`);
-      }
-
       const personalInfoPayload = {
         registrationNumber: typedRegistrationNumber,
         dateOfAssessment: admissionForm.personal.dateOfAssessment,
@@ -1558,8 +1625,44 @@ export default function Patients() {
         email: admissionForm.personal.email,
       };
 
+      let patientId = String(admissionPatientId || '').trim();
+      if (!patientId) {
+        patientId = await findPatientIdByRegistration(typedRegistrationNumber) || '';
+      }
+
+      const alreadyExists = await checkRegistrationNumberExists(typedRegistrationNumber, patientId);
+      if (alreadyExists) {
+        throw new Error(`Registration number "${typedRegistrationNumber}" already exists in your organization.`);
+      }
+
+      if (patientId) {
+        const api = createAdmissionApiHelpers();
+        for (const tabKey of ADMISSION_TAB_KEYS) {
+          const result = await saveAdmissionTab(tabKey, admissionForm, patientId, api);
+          if (result?.patientId) patientId = result.patientId;
+        }
+
+        await loadPatients();
+        setSuccessModal({
+          patientId,
+          name: `${personalInfoPayload.firstName} ${personalInfoPayload.lastName}`.trim() || 'Patient',
+          registrationNumber: typedRegistrationNumber,
+        });
+        markAdmissionDraftComplete(patientId);
+        markComplete(activeTab);
+        setShowModal(false);
+        setActiveTab(0);
+        setCompletedTabs([]);
+        setAdmissionPatientId('');
+        setAdmissionForm(initialAdmissionForm);
+        setPartialSaveAlert('');
+        setAdmissionError('');
+        setRegistrationCheck({ loading: false, exists: false, checkedValue: '', error: '' });
+        return;
+      }
+
       const personalInfoResponse = await postJson('/patients/personal-info', personalInfoPayload);
-      const patientId = extractPatientId(personalInfoResponse);
+      patientId = extractPatientId(personalInfoResponse);
 
       if (!patientId) {
         throw new Error('Patient created but patientId was not returned by /patients/personal-info');
@@ -1642,29 +1745,6 @@ export default function Patients() {
         },
       };
 
-      const yesNo = (value) => (value === true ? 'Yes' : value === false ? 'No' : '');
-
-      const hygienePsychPayload = {
-        personal: {
-          hygieneNeeds: yesNo(admissionForm.hygienePsych.personal.hygieneNeeds),
-          mouthCarePlan: yesNo(admissionForm.hygienePsych.personal.mouthCarePlan),
-          diabeteFoot: yesNo(admissionForm.hygienePsych.personal.diabeteFoot),
-        },
-        bladderBowel: {
-          bladderDysfunction: yesNo(admissionForm.hygienePsych.bladderBowel.bladderDysfunction),
-          catheterDescription: admissionForm.hygienePsych.bladderBowel.catheterDescription,
-          catheterPlan: yesNo(admissionForm.hygienePsych.bladderBowel.catheterPlan),
-          incontinentPads: yesNo(admissionForm.hygienePsych.bladderBowel.incontinentPads),
-        },
-        psychologicalNeeds: {
-          psychologicalNeeds: yesNo(admissionForm.hygienePsych.psychologicalNeeds.psychologicalNeeds),
-          depressionHistory: yesNo(admissionForm.hygienePsych.psychologicalNeeds.depressionHistory),
-          anxietyhistory: yesNo(admissionForm.hygienePsych.psychologicalNeeds.anxietyhistory),
-          signDementia: yesNo(admissionForm.hygienePsych.psychologicalNeeds.signDementia),
-          psychologicalNotes: admissionForm.hygienePsych.psychologicalNeeds.psychologicalNotes,
-        },
-      };
-
       try {
         await postJson('/patients/sleep-nutrition', sleepNutritionPayload);
       } catch (error) {
@@ -1677,13 +1757,14 @@ export default function Patients() {
       }
 
       try {
-        await patchJson('/patients/sleep-nutrition', {
-          patientId,
-          sleep: sleepNutritionPayload.sleep,
-          nutrition: sleepNutritionPayload.nutrition,
-          ...hygienePsychPayload,
-        });
-      } catch {
+        await postJson('/patients/hygiene-psychological', buildHygienePsychologicalAdmissionPayload(admissionForm, patientId));
+      } catch (error) {
+        const message = String(error?.message || '').toLowerCase();
+        if (message.includes('already exists') || message.includes('use patch')) {
+          await patchJson('/patients/hygiene-psychological', buildHygienePsychologicalAdmissionPayload(admissionForm, patientId));
+        } else {
+          throw error;
+        }
       }
 
       await postJson('/patients/skin-mobility', {
@@ -1799,6 +1880,52 @@ export default function Patients() {
             </button>
           </div>
         </div>
+
+        {incompleteAdmissions.length > 0 && (
+          <div className="patients-incomplete-admissions">
+            <div className="patients-incomplete-admissions__header">
+              <div>
+                <h3 className="patients-incomplete-admissions__title">Incomplete admissions</h3>
+                <p className="patients-incomplete-admissions__subtitle">
+                  Pick up client admission forms that were saved but not finished.
+                </p>
+              </div>
+              <span className="patients-incomplete-admissions__count">{incompleteAdmissions.length}</span>
+            </div>
+            <div className="patients-incomplete-admissions__list">
+              {incompleteAdmissions.map((draft) => {
+                const completed = Array.isArray(draft.completedTabs) ? draft.completedTabs.length : 0;
+                const progressPct = Math.round((completed / ADMISSION_SECTION_COUNT) * 100);
+                return (
+                  <div key={draft.patientId} className="patients-incomplete-admissions__item">
+                    <div className="patients-incomplete-admissions__item-main">
+                      <strong>{draft.patientName || 'Incomplete admission'}</strong>
+                      <span>
+                        {draft.registrationNumber ? `Reg. ${draft.registrationNumber}` : 'No registration number'}
+                        {' · '}
+                        {progressPct}% complete ({completed} of {ADMISSION_SECTION_COUNT} sections)
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      className="patients-incomplete-admissions__cta"
+                      onClick={() => resumeAdmissionForPatient(draft.patientId)}
+                    >
+                      Continue form
+                      <FiArrowRight size={14} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {admissionError && !showModal && (
+          <div className="patients-admission-error" role="alert">
+            {admissionError}
+          </div>
+        )}
 
         <motion.div className="kh-card patients-board-card" initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.28, ease: 'easeOut' }}>
           <div className="patients-topbar">
@@ -1918,6 +2045,9 @@ export default function Patients() {
                       <div>
                         <div className="patients-name-primary">{p.name}</div>
                         <div className="patients-name-secondary">{p.id}</div>
+                        {findAdmissionDraftForPatient(p) ? (
+                          <span className="patients-incomplete-pill">Admission in progress</span>
+                        ) : null}
                       </div>
                     </div>
                   </td>
@@ -2151,7 +2281,7 @@ export default function Patients() {
                 <div style={{ padding: '22px 20px 16px', borderBottom: '1px solid var(--kh-border-light)' }}>
                   <h6 style={{ fontSize: 15, fontWeight: 800, margin: 0, color: 'var(--kh-text)' }}>Client Admission</h6>
                   <p style={{ fontSize: 11.5, color: 'var(--kh-text-muted)', margin: '4px 0 12px' }}>
-                    Complete each section. Save progress to continue later from the dashboard.
+                    Complete each section. Use Save &amp; Continue to save progress and finish later.
                   </p>
                   {admissionPatientId && (
                     <p style={{ fontSize: 11, color: '#1d4ed8', margin: '0 0 8px', fontWeight: 600 }}>
