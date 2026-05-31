@@ -17,6 +17,11 @@ import { shareMedicalReportByEmail } from '../api';
 import { extractApiPatientId, resolveMedicalReportPatientId } from '../utils/patients';
 import { buildMedicalReportPdfFile, downloadPdfFile, REPORT_PRINT_STYLES } from '../utils/medicalReportPdf';
 import MedicalReportDocument from '../components/MedicalReportDocument';
+import TablePageLoader from '../components/TablePageLoader';
+import DataTableHeader, { HospitalStatus } from '../components/DataTableHeader';
+import HospitalBoardToolbar from '../components/HospitalBoardToolbar';
+import HospitalTableActions from '../components/HospitalTableActions';
+import { useLoadProgress } from '../hooks/useLoadProgress';
 import { enrichReportWithPatientProfile } from '../utils/medicalReportTemplate';
 import {
   loadMedicalReportsCatalog,
@@ -273,52 +278,6 @@ const REPORT_TYPE_COLORS = {
   'Medication Review': { bg: '#fdf4ff', text: '#7e22ce' },
   'General Assessment': { bg: '#f8fafc', text: '#475569' },
 };
-
-function ReportsTableLoader({ progress = 0 }) {
-  const pct = Math.round(Math.min(100, Math.max(0, progress)));
-
-  return (
-    <tr className="reports-table-loader-row">
-      <td colSpan={7}>
-        <div className="reports-table-loader" role="status" aria-live="polite" aria-label="Loading reports">
-          <div className="reports-table-loader__panel">
-            <div className="reports-table-loader__spinner" aria-hidden>
-              <span className="reports-table-loader__spinner-ring" />
-              <FiFileText size={22} className="reports-table-loader__icon" />
-            </div>
-            <p className="reports-table-loader__title">Loading reports</p>
-            <p className="reports-table-loader__subtitle">
-              Fetching medical reports from your patient records…
-            </p>
-            <div
-              className="reports-table-loader__progress"
-              role="progressbar"
-              aria-valuenow={pct}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-label={`Loading reports ${pct} percent`}
-            >
-              <div className="reports-table-loader__progress-track">
-                <div
-                  className="reports-table-loader__progress-fill"
-                  style={{ width: `${pct}%` }}
-                />
-              </div>
-              <span className="reports-table-loader__progress-label">{pct}%</span>
-            </div>
-          </div>
-          <div className="reports-table-loader__skeleton" aria-hidden>
-            {Array.from({ length: 5 }, (_, i) => (
-              <div key={i} className="reports-table-loader__skeleton-row">
-                <span /><span /><span /><span /><span /><span /><span />
-              </div>
-            ))}
-          </div>
-        </div>
-      </td>
-    </tr>
-  );
-}
 
 function ReportsAttachmentLoader({ message, detail }) {
   return (
@@ -750,38 +709,13 @@ export default function Reports() {
   const [shareReport, setShareReport] = useState(null);
   const [shareAttachmentHtml, setShareAttachmentHtml] = useState('');
   const [patientProfilesById, setPatientProfilesById] = useState({});
-  const [loadProgress, setLoadProgress] = useState(0);
-  const loadProgressTargetRef = useRef(0);
+  const { progress: loadProgress, setProgressTarget, finishProgress } = useLoadProgress(loading);
 
   const enrichReport = useCallback((report) => {
     const patientId = String(report?.patientId || extractApiPatientId(report) || '').trim();
     const profile = patientProfilesById[patientId];
     return enrichReportWithPatientProfile(report, profile);
   }, [patientProfilesById]);
-
-  useEffect(() => {
-    if (!loading) {
-      setLoadProgress(0);
-      loadProgressTargetRef.current = 0;
-      return undefined;
-    }
-
-    loadProgressTargetRef.current = 4;
-    const tick = window.setInterval(() => {
-      setLoadProgress((prev) => {
-        const target = loadProgressTargetRef.current;
-        if (prev >= 100) return 100;
-        if (prev < target) {
-          return Math.min(target, prev + Math.max(0.8, (target - prev) * 0.12));
-        }
-        const creepCap = Math.min(96, target + 18);
-        if (prev >= creepCap) return prev;
-        return prev + 0.35;
-      });
-    }, 60);
-
-    return () => window.clearInterval(tick);
-  }, [loading]);
 
   useEffect(() => {
     let cancelled = false;
@@ -797,14 +731,11 @@ export default function Reports() {
     (async () => {
       try {
         setLoadError('');
-        loadProgressTargetRef.current = 4;
+        setProgressTarget(4);
         const loadedReports = await loadMedicalReportsCatalog(
           (entry, index) => normalizeMedicalReport(entry, index),
           {
-            onProgress: (value) => {
-              loadProgressTargetRef.current = Math.max(loadProgressTargetRef.current, value);
-              setLoadProgress((prev) => Math.max(prev, value));
-            },
+            onProgress: (value) => setProgressTarget(value),
           },
         );
 
@@ -822,14 +753,10 @@ export default function Reports() {
         }
       } finally {
         if (!cancelled) {
-          loadProgressTargetRef.current = 100;
-          setLoadProgress(100);
-          window.setTimeout(() => {
-            if (!cancelled) {
-              setLoading(false);
-              setRefreshing(false);
-            }
-          }, 320);
+          finishProgress(() => {
+            setLoading(false);
+            setRefreshing(false);
+          });
         }
       }
     })();
@@ -937,10 +864,11 @@ export default function Reports() {
               })}
             </div>
             <div className="patients-topbar-actions">
-              <div className="patients-meta-pill">
-                <span className="patients-meta-pill__label">Total</span>
-                <strong>{allReports.length}</strong>
-              </div>
+              <HospitalBoardToolbar
+                onDownload={handleExport}
+                downloadLabel="Download report"
+                onFilter={() => document.querySelector('.reports-page .patients-searchbox__input')?.focus()}
+              />
             </div>
           </div>
 
@@ -974,8 +902,16 @@ export default function Reports() {
             </div>
           </div>
 
-          <div className="table-responsive patients-table-wrap">
-            <table className="table kh-table patients-table" style={{ marginBottom: 0 }}>
+          <DataTableHeader
+            title="Reports list"
+            legend={[
+              { label: 'Final', tone: 'final' },
+              { label: 'Draft', tone: 'draft' },
+            ]}
+          />
+
+          <div className="table-responsive patients-table-wrap hospital-table-wrap">
+            <table className="table kh-table patients-table hospital-table" style={{ marginBottom: 0 }}>
               <thead>
                 <tr>
                   <th>#</th>
@@ -988,7 +924,16 @@ export default function Reports() {
                 </tr>
               </thead>
               <tbody>
-                {loading && <ReportsTableLoader progress={loadProgress} />}
+                {loading && (
+                  <TablePageLoader
+                    progress={loadProgress}
+                    title="Loading reports"
+                    subtitle="Fetching medical reports from your patient records…"
+                    colSpan={7}
+                    skeletonColumns={7}
+                    icon={FiFileText}
+                  />
+                )}
                 {!loading && loadError && (
                   <tr><td colSpan={7} className="text-center py-4" style={{ color: '#dc2626', fontSize: 13, fontWeight: 600 }}>{loadError}</td></tr>
                 )}
@@ -1010,15 +955,20 @@ export default function Reports() {
                         </div>
                       </div>
                     </td>
-                    <td data-label="Type"><ReportTypeBadge type={r.type} /></td>
+                    <td data-label="Type"><span className="hospital-table__strong">{r.type}</span></td>
                     <td data-label="Date" className="patients-table-date">{fmtDate(r.date)}</td>
                     <td data-label="Nurse" className="patients-table-value">{r.nurseName}</td>
-                    <td data-label="Status"><ReportStatusBadge status={r.status} /></td>
-                    <td data-label="Actions" style={{ textAlign: 'right' }}>
-                      <div className="d-inline-flex gap-2 align-items-center justify-content-end">
+                    <td data-label="Status">
+                      <HospitalStatus
+                        label={r.status}
+                        tone={r.status === 'Final' ? 'final' : 'draft'}
+                      />
+                    </td>
+                    <td data-label="Actions" className="hospital-table-actions-cell" style={{ textAlign: 'right' }}>
+                      <div className="hospital-table-actions">
                         <button
                           type="button"
-                          className="patients-row-action"
+                          className="hospital-table-actions__btn"
                           title="View report"
                           onClick={(e) => { e.stopPropagation(); setViewReport(r); }}
                         >
@@ -1026,7 +976,7 @@ export default function Reports() {
                         </button>
                         <button
                           type="button"
-                          className="patients-row-action"
+                          className="hospital-table-actions__btn"
                           title="Share via email"
                           onClick={(e) => { e.stopPropagation(); setShareAttachmentHtml(''); setShareReport(r); }}
                         >

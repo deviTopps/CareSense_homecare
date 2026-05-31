@@ -10,6 +10,9 @@ import {
   getEnquiryRecordId,
   normalizeEnquiryRecord,
 } from '../utils/enquiries';
+import DataTableHeader, { HospitalStatus } from '../components/DataTableHeader';
+import HospitalBoardToolbar from '../components/HospitalBoardToolbar';
+import TablePageLoader from '../components/TablePageLoader';
 import {
   FiUser,
   FiMapPin,
@@ -112,6 +115,13 @@ const apiStatusPillStyle = {
   signup: { bg: '#ecfdf5', color: '#15803d', border: '#86efac' },
   failed: { bg: '#fef2f2', color: '#b91c1c', border: '#fecaca' },
 };
+
+function enquiryStatusTone(api) {
+  if (api === 'signup') return 'success';
+  if (api === 'visited') return 'info';
+  if (api === 'failed') return 'danger';
+  return 'warning';
+}
 
 const emptyCreateForm = () => ({
   nameOfClient: '',
@@ -395,45 +405,49 @@ export default function Enquiries() {
           ))}
         </div>
 
-        <div className="enquiries-toolbar kh-card border-0 shadow-sm">
+        <div className="enquiries-toolbar kh-card border-0 shadow-sm patients-board-card enquiries-toolbar-card">
           <div className="enquiries-toolbar__inner">
             <div className="row g-2 align-items-center">
               <div className="col-12 col-xl-auto">
                 <div className="d-flex flex-wrap align-items-center gap-2">
                   <span className="enquiries-toolbar__label">Status</span>
-                  <div className="d-flex flex-wrap gap-1" role="group" aria-label="Filter by status">
+                  <div className="patients-segmented-control" role="group" aria-label="Filter by status">
                     {STATUS_FILTER.map((t) => (
                       <button
                         key={t.key}
                         type="button"
-                        className={`btn btn-sm enquiries-filter-chip${statusFilter === t.key ? ' is-active' : ''}`}
+                        className={`patients-segmented-control__item${statusFilter === t.key ? ' is-active' : ''}`}
                         onClick={() => { setStatusFilter(t.key); setPage(1); }}
                       >
-                        {t.label}
+                        <span>{t.label}</span>
                       </button>
                     ))}
                   </div>
                 </div>
               </div>
               <div className="col-12 col-xl">
-                <div className="input-group input-group-sm enquiries-search">
-                  <span className="input-group-text border-end-0"><FiSearch size={14} aria-hidden /></span>
+                <div className="input-group input-group-sm enquiries-search patients-searchbox">
+                  <span className="input-group-text border-end-0 patients-searchbox__icon-wrap"><FiSearch size={14} aria-hidden /></span>
                   <input
+                    id="enquiries-search-input"
                     type="search"
-                    className="form-control border-start-0"
+                    className="form-control border-start-0 patients-searchbox__input"
                     placeholder="Search client, phone, location, notes…"
                     value={searchTerm}
                     onChange={(e) => { setSearchTerm(e.target.value); setPage(1); }}
                   />
                 </div>
               </div>
-              {(statusFilter !== 'all' || searchTerm) && (
-                <div className="col-12 col-xl-auto">
-                  <button type="button" className="btn btn-outline-secondary btn-sm" onClick={resetFilters}>
-                    <FiX size={14} className="me-1" aria-hidden /> Clear filters
+              <div className="col-12 col-xl-auto d-flex align-items-center gap-2 flex-wrap justify-content-xl-end">
+                {(statusFilter !== 'all' || searchTerm) && (
+                  <button type="button" className="patients-toolbar-btn" onClick={resetFilters}>
+                    <FiX size={14} aria-hidden /> Clear
                   </button>
-                </div>
-              )}
+                )}
+                <HospitalBoardToolbar
+                  onFilter={() => document.getElementById('enquiries-search-input')?.focus()}
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -455,11 +469,21 @@ export default function Enquiries() {
           </div>
         )}
 
-        <div className="enquiries-board kh-card border-0 shadow-sm">
+        <div className="enquiries-board kh-card border-0 shadow-sm patients-board-card enquiries-board-card">
           {loading ? (
-            <div className="enquiries-board__state">
-              <div className="spinner-border spinner-border-sm text-primary mb-2" role="status" aria-hidden />
-              <span className="text-muted">Loading enquiries…</span>
+            <div className="hospital-table-wrap">
+              <table className="table hospital-table" style={{ marginBottom: 0 }}>
+                <tbody>
+                  <TablePageLoader
+                    progress={loading ? 45 : 0}
+                    title="Loading enquiries"
+                    subtitle="Fetching intake records…"
+                    colSpan={9}
+                    skeletonColumns={9}
+                    icon={FiClipboard}
+                  />
+                </tbody>
+              </table>
             </div>
           ) : filtered.length === 0 ? (
             <div className="enquiries-board__state enquiries-board__state--empty">
@@ -472,9 +496,18 @@ export default function Enquiries() {
             </div>
           ) : (
             <>
-              <div className="enquiries-table-scroll table-responsive">
-                <table className="table table-bordered table-hover mb-0 align-middle enquiries-table" style={{ fontSize: '0.925rem' }}>
-                  <thead className="table-light">
+              <DataTableHeader
+                title="Enquiries list"
+                legend={[
+                  { label: 'Pending', tone: 'warning' },
+                  { label: 'Follow-up', tone: 'info' },
+                  { label: 'Sign-up', tone: 'success' },
+                  { label: 'Failed', tone: 'danger' },
+                ]}
+              />
+              <div className="enquiries-table-scroll table-responsive hospital-table-wrap">
+                <table className="table mb-0 align-middle enquiries-table hospital-table" style={{ fontSize: '0.925rem' }}>
+                  <thead>
                     <tr>
                       <th>Client</th>
                       <th className="d-none d-lg-table-cell">Contact date</th>
@@ -490,7 +523,6 @@ export default function Enquiries() {
                   <tbody>
                     {paged.map((r, idx) => {
                       const api = coerceApiStatus(r.status);
-                      const st = apiStatusPillStyle[api] || apiStatusPillStyle.pending;
                       const rowId = getEnquiryRecordId(r);
                       const rowKey = rowId ?? `idx-${idx}`;
                       const canDelete = Boolean(rowId);
@@ -517,13 +549,11 @@ export default function Enquiries() {
                             <div className="d-flex gap-1"><FiMapPin size={14} className="text-muted flex-shrink-0 mt-1" />
                               <span>{r.location || '—'}{r.gps ? ` · ${r.gps}` : ''}</span></div>
                           </td>
-                          <td>
-                            <span
-                              className="badge rounded-pill px-2 py-1 fw-normal"
-                              style={{ background: st.bg, color: st.color, border: `1px solid ${st.border}` }}
-                            >
-                              {statusDisplayLabel(api)}
-                            </span>
+                          <td data-label="Status">
+                            <HospitalStatus
+                              label={statusDisplayLabel(api)}
+                              tone={enquiryStatusTone(api)}
+                            />
                           </td>
                           <td className="d-none d-lg-table-cell small">{recordedByLabel(r)}</td>
                           <td className="text-end">

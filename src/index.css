@@ -9,9 +9,9 @@
 @tailwind utilities;
 
 :root {
-  --kh-primary: #0d6efd;
-  --kh-primary-light: #e7f1ff;
-  --kh-primary-dark: #0b5ed7;
+  --kh-primary: #45b6fe;
+  --kh-primary-light: #e8f6fe;
+  --kh-primary-dark: #2aa3f0;
   --kh-secondary: #6c757d;
   --kh-secondary-light: #adb5bd;
   --kh-white: #ffffff;
@@ -1089,7 +1089,7 @@ body.sidebar-resizing {
 .kh-table tbody tr { transition: all 0.18s ease; }
 .kh-table tbody tr:nth-child(even) { background: #fbfdff; }
 .kh-table tbody tr:nth-child(odd) { background: #fff; }
-.kh-table tbody tr:hover { background: #edf5ff !important; box-shadow: inset 3px 0 0 #0d6efd; }
+.kh-table tbody tr:hover { background: #edf5ff !important; box-shadow: inset 3px 0 0 var(--kh-primary); }
 .kh-table tbody tr:last-child td { border-bottom: none !important; }
 
 /* Column number indicator */
@@ -1291,7 +1291,7 @@ body.sidebar-resizing {
 .btn-kh-primary:hover {
   background: var(--kh-primary-dark); color: #fff;
   border-color: var(--kh-primary-dark);
-  box-shadow: 0 .5rem 1rem rgba(13,110,253,.2);
+  box-shadow: 0 .5rem 1rem rgba(69, 182, 254, 0.28);
   transform: translateY(-1px);
 }
 
@@ -1305,8 +1305,8 @@ body.sidebar-resizing {
 }
 
 .btn-kh-outline:hover {
-  background: #e7f1ff; color: #0d6efd;
-  border-color: rgba(13,110,253,.35);
+  background: var(--kh-primary-light); color: var(--kh-primary);
+  border-color: rgba(69, 182, 254, 0.45);
 }
 
 /* â”€â”€ Avatar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
@@ -2643,19 +2643,36 @@ body.sidebar-resizing {
   -webkit-overflow-scrolling: touch;
 }
 
-.kh-bs-theme .patients-page .patients-table,
-.kh-bs-theme .workforce-page .patients-table {
+.kh-bs-theme .patients-page .patients-table.hospital-table,
+.kh-bs-theme .workforce-page .patients-table.hospital-table {
+  border-spacing: 0 !important;
+  border-collapse: collapse !important;
+}
+
+.kh-bs-theme .patients-page .patients-table:not(.hospital-table),
+.kh-bs-theme .workforce-page .patients-table:not(.hospital-table) {
   border-spacing: 0 6px !important;
 }
 
-.kh-bs-theme .patients-page .patients-table thead th,
-.kh-bs-theme .workforce-page .patients-table thead th {
+.kh-bs-theme .patients-page .patients-table.hospital-table thead th,
+.kh-bs-theme .workforce-page .patients-table.hospital-table thead th {
+  padding: 11px 16px !important;
+  font-size: 11px !important;
+}
+
+.kh-bs-theme .patients-page .patients-table.hospital-table tbody td,
+.kh-bs-theme .workforce-page .patients-table.hospital-table tbody td {
+  padding: 14px 16px !important;
+}
+
+.kh-bs-theme .patients-page .patients-table:not(.hospital-table) thead th,
+.kh-bs-theme .workforce-page .patients-table:not(.hospital-table) thead th {
   padding: 7px 12px 5px !important;
   font-size: 10px !important;
 }
 
-.kh-bs-theme .patients-page .patients-table tbody td,
-.kh-bs-theme .workforce-page .patients-table tbody td {
+.kh-bs-theme .patients-page .patients-table:not(.hospital-table) tbody td,
+.kh-bs-theme .workforce-page .patients-table:not(.hospital-table) tbody td {
   padding: 10px 12px !important;
 }
 
@@ -2957,13 +2974,7 @@ body.sidebar-resizing {
   flex-shrink: 0;
 }
 
-.patients-board-card {
-  border: none !important;
-  border-radius: 28px !important;
-  background: rgba(255, 255, 255, 0.94);
-  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.08) !important;
-  overflow: hidden;
-}
+/* Board card shell — see src/styles/hospital-table.css */
 
 .nurse-profile-page {
   --np-accent: #45b6fe;
@@ -4437,14 +4448,14 @@ body.sidebar-resizing {
   padding: 0 14px 10px;
 }
 
-.patients-page .patients-table,
-.workforce-page .patients-table {
+.patients-page .patients-table:not(.hospital-table),
+.workforce-page .patients-table:not(.hospital-table) {
   border-collapse: separate;
   border-spacing: 0 10px;
 }
 
-.patients-page .patients-table thead th,
-.workforce-page .patients-table thead th {
+.patients-page .patients-table:not(.hospital-table) thead th,
+.workforce-page .patients-table:not(.hospital-table) thead th {
   background: transparent !important;
   border: none !important;
   padding: 10px 16px 8px !important;
@@ -4453,33 +4464,33 @@ body.sidebar-resizing {
   letter-spacing: 0.08em;
 }
 
-.patients-page .patients-table .col-num,
-.workforce-page .patients-table .col-num {
+.patients-page .patients-table:not(.hospital-table) .col-num,
+.workforce-page .patients-table:not(.hospital-table) .col-num {
   border-right: none !important;
 }
 
-.patients-page .patients-table tbody tr,
-.patients-page .patients-table tbody tr:nth-child(even),
-.patients-page .patients-table tbody tr:nth-child(odd),
-.workforce-page .patients-table tbody tr,
-.workforce-page .patients-table tbody tr:nth-child(even),
-.workforce-page .patients-table tbody tr:nth-child(odd) {
+.patients-page .patients-table:not(.hospital-table) tbody tr,
+.patients-page .patients-table:not(.hospital-table) tbody tr:nth-child(even),
+.patients-page .patients-table:not(.hospital-table) tbody tr:nth-child(odd),
+.workforce-page .patients-table:not(.hospital-table) tbody tr,
+.workforce-page .patients-table:not(.hospital-table) tbody tr:nth-child(even),
+.workforce-page .patients-table:not(.hospital-table) tbody tr:nth-child(odd) {
   background: transparent !important;
 }
 
-.patients-page .patients-table tbody tr,
-.workforce-page .patients-table tbody tr {
+.patients-page .patients-table:not(.hospital-table) tbody tr,
+.workforce-page .patients-table:not(.hospital-table) tbody tr {
   filter: none;
 }
 
-.patients-page .patients-table tbody tr:hover,
-.workforce-page .patients-table tbody tr:hover {
+.patients-page .patients-table:not(.hospital-table) tbody tr:hover,
+.workforce-page .patients-table:not(.hospital-table) tbody tr:hover {
   background: transparent !important;
   box-shadow: none !important;
 }
 
-.patients-page .patients-table tbody td,
-.workforce-page .patients-table tbody td {
+.patients-page .patients-table:not(.hospital-table) tbody td,
+.workforce-page .patients-table:not(.hospital-table) tbody td {
   background: #fff;
   border-top: 1px solid #eef2f7 !important;
   border-bottom: 1px solid #eef2f7 !important;
@@ -4489,33 +4500,33 @@ body.sidebar-resizing {
   transition: background-color 0.2s ease, border-color 0.2s ease;
 }
 
-.patients-page .patients-table tbody tr:hover td,
-.workforce-page .patients-table tbody tr:hover td {
+.patients-page .patients-table:not(.hospital-table) tbody tr:hover td,
+.workforce-page .patients-table:not(.hospital-table) tbody tr:hover td {
   background: #fff !important;
   border-top-color: #eef2f7 !important;
   border-bottom-color: #eef2f7 !important;
   box-shadow: none !important;
 }
 
-.patients-page .patients-table tbody td:first-child,
-.workforce-page .patients-table tbody td:first-child {
+.patients-page .patients-table:not(.hospital-table) tbody td:first-child,
+.workforce-page .patients-table:not(.hospital-table) tbody td:first-child {
   border-left: 1px solid #eef2f7 !important;
   border-radius: 18px 0 0 18px;
 }
 
-.patients-page .patients-table tbody tr:hover td:first-child,
-.workforce-page .patients-table tbody tr:hover td:first-child {
+.patients-page .patients-table:not(.hospital-table) tbody tr:hover td:first-child,
+.workforce-page .patients-table:not(.hospital-table) tbody tr:hover td:first-child {
   border-left-color: #eef2f7 !important;
 }
 
-.patients-page .patients-table tbody td:last-child,
-.workforce-page .patients-table tbody td:last-child {
+.patients-page .patients-table:not(.hospital-table) tbody td:last-child,
+.workforce-page .patients-table:not(.hospital-table) tbody td:last-child {
   border-right: 1px solid #eef2f7 !important;
   border-radius: 0 18px 18px 0;
 }
 
-.patients-page .patients-table tbody tr:hover td:last-child,
-.workforce-page .patients-table tbody tr:hover td:last-child {
+.patients-page .patients-table:not(.hospital-table) tbody tr:hover td:last-child,
+.workforce-page .patients-table:not(.hospital-table) tbody tr:hover td:last-child {
   border-right-color: #eef2f7 !important;
 }
 
@@ -12261,6 +12272,15 @@ button.dashboard-stat-card:active {
 .reports-table-loader {
   padding: 28px 20px 24px;
   min-height: 320px;
+}
+
+.reports-table-loader--panel {
+  padding: 12px 20px 16px;
+}
+
+.reports-table-loader--panel .reports-table-loader {
+  min-height: auto;
+  padding: 8px 0 12px;
 }
 
 .reports-table-loader__panel {

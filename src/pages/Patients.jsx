@@ -7,7 +7,6 @@ import {
   FiChevronsLeft, FiChevronsRight, FiUserPlus, FiCheckCircle, FiInfo, FiDownload, FiUser,
   FiMoreHorizontal, FiTrash2, FiAlertCircle, FiRefreshCw, FiFileText, FiArrowRight,
 } from '../icons/hugeicons-feather';
-import { apiFetch } from '../api';
 import {
   collectPatientAssignmentIds,
   extractApiPatientId,
@@ -32,6 +31,12 @@ import {
   buildAdmissionResumeDraft,
   fetchAdmissionPatientBundle,
 } from '../utils/admissionResume';
+import TablePageLoader, { TablePageLoaderPanel } from '../components/TablePageLoader';
+import DataTableHeader, { HospitalStatus } from '../components/DataTableHeader';
+import HospitalBoardToolbar from '../components/HospitalBoardToolbar';
+import HospitalTableActions from '../components/HospitalTableActions';
+import { useLoadProgress } from '../hooks/useLoadProgress';
+import { apiFetch } from '../api';
 import {
   ADMISSION_TAB_KEYS,
   buildHygienePsychologicalAdmissionPayload,
@@ -707,8 +712,11 @@ export default function Patients() {
   const [registrationCheck, setRegistrationCheck] = useState({ loading: false, exists: false, checkedValue: '', error: '' });
   const [patientsLoading, setPatientsLoading] = useState(false);
   const [patientsError, setPatientsError] = useState('');
+  const { progress: patientsLoadProgress, setProgressTarget: setPatientsProgress, finishProgress: finishPatientsProgress } = useLoadProgress(patientsLoading);
+  const { progress: nursesLoadProgress, setProgressTarget: setNursesProgress, finishProgress: finishNursesProgress } = useLoadProgress(nursesLoading);
   const [avatarLoadErrors, setAvatarLoadErrors] = useState({});
   const [incompleteAdmissions, setIncompleteAdmissions] = useState([]);
+  const patientsSearchRef = useRef(null);
 
   const refreshIncompleteAdmissions = useCallback(() => {
     setIncompleteAdmissions(listAdmissionDrafts());
@@ -871,13 +879,16 @@ export default function Patients() {
   const loadPatients = useCallback(async () => {
     setPatientsLoading(true);
     setPatientsError('');
+    setPatientsProgress(6);
 
     try {
+      setPatientsProgress(16);
       const [patientList, deceasedResponse, deactivatedResponse] = await Promise.all([
         fetchAllPatients(),
         apiFetch('/patients/deceased', { method: 'GET', quiet: true }),
         apiFetch('/patients/deactivated', { method: 'GET', quiet: true }),
       ]);
+      setPatientsProgress(52);
 
       const deceasedPayload = await deceasedResponse.json().catch(() => ({}));
       if (!deceasedResponse.ok) {
@@ -887,32 +898,37 @@ export default function Patients() {
       if (!deactivatedResponse.ok) {
         throw new Error(deactivatedPayload?.message || deactivatedPayload?.error || 'Unable to fetch deactivated patients.');
       }
+      setPatientsProgress(72);
 
       const normalizedPatients = patientList.map((patient, index) => normalizePatient(patient, index));
       const normalizedDeceased = extractPatientArray(deceasedPayload)
         .map((patient, index) => normalizePatient(patient, index, 'deceased'));
       const normalizedDeactivated = extractPatientArray(deactivatedPayload)
         .map((patient, index) => normalizePatient(patient, index, 'deactivated'));
+      setPatientsProgress(90);
 
       setPatients(normalizedPatients);
       setDeceasedPatients(normalizedDeceased);
       setDeactivatedPatients(dedupePatientsByIdentity(normalizedDeactivated));
+      setPatientsProgress(100);
     } catch (error) {
       setPatientsError(error?.message || 'Unable to fetch patients right now.');
       setPatients([]);
       setDeceasedPatients([]);
       setDeactivatedPatients([]);
     } finally {
-      setPatientsLoading(false);
+      finishPatientsProgress(() => setPatientsLoading(false));
     }
-  }, []);
+  }, [finishPatientsProgress, setPatientsProgress]);
 
   const loadAssignableNurses = useCallback(async () => {
     setNursesLoading(true);
     setNursesError('');
+    setNursesProgress(8);
 
     try {
       const response = await apiFetch('/nurses', { method: 'GET' });
+      setNursesProgress(42);
       let data = {};
       try {
         data = await response.json();
@@ -933,23 +949,26 @@ export default function Patients() {
             : Array.isArray(data?.items)
               ? data.items
               : [];
+      setNursesProgress(68);
 
       const normalized = nurseList
         .map(normalizeAssignableNurse)
         .filter((nurse) => nurse?.id && nurse?.name)
         .sort((a, b) => a.name.localeCompare(b.name));
+      setNursesProgress(92);
 
       setAssignableNurses(normalized);
       if (normalized.length === 0) {
         setNursesError('No nurses are available to assign yet.');
       }
+      setNursesProgress(100);
     } catch (error) {
       setNursesError(error?.message || 'Unable to load nurses right now.');
       setAssignableNurses([]);
     } finally {
-      setNursesLoading(false);
+      finishNursesProgress(() => setNursesLoading(false));
     }
-  }, []);
+  }, [finishNursesProgress, setNursesProgress]);
 
   useEffect(() => {
     loadPatients();
@@ -1866,18 +1885,10 @@ export default function Patients() {
         <div className="patients-hero">
           <div>
             <div className="patients-kicker">Patient workspace</div>
-            <h2 className="patients-title">Manage admissions and follow-up care</h2>
-            <p className="patients-subtitle">A cleaner patient list with quick filters, export access, and rounded dashboard controls inspired by your selected reference.</p>
-          </div>
-          <div className="patients-hero-actions">
-            <button type="button" className="patients-toolbar-btn" onClick={handleExportPatients}>
-              <FiDownload size={15} />
-              <span>Export</span>
-            </button>
-            <button type="button" className="patients-cta-btn" onClick={openModal}>
-              <span className="patients-cta-btn__icon"><FiPlus size={16} /></span>
-              <span>Admit Client</span>
-            </button>
+            <h2 className="patients-title">Patients</h2>
+            <p className="patients-subtitle">
+              Manage admissions, assignments, and patient status from one list.
+            </p>
           </div>
         </div>
 
@@ -1944,14 +1955,19 @@ export default function Patients() {
             </div>
 
             <div className="patients-topbar-actions">
-              <div className="patients-meta-pill">
-                <span className="patients-meta-pill__label">Visible</span>
-                <strong>{filtered.length}</strong>
+              <div className="patients-topbar-stats" aria-label="List summary">
+                <span className="patients-topbar-stats__item">
+                  <strong>{filtered.length}</strong> visible
+                </span>
+                <span className="patients-topbar-stats__item">
+                  <strong>{assignedCount}</strong> assigned
+                </span>
               </div>
-              <div className="patients-meta-pill">
-                <span className="patients-meta-pill__label">Assigned</span>
-                <strong>{assignedCount}</strong>
-              </div>
+              <HospitalBoardToolbar
+                onDownload={handleExportPatients}
+                downloadLabel="Download report"
+                onFilter={() => patientsSearchRef.current?.focus()}
+              />
             </div>
           </div>
 
@@ -1959,6 +1975,7 @@ export default function Patients() {
             <div className="patients-searchbox">
               <FiSearch className="patients-searchbox__icon" size={16} />
               <input
+                ref={patientsSearchRef}
                 className="form-control form-control-kh patients-searchbox__input"
                 placeholder="Search patients, IDs, or assigned nurses"
                 value={search}
@@ -1982,11 +1999,6 @@ export default function Patients() {
                 </span>
               </label>
 
-              <button type="button" className="patients-toolbar-btn" onClick={handleExportPatients}>
-                <FiDownload size={15} />
-                <span>Export</span>
-              </button>
-
               <button type="button" className="patients-cta-btn patients-cta-btn--compact" onClick={openModal}>
                 <span className="patients-cta-btn__icon"><FiPlus size={15} /></span>
                 <span>Admit Client</span>
@@ -1994,8 +2006,17 @@ export default function Patients() {
             </div>
           </div>
 
-          <div className="table-responsive patients-table-wrap">
-            <table className="table kh-table patients-table" style={{ marginBottom: 0 }}>
+          <DataTableHeader
+            title="Patients list"
+            legend={[
+              { label: 'Active', tone: 'active' },
+              { label: 'Deactivated', tone: 'neutral' },
+              { label: 'Death records', tone: 'warning' },
+            ]}
+          />
+
+          <div className="table-responsive patients-table-wrap hospital-table-wrap">
+            <table className="table kh-table patients-table hospital-table" style={{ marginBottom: 0 }}>
             <thead>
               <tr>
                 <th className="col-num">#</th>
@@ -2011,15 +2032,24 @@ export default function Patients() {
             </thead>
             <tbody>
               {patientsLoading && (
-                <tr><td colSpan={9} className="text-center py-4" style={{ color: 'var(--kh-text-muted)', fontSize: 13 }}>Loading patients...</td></tr>
+                <TablePageLoader
+                  progress={patientsLoadProgress}
+                  title="Loading patients"
+                  subtitle="Fetching active, deceased, and deactivated patient records…"
+                  colSpan={9}
+                  skeletonColumns={9}
+                  icon={FiUser}
+                />
               )}
               {!patientsLoading && patientsError && (
-                <tr><td colSpan={9} className="text-center py-4" style={{ color: '#dc2626', fontSize: 13, fontWeight: 600 }}>{patientsError}</td></tr>
+                <tr className="hospital-table-empty-row hospital-table-empty-row--error">
+                  <td colSpan={9}>{patientsError}</td>
+                </tr>
               )}
               {!patientsLoading && !patientsError && paged.map((p, i) => (
                 <tr key={p.id} className="patients-row-card" onClick={() => navigate(`/patients/${p.patientId || p.profileRouteId || p.id}`)} style={{ cursor: 'pointer' }}>
-                  <td className="col-num">{startRow + i}</td>
-                  <td>
+                  <td className="col-num" data-label="#">{startRow + i}</td>
+                  <td data-label="Patient">
                     <div className="d-flex align-items-center gap-2 patients-name-cell">
                       {(() => {
                         const avatarKey = `${p.id}::${p.profileImageUrl || ''}`;
@@ -2051,10 +2081,10 @@ export default function Patients() {
                       </div>
                     </div>
                   </td>
-                  <td className="patients-table-value">{p.age}</td>
-                  <td className="patients-table-value">{p.gender}</td>
-                  <td className="patients-table-value">{p.address}</td>
-                  <td className="patients-table-value">
+                  <td className="patients-table-value" data-label="Age">{p.age}</td>
+                  <td className="patients-table-value" data-label="Gender">{p.gender}</td>
+                  <td className="patients-table-value hospital-table__truncate" data-label="Address" title={p.address}>{p.address}</td>
+                  <td className="patients-table-value" data-label="Assigned Nurse">
                     <div className="d-flex flex-wrap align-items-center gap-1 patients-nurse-stack">
                       {p.nurses.map((name, ni) => (
                         <span key={ni} className="patient-nurse-chip">{name}</span>
@@ -2067,25 +2097,38 @@ export default function Patients() {
                       </button>
                     </div>
                   </td>
-                  <td className="patients-table-date">{p.enrolled}</td>
-                  <td>
-                    <span className={`patients-status-pill ${p.status === 'active' ? 'is-active' : 'is-discharged'}`}>
-                      {p.status === 'active' ? 'Active' : (p.status === 'deactivated' ? 'Deactivated' : 'Death Records')}
-                    </span>
-                  </td>
-                  <td className="patients-table-actions-cell" onClick={(e) => e.stopPropagation()}>
-                    <PatientRowActions
-                      patient={p}
-                      onAction={(patient, actionValue, e) => {
-                        e.stopPropagation();
-                        handlePatientActionSelect(patient, actionValue);
-                      }}
+                  <td className="patients-table-date" data-label="Enrolled">{p.enrolled}</td>
+                  <td data-label="Status">
+                    <HospitalStatus
+                      label={p.status === 'active' ? 'Active' : (p.status === 'deactivated' ? 'Deactivated' : 'Death records')}
+                      tone={p.status === 'active' ? 'active' : (p.status === 'deactivated' ? 'neutral' : 'warning')}
                     />
+                  </td>
+                  <td className="patients-table-actions-cell hospital-table-actions-cell" data-label="Actions" onClick={(e) => e.stopPropagation()}>
+                    <HospitalTableActions
+                      onEdit={(e) => {
+                        e.stopPropagation();
+                        navigate(`/patients/${p.patientId || p.profileRouteId || p.id}`);
+                      }}
+                      onDelete={(e) => handlePatientActionSelect(p, 'delete', e)}
+                      editLabel={`View ${p.name}`}
+                      deleteLabel={`Delete ${p.name}`}
+                    >
+                      <PatientRowActions
+                        patient={p}
+                        onAction={(patient, actionValue, e) => {
+                          e.stopPropagation();
+                          handlePatientActionSelect(patient, actionValue, e);
+                        }}
+                      />
+                    </HospitalTableActions>
                   </td>
                 </tr>
               ))}
               {!patientsLoading && !patientsError && paged.length === 0 && (
-                <tr><td colSpan={9} className="text-center py-4" style={{ color: 'var(--kh-text-muted)', fontSize: 13 }}>No patients found</td></tr>
+                <tr className="hospital-table-empty-row">
+                  <td colSpan={9}>No patients found.</td>
+                </tr>
               )}
             </tbody>
           </table>
@@ -2215,7 +2258,14 @@ export default function Patients() {
                 {assignmentSuccess && (
                   <div style={{ padding: '8px 20px 4px', color: '#047857', fontSize: 12.5, fontWeight: 600 }}>{assignmentSuccess}</div>
                 )}
-                {nursesLoading && <div style={{ padding: '18px 20px', color: 'var(--kh-text-muted)', fontSize: 13 }}>Loading nurses...</div>}
+                {nursesLoading && (
+                  <TablePageLoaderPanel
+                    progress={nursesLoadProgress}
+                    title="Loading nurses"
+                    subtitle="Fetching nurses available for assignment…"
+                    icon={FiUserPlus}
+                  />
+                )}
                 {!nursesLoading && nursesError && <div style={{ padding: '18px 20px', color: '#dc2626', fontSize: 13, fontWeight: 600 }}>{nursesError}</div>}
                 {!nursesLoading && !nursesError && filteredAssignableNurses.length === 0 && (
                   <div style={{ padding: '18px 20px', color: 'var(--kh-text-muted)', fontSize: 13 }}>No nurses found.</div>

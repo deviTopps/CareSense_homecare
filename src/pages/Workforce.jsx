@@ -25,6 +25,11 @@ import {
 } from '../icons/hugeicons-feather';
 import { apiFetch, isTokenValid, createPlatformUser, fetchAuthUsers, updatePlatformUser, deletePlatformUser, changePlatformUserPassword } from '../api';
 import { resolveStoredMediaUrl } from '../utils/resolveStoredMediaUrl';
+import TablePageLoader from '../components/TablePageLoader';
+import DataTableHeader, { HospitalStatus } from '../components/DataTableHeader';
+import HospitalBoardToolbar from '../components/HospitalBoardToolbar';
+import HospitalTableActions from '../components/HospitalTableActions';
+import { useLoadProgress } from '../hooks/useLoadProgress';
 import {
   buildWorkforceFormFromNurseApi,
   clearContinueNurseRegistration,
@@ -337,6 +342,7 @@ export default function Workforce() {
   const [rowsPerPage, setRowsPerPage] = useState(5);
   const [nurses, setNurses] = useState([]);
   const [loading, setLoading] = useState(true);
+  const { progress: loadProgress, setProgressTarget, finishProgress } = useLoadProgress(loading);
   const [avatarLoadErrors, setAvatarLoadErrors] = useState({});
 
   const [step, setStep] = useState(0);
@@ -380,26 +386,31 @@ export default function Workforce() {
   const fetchNurses = useCallback(async () => {
     if (!NURSE_ENDPOINTS.list) {
       setNurses([]);
-      setLoading(false);
+      finishProgress(() => setLoading(false));
       return;
     }
     try {
       setLoading(true);
+      setProgressTarget(8);
       const [nursesRes, usersRes] = await Promise.all([
         apiFetch(NURSE_ENDPOINTS.list),
         fetchAuthUsers({ limit: 500 }).catch(() => null),
       ]);
+      setProgressTarget(32);
       const data = await nursesRes.json();
       const list = Array.isArray(data) ? data : data.nurses || data.data || [];
+      setProgressTarget(48);
       const completedIds = getCompletedNurseIds();
-      const mappedNurses = await Promise.all(list.map(async (n) => {
+      const mappedNurses = await Promise.all(list.map(async (n, index) => {
         const id = n._id || n.id;
         const profilePhotoUrl = await resolveNurseProfilePhotoUrl(n);
         const roleRaw = String(n.role || '').trim().toLowerCase();
         const staffMember = isStaffRole(roleRaw);
-        // Trust API-provided flag first, then localStorage, then assume incomplete
         const isComplete = staffMember || n.registrationComplete === true || n.isComplete === true || completedIds.has(id);
         const completedStep = isComplete ? 4 : (n.registrationStep ?? 1);
+        if (list.length > 0) {
+          setProgressTarget(48 + Math.round(((index + 1) / list.length) * 28));
+        }
         return {
           id,
           name: [n.firstName, n.lastName].filter(Boolean).join(' ') || n.name || '—',
@@ -466,12 +477,13 @@ export default function Workforce() {
         setNurses(mappedNurses);
       }
       setAvatarLoadErrors({});
+      setProgressTarget(100);
     } catch (err) {
       console.error('Failed to fetch nurses:', err);
     } finally {
-      setLoading(false);
+      finishProgress(() => setLoading(false));
     }
-  }, [resolveNurseProfilePhotoUrl]);
+  }, [resolveNurseProfilePhotoUrl, finishProgress, setProgressTarget]);
 
   useEffect(() => { fetchNurses(); }, [fetchNurses]);
 
@@ -1609,14 +1621,11 @@ export default function Workforce() {
               ))}
             </div>
             <div className="patients-topbar-actions">
-              <div className="patients-meta-pill">
-                <span className="patients-meta-pill__label">Visible</span>
-                <strong>{filtered.length}</strong>
-              </div>
-              <div className="patients-meta-pill">
-                <span className="patients-meta-pill__label">Complete</span>
-                <strong>{filterCounts.Complete}</strong>
-              </div>
+              <HospitalBoardToolbar
+                onDownload={handleExportNurses}
+                downloadLabel="Download report"
+                onFilter={() => document.getElementById('workforce-nurse-search')?.focus()}
+              />
             </div>
           </div>
 
@@ -1647,11 +1656,6 @@ export default function Workforce() {
                 </select>
               </label>
 
-              <button type="button" className="patients-toolbar-btn" onClick={handleExportNurses}>
-                <FiDownload size={15} />
-                <span>Export</span>
-              </button>
-
               <button type="button" className="patients-cta-btn patients-cta-btn--compact" onClick={() => setShowModal(true)}>
                 <span className="patients-cta-btn__icon"><FiPlus size={15} /></span>
                 <span>Register Nurse</span>
@@ -1659,8 +1663,17 @@ export default function Workforce() {
             </div>
           </div>
 
-          <div className="table-responsive patients-table-wrap">
-            <table className="table kh-table patients-table" style={{ marginBottom: 0 }}>
+          <DataTableHeader
+            title={isStaffTable ? 'Staff list' : 'Nurses list'}
+            legend={[
+              { label: 'Registration complete', tone: 'success' },
+              { label: 'In progress', tone: 'warning' },
+              { label: 'Staff', tone: 'info' },
+            ]}
+          />
+
+          <div className="table-responsive patients-table-wrap hospital-table-wrap">
+            <table className="table kh-table patients-table hospital-table" style={{ marginBottom: 0 }}>
               <thead>
                 <tr>
                   <th className="col-num">#</th>
@@ -1671,18 +1684,24 @@ export default function Workforce() {
                   </th>
                   <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('joined')}>Joined <SortIcon col="joined" /></th>
                   <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('phone')}>Phone <SortIcon col="phone" /></th>
-                  <th style={{ width: 168, textAlign: 'center' }}>Actions</th>
+                  <th>Status</th>
+                  <th style={{ width: 140, textAlign: 'right' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {loading && (
-                  <tr>
-                    <td colSpan={7} className="text-center py-4" style={{ color: 'var(--kh-text-muted)', fontSize: 13 }}>Loading nurses...</td>
-                  </tr>
+                  <TablePageLoader
+                    progress={loadProgress}
+                    title="Loading nurses"
+                    subtitle="Fetching nurse and staff records from your workforce…"
+                    colSpan={8}
+                    skeletonColumns={8}
+                    icon={FiUser}
+                  />
                 )}
                 {!loading && paged.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="text-center py-4" style={{ color: 'var(--kh-text-muted)', fontSize: 13 }}>
+                    <td colSpan={8} className="text-center py-4" style={{ color: 'var(--kh-text-muted)', fontSize: 13 }}>
                       {filter === 'Staff'
                         ? (filterCounts.Staff === 0
                           ? 'No staff users yet. Use Add New User with the Staff role.'
@@ -1736,13 +1755,31 @@ export default function Workforce() {
                       {isStaffTable ? (
                         <span className="text-break">{n.email}</span>
                       ) : (
-                        <span className="patients-license-code">{n.license}</span>
+                        <span className="hospital-table__strong">{n.license}</span>
                       )}
                     </td>
                     <td data-label="Joined" className="patients-table-date">{n.joined}</td>
                     <td data-label="Phone" className="patients-table-value" style={{ fontVariantNumeric: 'tabular-nums' }}>{n.phone}</td>
-                    <td data-label="Actions" className="workforce-actions-cell" onClick={(e) => e.stopPropagation()}>
-                      <div className={`workforce-row-actions${n.isStaff ? '' : ' workforce-row-actions--single'}`}>
+                    <td data-label="Status">
+                      {n.isStaff ? (
+                        <HospitalStatus label="Staff" tone="info" />
+                      ) : (
+                        <HospitalStatus
+                          label={n.isComplete ? 'Complete' : 'In progress'}
+                          tone={n.isComplete ? 'success' : 'warning'}
+                        />
+                      )}
+                    </td>
+                    <td data-label="Actions" className="workforce-actions-cell hospital-table-actions-cell" onClick={(e) => e.stopPropagation()}>
+                      <HospitalTableActions
+                        onEdit={n.isStaff ? undefined : (e) => {
+                          e.stopPropagation();
+                          navigate(`/workforce/${n.id}`);
+                        }}
+                        onDelete={(e) => handleDeleteNurse(n, e)}
+                        editLabel={`View ${n.name}`}
+                        deleteLabel={`Delete ${n.name}`}
+                      >
                         {n.isStaff ? (
                           <StaffRowActions
                             row={n}
@@ -1753,17 +1790,7 @@ export default function Workforce() {
                             onResetPassword={openStaffResetPassword}
                           />
                         ) : null}
-                        <button
-                          type="button"
-                          className="workforce-row-btn workforce-row-btn--delete"
-                          title={n.isStaff ? 'Delete staff' : 'Delete nurse'}
-                          aria-label={`Delete ${n.name}`}
-                          onClick={(e) => handleDeleteNurse(n, e)}
-                        >
-                          <FiTrash2 size={14} aria-hidden />
-                          <span>Delete</span>
-                        </button>
-                      </div>
+                      </HospitalTableActions>
                     </td>
                   </tr>
                 ))}

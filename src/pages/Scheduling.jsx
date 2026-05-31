@@ -4,10 +4,25 @@ import { useNavigate } from 'react-router-dom';
 import Button from 'react-bootstrap/Button';
 import Overlay from 'react-bootstrap/Overlay';
 import { FiPlus, FiCalendar, FiUser, FiXCircle, FiCheckCircle } from '../icons/hugeicons-feather';
+import DataTableHeader, { HospitalStatus } from '../components/DataTableHeader';
 import { fetchAllPatients } from '../utils/patients';
 import { apiFetch, createCareVisit, fetchOtherCareVisits, fetchUpcomingCareVisits } from '../api';
 
 const VISIT_FILTER_OPTIONS = ['All Visits', 'Up Coming Visits'];
+
+function visitStatusLabel(status) {
+  if (status === 'cancelled') return 'Cancelled';
+  if (status === 'completed') return 'Completed';
+  if (status === 'scheduled') return 'Scheduled';
+  return String(status || '—').replace(/-/g, ' ');
+}
+
+function visitStatusTone(status) {
+  if (status === 'completed') return 'success';
+  if (status === 'cancelled') return 'danger';
+  if (status === 'scheduled') return 'info';
+  return 'warning';
+}
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -995,7 +1010,7 @@ export default function Scheduling() {
   const listBanner = [refsError, visitsUpcomingError, visitsOtherError].filter(Boolean).join(' ');
 
   return (
-    <div className="page-wrapper">
+    <div className="page-wrapper scheduling-page">
       {listBanner ? (
         <div
           className="alert alert-warning py-2 px-3 mb-3"
@@ -1006,48 +1021,52 @@ export default function Scheduling() {
         </div>
       ) : null}
 
-      {/* Controls */}
-      <div className="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
-        <div className="filter-pills">
-          {VISIT_FILTER_OPTIONS.map((s) => (
+      <div className="kh-card mb-4 patients-board-card scheduling-visits-board">
+        <div className="patients-topbar">
+          <div className="patients-segmented-control">
+            {VISIT_FILTER_OPTIONS.map((s) => (
+              <button
+                key={s}
+                type="button"
+                className={`patients-segmented-control__item${filter === s ? ' is-active' : ''}`}
+                onClick={() => setFilter(s)}
+              >
+                <span>{s}</span>
+              </button>
+            ))}
+          </div>
+          <div className="patients-topbar-actions">
             <button
-              key={s}
               type="button"
-              className={`filter-pill${filter === s ? ' active' : ''}`}
-              onClick={() => setFilter(s)}
+              className="patients-cta-btn patients-cta-btn--compact"
+              onClick={() => {
+                setScheduleError('');
+                setShowScheduleModal(true);
+              }}
+              disabled={refsLoading || !patientOptions.length || !nurseOptions.length}
+              title={
+                refsLoading || !patientOptions.length || !nurseOptions.length
+                  ? 'Load patients and nurses first.'
+                  : undefined
+              }
             >
-              {s}
+              <span className="patients-cta-btn__icon"><FiPlus size={15} /></span>
+              <span>Schedule visit</span>
             </button>
-          ))}
+          </div>
         </div>
-        <button
-          type="button"
-          className="btn btn-kh-primary d-flex align-items-center gap-2"
-          onClick={() => {
-            setScheduleError('');
-            setShowScheduleModal(true);
-          }}
-          disabled={refsLoading || !patientOptions.length || !nurseOptions.length}
-          title={
-            refsLoading || !patientOptions.length || !nurseOptions.length
-              ? 'Load patients and nurses first.'
-              : undefined
-          }
-        >
-          <FiPlus size={15} /> Schedule a visit
-          </button>
-      </div>
 
-      {/* Table */}
-      <div className="kh-card mb-4">
-        <div className="card-header-custom">
-          <h6>{filter === 'All Visits' ? 'All visits' : 'Upcoming visits'}</h6>
-          <span style={{ fontSize: 12, color: 'var(--kh-text-muted)', fontWeight: 500 }}>
-            {visitsListLoading ? 'Loading…' : `${filtered.length} · ${visitsSourceLabel}`}
-          </span>
-        </div>
-        <div className="table-responsive care-visits-schedule-wrap">
-          <table className="table kh-table care-visits-schedule-table">
+        <DataTableHeader
+          title={filter === 'All Visits' ? 'All visits' : 'Upcoming visits'}
+          legend={[
+            { label: 'Scheduled', tone: 'info' },
+            { label: 'Completed', tone: 'success' },
+            { label: 'Cancelled', tone: 'danger' },
+          ]}
+        />
+
+        <div className="table-responsive care-visits-schedule-wrap hospital-table-wrap">
+          <table className="table kh-table care-visits-schedule-table hospital-table">
             <thead>
               <tr>
                 <th className="cv-th-patient">Patient</th>
@@ -1104,8 +1123,8 @@ export default function Scheduling() {
                         })
                       : '—'}
                   </td>
-                  <td className="cv-cell-date">
-                    <span style={{ fontWeight: 600, color: '#45B6FE' }}>
+                  <td className="cv-cell-date" data-label="Next visit">
+                    <span className={v.nextVisit ? 'cv-next-highlight' : ''}>
                       {v.nextVisit
                         ? new Date(`${v.nextVisit}T12:00:00`).toLocaleDateString('en-GB', {
                             day: '2-digit',
@@ -1125,10 +1144,11 @@ export default function Scheduling() {
                   <td className="cv-cell-nurse" title={v.nurseName}>
                     {v.nurseName}
                   </td>
-                  <td className="cv-cell-status align-middle">
-                    <span className={`badge-kh ${v.status}`}>
-                      {v.status === 'cancelled' ? 'cancelled' : v.status.replace('-', ' ')}
-                    </span>
+                  <td className="cv-cell-status align-middle" data-label="Status">
+                    <HospitalStatus
+                      label={visitStatusLabel(v.status)}
+                      tone={visitStatusTone(v.status)}
+                    />
                   </td>
                   <td className="cv-cell-actions">
                     <div className="cv-actions-inner" onClick={(e) => e.stopPropagation()}>
@@ -1147,7 +1167,7 @@ export default function Scheduling() {
             </tbody>
           </table>
           {!visitsListLoading && filtered.length === 0 ? (
-            <div className="text-center py-5 text-muted" style={{ fontSize: 13 }}>
+            <div className="hospital-table-empty">
               No visits to show for this tab. Schedule a visit or try the other filter.
             </div>
           ) : null}

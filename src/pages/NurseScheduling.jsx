@@ -4,6 +4,7 @@ import {
   FiChevronLeft, FiChevronRight, FiFilter, FiX, FiCheck, FiRefreshCw,
   FiArrowRight, FiAlertCircle, FiEdit2, FiTrash2
 } from '../icons/hugeicons-feather';
+import DataTableHeader from '../components/DataTableHeader';
 
 /* ── Nurses ── */
 const NURSES = [
@@ -355,13 +356,10 @@ export default function NurseScheduling() {
 
       {/* ── List View ── */}
       {view === 'list' && (
-        <div className="kh-card mb-4">
-          <div className="card-header-custom">
-            <h6>Assignment List</h6>
-            <span style={{ fontSize: 12, color: 'var(--kh-text-muted)', fontWeight: 500 }}>{filtered.length} total</span>
-          </div>
-          <div className="table-responsive">
-            <table className="table kh-table">
+        <div className="kh-card mb-4 patients-board-card">
+          <DataTableHeader title="Assignment list" />
+          <div className="table-responsive hospital-table-wrap">
+            <table className="table kh-table hospital-table">
               <thead>
                 <tr>
                   <th>Nurse</th><th>Patient</th><th>Date</th><th>Shift</th><th>Rotation</th><th>Region</th><th>Notes</th><th></th>
