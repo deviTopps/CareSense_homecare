@@ -631,26 +631,13 @@
   padding: 4px 10px;
 }
 
-.patients-board-card table.hospital-table .patient-assign-btn {
-  height: 28px;
-  padding: 0 10px;
-  font-size: 11px;
-  border-radius: 8px;
-  border-color: var(--hospital-btn-primary);
-  background: var(--hospital-btn-primary);
-  color: #fff;
+.patients-board-card table.hospital-table .patients-nurse-cell {
+  min-width: 168px;
+  vertical-align: middle !important;
 }
 
-.patients-board-card table.hospital-table .patient-assign-btn:hover {
-  background: var(--hospital-btn-primary-hover);
-  border-color: var(--hospital-btn-primary-hover);
-  color: #fff;
-}
-
-.patients-board-card table.hospital-table .patient-assign-btn.is-empty {
-  background: var(--hospital-btn-primary);
-  border-color: var(--hospital-btn-primary);
-  color: #fff;
+.patients-board-card table.hospital-table .patient-nurse-dropdown__trigger {
+  max-width: 100%;
 }
 
 .hospital-status {

@@ -4,7 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'motion/react';
 import {
   FiPlus, FiSearch, FiX, FiChevronRight, FiChevronLeft, FiChevronDown, FiCheck, FiSave,
-  FiChevronsLeft, FiChevronsRight, FiUserPlus, FiCheckCircle, FiInfo, FiDownload, FiUser,
+  FiChevronsLeft, FiChevronsRight, FiCheckCircle, FiInfo, FiDownload, FiUser,
   FiMoreHorizontal, FiTrash2, FiAlertCircle, FiRefreshCw, FiFileText, FiArrowRight,
 } from '../icons/hugeicons-feather';
 import {
@@ -31,10 +31,11 @@ import {
   buildAdmissionResumeDraft,
   fetchAdmissionPatientBundle,
 } from '../utils/admissionResume';
-import TablePageLoader, { TablePageLoaderPanel } from '../components/TablePageLoader';
+import TablePageLoader from '../components/TablePageLoader';
 import DataTableHeader, { HospitalStatus } from '../components/DataTableHeader';
 import HospitalBoardToolbar from '../components/HospitalBoardToolbar';
 import HospitalTableActions from '../components/HospitalTableActions';
+import PatientNurseAssignDropdown from '../components/PatientNurseAssignDropdown';
 import { useLoadProgress } from '../hooks/useLoadProgress';
 import { apiFetch } from '../api';
 import {
@@ -683,8 +684,7 @@ export default function Patients() {
   const [deceasedPatients, setDeceasedPatients] = useState([]);
   const [deactivatedPatients, setDeactivatedPatients] = useState([]);
   const [assignableNurses, setAssignableNurses] = useState([]);
-  const [assignModal, setAssignModal] = useState(null); // patient object or null
-  const [nurseSearch, setNurseSearch] = useState('');
+  const [openNurseDropdownId, setOpenNurseDropdownId] = useState(null);
   const [assigningNurseId, setAssigningNurseId] = useState('');
   const [nursesLoading, setNursesLoading] = useState(false);
   const [nursesError, setNursesError] = useState('');
@@ -1330,15 +1330,6 @@ export default function Patients() {
       return;
     }
     await checkRegistrationNumberExists(reg, admissionPatientId);
-  };
-
-  const openAssignModal = (patient) => {
-    setAssignModal(patient);
-    setNurseSearch('');
-    setAssignmentError('');
-    setAssignmentSuccess('');
-    setAssigningNurseId('');
-    setUnassigningAssignmentId('');
   };
 
   const handleAssignNurse = async (patient, nurse) => {
@@ -2084,18 +2075,27 @@ export default function Patients() {
                   <td className="patients-table-value" data-label="Age">{p.age}</td>
                   <td className="patients-table-value" data-label="Gender">{p.gender}</td>
                   <td className="patients-table-value hospital-table__truncate" data-label="Address" title={p.address}>{p.address}</td>
-                  <td className="patients-table-value" data-label="Assigned Nurse">
-                    <div className="d-flex flex-wrap align-items-center gap-1 patients-nurse-stack">
-                      {p.nurses.map((name, ni) => (
-                        <span key={ni} className="patient-nurse-chip">{name}</span>
-                      ))}
-                      <button
-                        onClick={e => { e.stopPropagation(); openAssignModal(p); }}
-                        className={`patient-assign-btn${p.nurses.length === 0 ? ' is-empty' : ''}`}
-                      >
-                        <FiUserPlus size={11} /> {p.nurses.length === 0 ? 'Assign' : '+'}
-                      </button>
-                    </div>
+                  <td className="patients-table-value patients-nurse-cell" data-label="Assigned Nurse" onClick={(e) => e.stopPropagation()}>
+                    <PatientNurseAssignDropdown
+                      patient={p}
+                      assignableNurses={assignableNurses}
+                      nursesLoading={nursesLoading}
+                      nursesError={nursesError}
+                      assigningNurseId={assigningNurseId}
+                      unassigningAssignmentId={unassigningAssignmentId}
+                      assignmentError={openNurseDropdownId === p.id ? assignmentError : ''}
+                      assignmentSuccess={openNurseDropdownId === p.id ? assignmentSuccess : ''}
+                      isOpen={openNurseDropdownId === p.id}
+                      onOpenChange={(open) => setOpenNurseDropdownId(open ? p.id : null)}
+                      onAssign={handleAssignNurse}
+                      onUnassign={handleUnassignNurse}
+                      onClearMessages={() => {
+                        setAssignmentError('');
+                        setAssignmentSuccess('');
+                        setAssigningNurseId('');
+                        setUnassigningAssignmentId('');
+                      }}
+                    />
                   </td>
                   <td className="patients-table-date" data-label="Enrolled">{p.enrolled}</td>
                   <td data-label="Status">
@@ -2161,161 +2161,6 @@ export default function Patients() {
         </div>
         </motion.div>
       </div>
-
-      {/* ═══ ASSIGN NURSE MODAL ═══ */}
-      {assignModal && (() => {
-        const currentPatient = patients.find(p => p.id === assignModal.id);
-        const assignedNurseRecords = currentPatient?.assignedNurseRecords || [];
-        const assignedNames = assignedNurseRecords.map((entry) => entry.name);
-        const assignedLookup = new Set(assignedNurseRecords.flatMap((entry) => [
-          String(entry.id || '').trim().toLowerCase(),
-          String(entry.name || '').trim().toLowerCase(),
-        ].filter(Boolean)));
-        const filteredAssignableNurses = assignableNurses.filter((nr) => (
-          !nurseSearch
-          || nr.name.toLowerCase().includes(nurseSearch.toLowerCase())
-          || nr.specialisation.toLowerCase().includes(nurseSearch.toLowerCase())
-          || nr.region.toLowerCase().includes(nurseSearch.toLowerCase())
-        ));
-        return (
-        <div className="modal modal-open patients-modal-shell" onClick={() => setAssignModal(null)}>
-          <div className="modal-dialog modal-dialog-centered" style={{ maxWidth: 500 }} onClick={e => e.stopPropagation()}>
-            <div className="modal-content kh-modal-panel" style={{ borderRadius: 20, border: '1px solid #e5e7eb', boxShadow: '0 24px 60px rgba(15,23,42,0.14)', padding: 0 }}>
-              <div style={{ padding: '20px 20px 16px', borderBottom: '1px solid #eef2f7' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-                  <div>
-                    <h6 style={{ fontWeight: 700, fontSize: 17, margin: 0, color: 'var(--kh-text)' }}>Assign nurse</h6>
-                    <div style={{ fontSize: 12.5, color: 'var(--kh-text-muted)', marginTop: 4 }}>
-                      {assignModal.name} · {assignModal.id}
-                    </div>
-                  </div>
-                  <button onClick={() => setAssignModal(null)} className="btn btn-sm btn-ghost" style={{ color: 'var(--kh-text-muted)', minHeight: 'auto', padding: 4 }}><FiX size={18} /></button>
-                </div>
-
-                <div style={{ position: 'relative', marginTop: 16 }}>
-                  <FiSearch size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--kh-text-muted)' }} />
-                  <input
-                    className="input input-bordered input-sm w-full form-control-kh"
-                    placeholder="Search nurse name or role"
-                    value={nurseSearch}
-                    onChange={e => setNurseSearch(e.target.value)}
-                    style={{ paddingLeft: 34, fontSize: 13, height: 42 }}
-                  />
-                </div>
-
-                <div style={{ marginTop: 14, fontSize: 12.5, color: 'var(--kh-text-muted)' }}>
-                  Assigned: <strong style={{ color: 'var(--kh-text)' }}>{assignedNames.length}</strong>
-                </div>
-                {assignedNames.length > 0 && (
-                  <div className="d-flex flex-wrap gap-2" style={{ marginTop: 10 }}>
-                    {assignedNurseRecords.map((assigned) => (
-                      <span
-                        key={assigned.id || assigned.name}
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 8,
-                          padding: '6px 10px',
-                          borderRadius: 999,
-                          background: '#f3f7fb',
-                          color: '#334155',
-                          fontSize: 12,
-                          fontWeight: 600,
-                        }}
-                      >
-                        {assigned.name}
-                        <button
-                          type="button"
-                          onClick={() => handleUnassignNurse(currentPatient || assignModal, assigned)}
-                          disabled={!assigned.assignmentId || unassigningAssignmentId === String(assigned.assignmentId)}
-                          title={!assigned.assignmentId ? 'Assignment ID not available' : 'Remove assigned nurse'}
-                          style={{
-                            border: 'none',
-                            background: 'transparent',
-                            color: '#475569',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            width: 16,
-                            height: 16,
-                            padding: 0,
-                            cursor: !assigned.assignmentId || unassigningAssignmentId === String(assigned.assignmentId) ? 'not-allowed' : 'pointer',
-                            opacity: !assigned.assignmentId || unassigningAssignmentId === String(assigned.assignmentId) ? 0.5 : 1,
-                          }}
-                        >
-                          <FiX size={12} />
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div style={{ padding: '8px 0', maxHeight: 360, overflowY: 'auto' }}>
-                {assignmentError && (
-                  <div style={{ padding: '8px 20px 4px', color: '#dc2626', fontSize: 12.5, fontWeight: 600 }}>{assignmentError}</div>
-                )}
-                {assignmentSuccess && (
-                  <div style={{ padding: '8px 20px 4px', color: '#047857', fontSize: 12.5, fontWeight: 600 }}>{assignmentSuccess}</div>
-                )}
-                {nursesLoading && (
-                  <TablePageLoaderPanel
-                    progress={nursesLoadProgress}
-                    title="Loading nurses"
-                    subtitle="Fetching nurses available for assignment…"
-                    icon={FiUserPlus}
-                  />
-                )}
-                {!nursesLoading && nursesError && <div style={{ padding: '18px 20px', color: '#dc2626', fontSize: 13, fontWeight: 600 }}>{nursesError}</div>}
-                {!nursesLoading && !nursesError && filteredAssignableNurses.length === 0 && (
-                  <div style={{ padding: '18px 20px', color: 'var(--kh-text-muted)', fontSize: 13 }}>No nurses found.</div>
-                )}
-                {!nursesLoading && !nursesError && filteredAssignableNurses.map((nr) => {
-                  const isAssigned = assignedLookup.has(String(nr.id || '').trim().toLowerCase()) || assignedLookup.has(nr.name.toLowerCase());
-                  const isSubmitting = assigningNurseId === String(nr.id || '');
-
-                  return (
-                    <div
-                      key={nr.id}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: 12,
-                        padding: '12px 20px',
-                        borderTop: '1px solid #f1f5f9',
-                      }}
-                    >
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontWeight: 600, fontSize: 13.5, color: 'var(--kh-text)' }}>{nr.name}</div>
-                        <div style={{ fontSize: 12, color: 'var(--kh-text-muted)' }}>{nr.specialisation}</div>
-                      </div>
-                      {isAssigned ? (
-                        <span style={{ fontSize: 12, fontWeight: 700, color: '#2563eb' }}>Assigned</span>
-                      ) : (
-                        <button
-                          className="btn btn-sm btn-primary"
-                          type="button"
-                          disabled={isSubmitting}
-                          onClick={() => handleAssignNurse(currentPatient || assignModal, nr)}
-                          style={{ fontSize: 12, fontWeight: 700, minWidth: 90 }}
-                        >
-                          {isSubmitting ? 'Saving...' : 'Assign'}
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div style={{ padding: '14px 20px', borderTop: '1px solid #eef2f7', display: 'flex', justifyContent: 'flex-end' }}>
-                <button onClick={() => setAssignModal(null)} className="btn btn-kh-outline" style={{ fontSize: 13, fontWeight: 600 }}>Close</button>
-              </div>
-            </div>
-          </div>
-        </div>
-        );
-      })()}
 
       {/* ═══ ADMISSION MODAL ═══ */}
       {resumingAdmission && (
