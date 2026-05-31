@@ -119,12 +119,26 @@ async function fetchPatientMedicalReport(patientId) {
   return { response, payload };
 }
 
-async function fetchReportsViaPatientFallback(mapReport) {
+async function fetchReportsViaPatientFallback(mapReport, onProgress) {
   const patients = await fetchAllPatients();
   const patientEntries = (Array.isArray(patients) ? patients : [])
     .map((patient) => ({ patient, patientId: extractApiPatientId(patient) }))
     .filter(({ patientId }) => Boolean(patientId))
     .slice(0, MAX_FALLBACK_PATIENTS);
+
+  const total = patientEntries.length;
+  let completed = 0;
+
+  const reportPatientProgress = () => {
+    if (typeof onProgress !== 'function' || total === 0) return;
+    completed += 1;
+    const ratio = completed / total;
+    onProgress(20 + Math.round(ratio * 75));
+  };
+
+  if (typeof onProgress === 'function') {
+    onProgress(total > 0 ? 12 : 20);
+  }
 
   const chunks = await runWithConcurrency(
     patientEntries,
@@ -155,6 +169,8 @@ async function fetchReportsViaPatientFallback(mapReport) {
           .filter((entry) => entry?.reportId);
       } catch {
         return [];
+      } finally {
+        reportPatientProgress();
       }
     },
   );
@@ -166,18 +182,30 @@ async function fetchReportsViaPatientFallback(mapReport) {
  * Load normalized medical reports for the Reports page.
  * Uses list GET first; optional per-patient fallback only when the list route is unavailable.
  */
-export async function loadMedicalReportsCatalog(mapReport) {
+export async function loadMedicalReportsCatalog(mapReport, options = {}) {
+  const { onProgress } = options;
+  const reportProgress = (value) => {
+    if (typeof onProgress === 'function') onProgress(Math.min(100, Math.max(0, value)));
+  };
+
+  reportProgress(8);
   const { response, payload } = await fetchMedicalReportList();
+  reportProgress(35);
 
   if (response.ok) {
+    reportProgress(55);
     const reports = extractMedicalReportArray(payload)
       .map((entry, index) => mapReport(entry, index))
       .filter((entry) => entry?.reportId);
-    return dedupeReports(reports);
+    reportProgress(88);
+    const result = dedupeReports(reports);
+    reportProgress(100);
+    return result;
   }
 
   if (shouldUsePerPatientFallback(response, payload)) {
-    const reports = await fetchReportsViaPatientFallback(mapReport);
+    const reports = await fetchReportsViaPatientFallback(mapReport, onProgress);
+    reportProgress(100);
     return dedupeReports(reports);
   }
 

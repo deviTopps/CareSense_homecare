@@ -274,7 +274,9 @@ const REPORT_TYPE_COLORS = {
   'General Assessment': { bg: '#f8fafc', text: '#475569' },
 };
 
-function ReportsTableLoader() {
+function ReportsTableLoader({ progress = 0 }) {
+  const pct = Math.round(Math.min(100, Math.max(0, progress)));
+
   return (
     <tr className="reports-table-loader-row">
       <td colSpan={7}>
@@ -288,6 +290,22 @@ function ReportsTableLoader() {
             <p className="reports-table-loader__subtitle">
               Fetching medical reports from your patient records…
             </p>
+            <div
+              className="reports-table-loader__progress"
+              role="progressbar"
+              aria-valuenow={pct}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-label={`Loading reports ${pct} percent`}
+            >
+              <div className="reports-table-loader__progress-track">
+                <div
+                  className="reports-table-loader__progress-fill"
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+              <span className="reports-table-loader__progress-label">{pct}%</span>
+            </div>
           </div>
           <div className="reports-table-loader__skeleton" aria-hidden>
             {Array.from({ length: 5 }, (_, i) => (
@@ -732,12 +750,38 @@ export default function Reports() {
   const [shareReport, setShareReport] = useState(null);
   const [shareAttachmentHtml, setShareAttachmentHtml] = useState('');
   const [patientProfilesById, setPatientProfilesById] = useState({});
+  const [loadProgress, setLoadProgress] = useState(0);
+  const loadProgressTargetRef = useRef(0);
 
   const enrichReport = useCallback((report) => {
     const patientId = String(report?.patientId || extractApiPatientId(report) || '').trim();
     const profile = patientProfilesById[patientId];
     return enrichReportWithPatientProfile(report, profile);
   }, [patientProfilesById]);
+
+  useEffect(() => {
+    if (!loading) {
+      setLoadProgress(0);
+      loadProgressTargetRef.current = 0;
+      return undefined;
+    }
+
+    loadProgressTargetRef.current = 4;
+    const tick = window.setInterval(() => {
+      setLoadProgress((prev) => {
+        const target = loadProgressTargetRef.current;
+        if (prev >= 100) return 100;
+        if (prev < target) {
+          return Math.min(target, prev + Math.max(0.8, (target - prev) * 0.12));
+        }
+        const creepCap = Math.min(96, target + 18);
+        if (prev >= creepCap) return prev;
+        return prev + 0.35;
+      });
+    }, 60);
+
+    return () => window.clearInterval(tick);
+  }, [loading]);
 
   useEffect(() => {
     let cancelled = false;
@@ -753,9 +797,16 @@ export default function Reports() {
     (async () => {
       try {
         setLoadError('');
-        const loadedReports = await loadMedicalReportsCatalog((entry, index) => (
-          normalizeMedicalReport(entry, index)
-        ));
+        loadProgressTargetRef.current = 4;
+        const loadedReports = await loadMedicalReportsCatalog(
+          (entry, index) => normalizeMedicalReport(entry, index),
+          {
+            onProgress: (value) => {
+              loadProgressTargetRef.current = Math.max(loadProgressTargetRef.current, value);
+              setLoadProgress((prev) => Math.max(prev, value));
+            },
+          },
+        );
 
         if (!cancelled) {
           setReports(loadedReports);
@@ -771,8 +822,14 @@ export default function Reports() {
         }
       } finally {
         if (!cancelled) {
-          setLoading(false);
-          setRefreshing(false);
+          loadProgressTargetRef.current = 100;
+          setLoadProgress(100);
+          window.setTimeout(() => {
+            if (!cancelled) {
+              setLoading(false);
+              setRefreshing(false);
+            }
+          }, 320);
         }
       }
     })();
@@ -931,7 +988,7 @@ export default function Reports() {
                 </tr>
               </thead>
               <tbody>
-                {loading && <ReportsTableLoader />}
+                {loading && <ReportsTableLoader progress={loadProgress} />}
                 {!loading && loadError && (
                   <tr><td colSpan={7} className="text-center py-4" style={{ color: '#dc2626', fontSize: 13, fontWeight: 600 }}>{loadError}</td></tr>
                 )}
