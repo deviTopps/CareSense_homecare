@@ -274,6 +274,49 @@ const REPORT_TYPE_COLORS = {
   'General Assessment': { bg: '#f8fafc', text: '#475569' },
 };
 
+function ReportsTableLoader() {
+  return (
+    <tr className="reports-table-loader-row">
+      <td colSpan={7}>
+        <div className="reports-table-loader" role="status" aria-live="polite" aria-label="Loading reports">
+          <div className="reports-table-loader__panel">
+            <div className="reports-table-loader__spinner" aria-hidden>
+              <span className="reports-table-loader__spinner-ring" />
+              <FiFileText size={22} className="reports-table-loader__icon" />
+            </div>
+            <p className="reports-table-loader__title">Loading reports</p>
+            <p className="reports-table-loader__subtitle">
+              Fetching medical reports from your patient records…
+            </p>
+          </div>
+          <div className="reports-table-loader__skeleton" aria-hidden>
+            {Array.from({ length: 5 }, (_, i) => (
+              <div key={i} className="reports-table-loader__skeleton-row">
+                <span /><span /><span /><span /><span /><span /><span />
+              </div>
+            ))}
+          </div>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function ReportsAttachmentLoader({ message, detail }) {
+  return (
+    <div className="reports-attachment-status reports-attachment-status--loading" role="status" aria-live="polite">
+      <div className="reports-attachment-status__spinner-wrap" aria-hidden>
+        <span className="reports-table-loader__spinner-ring reports-attachment-status__spinner-ring" />
+        <FiFileText size={16} className="reports-attachment-status__icon" />
+      </div>
+      <div className="reports-attachment-status__copy">
+        <strong>{message}</strong>
+        <p>{detail}</p>
+      </div>
+    </div>
+  );
+}
+
 function ReportStatusBadge({ status }) {
   const colors = status === 'Final'
     ? { bg: '#f0fdf4', text: '#15803d' }
@@ -621,9 +664,15 @@ function ShareEmailModal({ report, attachmentHtml, onClose }) {
               <div>
                 <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#415463', marginBottom: 6 }}>Attachment (PDF) *</label>
                 {!attachmentHtml?.trim() ? (
-                  <p style={{ fontSize: 12, color: '#64748b', margin: 0 }}>Preparing report layout for PDF…</p>
+                  <ReportsAttachmentLoader
+                    message="Preparing report layout"
+                    detail="Building the medical report preview for PDF export…"
+                  />
                 ) : attachmentLoading ? (
-                  <p style={{ fontSize: 12, color: '#64748b', margin: 0 }}>Generating PDF from medical report…</p>
+                  <ReportsAttachmentLoader
+                    message="Generating PDF attachment"
+                    detail="This may take a few seconds for longer reports."
+                  />
                 ) : attachmentError ? (
                   <p style={{ fontSize: 12, color: '#b91c1c', margin: 0 }}>{attachmentError}</p>
                 ) : attachmentFile ? (
@@ -882,9 +931,7 @@ export default function Reports() {
                 </tr>
               </thead>
               <tbody>
-                {loading && (
-                  <tr><td colSpan={7} className="text-center py-4" style={{ color: 'var(--kh-text-muted)', fontSize: 13 }}>Loading reports…</td></tr>
-                )}
+                {loading && <ReportsTableLoader />}
                 {!loading && loadError && (
                   <tr><td colSpan={7} className="text-center py-4" style={{ color: '#dc2626', fontSize: 13, fontWeight: 600 }}>{loadError}</td></tr>
                 )}
@@ -903,7 +950,6 @@ export default function Reports() {
                         </div>
                         <div>
                           <div className="patients-name-primary">{r.patientName}</div>
-                          <div className="patients-name-secondary">{r.reportId}</div>
                         </div>
                       </div>
                     </td>

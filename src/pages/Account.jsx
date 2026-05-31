@@ -11,8 +11,6 @@ import {
 import { getUser, changePassword, apiFetch } from '../api';
 import './Account.css';
 
-const fontStack = "'Poppins', -apple-system, BlinkMacSystemFont, sans-serif'";
-
 const AGENCY_LOGO_STORAGE_KEY = 'accountSettings.agencyLogo';
 
 function readPersistedAgencyLogo() {
@@ -428,7 +426,7 @@ export default function Account() {
   }, []);
 
   return (
-    <div className="page-wrapper account-settings-page account-settings-page--v3" style={{ fontFamily: fontStack }}>
+    <div className="page-wrapper account-settings-page account-settings-page--v3">
       <div className="settings-page">
         <header className="settings-page__hero">
           <div className="settings-page__hero-main">

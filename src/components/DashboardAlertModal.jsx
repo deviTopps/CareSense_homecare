@@ -183,8 +183,6 @@ export default function DashboardAlertModal({ alert, onClose, onResolved, onUnau
 
           <div className="db2-alert-modal__grid">
             <DetailCell label="Flagged by" value={alert.flaggedBy} />
-            <DetailCell label="Patient ID" value={alert.patientId} />
-            <DetailCell label="Alert ID" value={alert.id} />
             <DetailCell label="Assigned nurse" value={alert.nurse} />
           </div>
 

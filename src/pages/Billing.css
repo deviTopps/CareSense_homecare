@@ -18,7 +18,7 @@
   margin: 0;
   min-height: calc(100vh - var(--kh-topbar-height, 48px) - 28px);
   box-sizing: border-box;
-  font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: var(--kh-font-family);
 }
 
 .kh-bs-theme .page-wrapper.billing-page {

@@ -14,7 +14,7 @@ export const REPORT_VIEWER_STYLES = `
     border-radius: 0;
     box-shadow: none;
     padding: 48px 56px 40px;
-    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
+    font-family: 'Finlandica Text', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
     color: #1a1a1a;
     font-size: 13px;
     line-height: 1.55;
