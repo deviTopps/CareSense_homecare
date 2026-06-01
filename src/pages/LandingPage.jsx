@@ -220,7 +220,7 @@ export default function LandingPage() {
               animate={{ y: 0 }}
               transition={{ duration: 0.55, delay: 0.28 }}
             >
-              One platform for patients, workforce, scheduling, and monthly medical reports — built for homecare agencies.
+              One platform for patients, workforce, scheduling, and monthly medical reports built for homecare agencies.
             </motion.p>
             <motion.div
               className="hero-exact-image-wrap"
@@ -252,15 +252,6 @@ export default function LandingPage() {
           </div>
         </motion.div>
       </section>
-      <section className="trusted">
-        <motion.div initial="hidden" whileInView="show" viewport={{ once: true, amount: 0.3 }} variants={stagger}>
-          <motion.p variants={fadeUp}>Trusted by teams at</motion.p>
-          <motion.div className="logos" variants={fadeUp}>
-            <img src="/Clients/logo.png" alt="Client logo" className="client-logo" />
-          </motion.div>
-        </motion.div>
-      </section>
-
 
       {/* ── SHOWCASE: Patient Management ── */}
       <section id="features" className="section-split">
@@ -409,25 +400,6 @@ export default function LandingPage() {
           </motion.div>
         </div>
       </section>
-
-      {/* ── STATS ── */}
-      <div className="section-stats">
-        <div className="container">
-          <motion.div className="stats-grid" initial="hidden" whileInView="show" viewport={{ once: true, amount: 0.2 }} variants={stagger}>
-            {[
-              { n: '500+', l: 'Active Agencies', tone: 'accent' },
-              { n: '1.2M', l: 'Visits Tracked', tone: 'green' },
-              { n: '60+', l: 'Integrations', tone: 'gold' },
-              { n: '4.9★', l: 'Average Rating', tone: 'pink' },
-            ].map((s) => (
-              <motion.div className="stat-item" key={s.l} variants={fadeUp}>
-                <div className={`stat-number stat-number--${s.tone}`}>{s.n}</div>
-                <div className="stat-label">{s.l}</div>
-              </motion.div>
-            ))}
-          </motion.div>
-        </div>
-      </div>
 
       {/* ── TESTIMONIALS ── */}
       <section id="testimonials">
