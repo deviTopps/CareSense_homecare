@@ -21,7 +21,7 @@ import {
   normalizeDashboardSummary,
   fetchPendingAlerts,
 } from '../api';
-import { extractAlertsFromPayload, mapAlertToCase } from '../utils/alertMapping';
+import { extractAlertsFromPayload, mapAlertToCase, formatCaseStatusLabel, patientInitials } from '../utils/alertMapping';
 import { listAdmissionDrafts } from '../utils/admissionDrafts';
 import DashboardAlertModal from '../components/DashboardAlertModal';
 
@@ -57,6 +57,16 @@ function formatTodayDate() {
     month: 'long',
     day: 'numeric',
   });
+}
+
+function CaseStatusBadge({ status }) {
+  const normalized = String(status || 'open').toLowerCase();
+  const tone = normalized === 'resolved' ? 'resolved' : normalized === 'in-progress' ? 'progress' : 'open';
+  return (
+    <span className={`db2-case-badge db2-case-badge--${tone}`}>
+      {formatCaseStatusLabel(status)}
+    </span>
+  );
 }
 
 function SeverityBadge({ severity }) {
@@ -379,44 +389,103 @@ export default function Dashboard() {
         )}
 
         <div className="db2-watchlist__table">
-          <div className="db2-watchlist__thead">
-            <span>Patient</span>
-            <span>Concern</span>
-            <span>Severity</span>
-            <span>Date</span>
-            <span>Action</span>
+          <div className="db2-watchlist__table-meta">
+            <span>
+              {watchlistLoading
+                ? 'Loading alerts…'
+                : `${filtered.length} pending alert${filtered.length === 1 ? '' : 's'}${flagTab !== 'all' ? ` · ${flagTab}` : ''}`}
+            </span>
           </div>
 
-          <div className="db2-watchlist__tbody">
-            {watchlistLoading ? (
-              <div className="db2-watchlist__empty">Loading pending alerts…</div>
-            ) : watchlistError ? (
-              <div className="db2-watchlist__empty">Watchlist unavailable. Check connection and refresh.</div>
-            ) : filtered.length === 0 ? (
-              <div className="db2-watchlist__empty">No pending alerts.</div>
-            ) : (
-              filtered.map((flag) => (
-                <button
-                  key={flag.id}
-                  type="button"
-                  className={`db2-watchlist__row${selectedFlag?.id === flag.id ? ' db2-watchlist__row--active' : ''}`}
-                  onClick={() => setSelectedFlag(flag)}
-                >
-                  <span className="db2-watchlist__cell">
-                    <strong>{flag.patient}</strong>
-                  </span>
-                  <span className="db2-watchlist__cell db2-watchlist__cell--concern">
-                    <strong>{flag.type}</strong>
-                    <small>{flag.reason}</small>
-                  </span>
-                  <span className="db2-watchlist__cell">
-                    <SeverityBadge severity={flag.severity} />
-                  </span>
-                  <span className="db2-watchlist__cell">{flag.flaggedDate}</span>
-                  <span className="db2-watchlist__cell db2-watchlist__cell--action">View</span>
-                </button>
-              ))
-            )}
+          <div className="db2-watchlist__scroll">
+            <table className="db2-watchlist-table">
+              <thead>
+                <tr>
+                  <th className="db2-watchlist-table__col-patient">Patient</th>
+                  <th className="db2-watchlist-table__col-type">Alert</th>
+                  <th className="db2-watchlist-table__col-details">Details</th>
+                  <th className="db2-watchlist-table__col-severity">Severity</th>
+                  <th className="db2-watchlist-table__col-status">Status</th>
+                  <th className="db2-watchlist-table__col-nurse">Nurse</th>
+                  <th className="db2-watchlist-table__col-date">Date</th>
+                  <th className="db2-watchlist-table__col-action">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {watchlistLoading ? (
+                  <tr>
+                    <td colSpan={8} className="db2-watchlist-table__empty">Loading pending alerts…</td>
+                  </tr>
+                ) : watchlistError ? (
+                  <tr>
+                    <td colSpan={8} className="db2-watchlist-table__empty">Watchlist unavailable. Check connection and refresh.</td>
+                  </tr>
+                ) : filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="db2-watchlist-table__empty">No pending alerts.</td>
+                  </tr>
+                ) : (
+                  filtered.map((flag) => (
+                    <tr
+                      key={flag.id}
+                      className={`db2-watchlist-table__row${selectedFlag?.id === flag.id ? ' db2-watchlist-table__row--active' : ''}`}
+                      onClick={() => setSelectedFlag(flag)}
+                    >
+                      <td className="db2-watchlist-table__cell db2-watchlist-table__cell--patient">
+                        <div className="db2-watchlist-patient">
+                          <span className="db2-watchlist-patient__avatar" aria-hidden>
+                            {patientInitials(flag.patient)}
+                          </span>
+                          <div className="db2-watchlist-patient__body">
+                            <strong title={flag.patient}>{flag.patient}</strong>
+                            {(flag.region && flag.region !== '—') || flag.diagnosis ? (
+                              <span className="db2-watchlist-patient__meta">
+                                {[flag.region !== '—' ? flag.region : null, flag.diagnosis || null].filter(Boolean).join(' · ')}
+                              </span>
+                            ) : null}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="db2-watchlist-table__cell">
+                        <span className="db2-watchlist-type" title={flag.type}>{flag.type}</span>
+                        {flag.code ? <span className="db2-watchlist-code">{flag.code}</span> : null}
+                      </td>
+                      <td className="db2-watchlist-table__cell db2-watchlist-table__cell--details">
+                        <p className="db2-watchlist-reason" title={flag.reason}>{flag.reason}</p>
+                        {flag.flaggedBy && flag.flaggedBy !== '—' ? (
+                          <span className="db2-watchlist-reason__by">Reported by {flag.flaggedBy}</span>
+                        ) : null}
+                      </td>
+                      <td className="db2-watchlist-table__cell">
+                        <SeverityBadge severity={flag.severity} />
+                      </td>
+                      <td className="db2-watchlist-table__cell">
+                        <CaseStatusBadge status={flag.caseStatus} />
+                      </td>
+                      <td className="db2-watchlist-table__cell db2-watchlist-table__cell--nurse">
+                        <span title={flag.nurse}>{flag.nurse}</span>
+                      </td>
+                      <td className="db2-watchlist-table__cell db2-watchlist-table__cell--date">
+                        {flag.flaggedDate}
+                      </td>
+                      <td className="db2-watchlist-table__cell db2-watchlist-table__cell--action">
+                        <button
+                          type="button"
+                          className="db2-watchlist-view-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedFlag(flag);
+                          }}
+                        >
+                          View
+                          <FiChevronRight size={14} aria-hidden />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       </motion.div>

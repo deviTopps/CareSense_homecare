@@ -50,6 +50,38 @@ const Spinner = () => (
   </div>
 );
 
+const NP_EDIT_INPUT_CLASS = 'form-control form-control-kh np-edit-input';
+
+/** Module-level so inputs keep focus while typing (not recreated each parent render). */
+function EditRow({ label, field, type = 'text', options, children, wide, getValue, setValue }) {
+  return (
+    <div className={`np-edit-field${wide ? ' np-edit-field--wide' : ''}`}>
+      <label className="np-edit-field__label">{label}</label>
+      <div className="np-edit-field__control">
+        {children || (
+          options ? (
+            <select
+              className={NP_EDIT_INPUT_CLASS}
+              value={getValue(field)}
+              onChange={(e) => setValue(field, e.target.value)}
+            >
+              <option value="">Select...</option>
+              {options.map((o) => <option key={o} value={o}>{o}</option>)}
+            </select>
+          ) : (
+            <input
+              type={type}
+              className={NP_EDIT_INPUT_CLASS}
+              value={getValue(field)}
+              onChange={(e) => setValue(field, e.target.value)}
+            />
+          )
+        )}
+      </div>
+    </div>
+  );
+}
+
 const TABS = [
   { key: 'overview', label: 'Overview', icon: <FiUser size={14} /> },
   { key: 'diversity', label: 'Diversity', icon: <FiShield size={14} /> },
@@ -403,24 +435,8 @@ export default function NurseProfile() {
     }
   };
 
-  const editInputClass = 'form-control form-control-kh np-edit-input';
-  const EditRow = ({ label, field, type = 'text', options, children, wide }) => (
-    <div className={`np-edit-field${wide ? ' np-edit-field--wide' : ''}`}>
-      <label className="np-edit-field__label">{label}</label>
-      <div className="np-edit-field__control">
-        {children || (
-          options ? (
-            <select className={editInputClass} value={ef(field)} onChange={(e) => uf(field, e.target.value)}>
-              <option value="">Select...</option>
-              {options.map((o) => <option key={o} value={o}>{o}</option>)}
-            </select>
-          ) : (
-            <input type={type} className={editInputClass} value={ef(field)} onChange={(e) => uf(field, e.target.value)} />
-          )
-        )}
-      </div>
-    </div>
-  );
+  const getEditField = (field) => editForm[field] ?? '';
+  const setEditField = (field, value) => setEditForm((prev) => ({ ...prev, [field]: value }));
 
   const panelEditBtnStyle = {
     background: 'none',
@@ -902,26 +918,26 @@ export default function NurseProfile() {
       case 'personal':
         return (
           <div className="np-edit-form np-edit-form--grid">
-            <EditRow label="Title" field="title" />
-            <EditRow label="First name" field="firstName" />
-            <EditRow label="Last name" field="lastName" />
-            <EditRow label="Email" field="email" type="email" />
-            <EditRow label="Phone" field="phone" />
-            <EditRow label="Home telephone" field="homeTelephone" />
-            <EditRow label="Gender" field="gender" options={['Male', 'Female', 'Other']} />
-            <EditRow label="Citizenship" field="citizenship" />
-            <EditRow label="Address" field="address" wide />
+            <EditRow label="Title" field="title" getValue={getEditField} setValue={setEditField} />
+            <EditRow label="First name" field="firstName" getValue={getEditField} setValue={setEditField} />
+            <EditRow label="Last name" field="lastName" getValue={getEditField} setValue={setEditField} />
+            <EditRow label="Email" field="email" type="email" getValue={getEditField} setValue={setEditField} />
+            <EditRow label="Phone" field="phone" getValue={getEditField} setValue={setEditField} />
+            <EditRow label="Home telephone" field="homeTelephone" getValue={getEditField} setValue={setEditField} />
+            <EditRow label="Gender" field="gender" options={['Male', 'Female', 'Other']} getValue={getEditField} setValue={setEditField} />
+            <EditRow label="Citizenship" field="citizenship" getValue={getEditField} setValue={setEditField} />
+            <EditRow label="Address" field="address" wide getValue={getEditField} setValue={setEditField} />
           </div>
         );
       case 'diversity':
         return (
           <div className="np-edit-form np-edit-form--grid">
-            <EditRow label="Race / ethnicity" field="race" />
-            <EditRow label="Religion" field="religion" />
-            <EditRow label="Disability" field="disability" options={['No', 'Yes']} />
-            {ef('disability') === 'Yes' && <EditRow label="Disability detail" field="disability_detail" wide />}
-            <EditRow label="Criminal records" field="criminal_records" options={['No', 'Yes']} />
-            {ef('criminal_records') === 'Yes' && <EditRow label="Criminal record detail" field="criminal_record_detail" wide />}
+            <EditRow label="Race / ethnicity" field="race" getValue={getEditField} setValue={setEditField} />
+            <EditRow label="Religion" field="religion" getValue={getEditField} setValue={setEditField} />
+            <EditRow label="Disability" field="disability" options={['No', 'Yes']} getValue={getEditField} setValue={setEditField} />
+            {ef('disability') === 'Yes' && <EditRow label="Disability detail" field="disability_detail" wide getValue={getEditField} setValue={setEditField} />}
+            <EditRow label="Criminal records" field="criminal_records" options={['No', 'Yes']} getValue={getEditField} setValue={setEditField} />
+            {ef('criminal_records') === 'Yes' && <EditRow label="Criminal record detail" field="criminal_record_detail" wide getValue={getEditField} setValue={setEditField} />}
           </div>
         );
       case 'qualifications':
@@ -939,16 +955,16 @@ export default function NurseProfile() {
                 </div>
                 <div className="np-edit-form np-edit-form--grid">
                   <EditRow label="Qualification" field={`q-${i}-name`} children={
-                    <input className={editInputClass} value={q.name} onChange={(e) => { const arr = [...editForm.qualifications]; arr[i] = { ...arr[i], name: e.target.value }; uf('qualifications', arr); }} />
+                    <input className={NP_EDIT_INPUT_CLASS} value={q.name} onChange={(e) => { const arr = [...editForm.qualifications]; arr[i] = { ...arr[i], name: e.target.value }; uf('qualifications', arr); }} />
                   } />
                   <EditRow label="Institution" field={`q-${i}-inst`} children={
-                    <input className={editInputClass} value={q.institution} onChange={(e) => { const arr = [...editForm.qualifications]; arr[i] = { ...arr[i], institution: e.target.value }; uf('qualifications', arr); }} />
+                    <input className={NP_EDIT_INPUT_CLASS} value={q.institution} onChange={(e) => { const arr = [...editForm.qualifications]; arr[i] = { ...arr[i], institution: e.target.value }; uf('qualifications', arr); }} />
                   } />
                   <EditRow label="Result / grade" field={`q-${i}-result`} children={
-                    <input className={editInputClass} value={q.result} onChange={(e) => { const arr = [...editForm.qualifications]; arr[i] = { ...arr[i], result: e.target.value }; uf('qualifications', arr); }} />
+                    <input className={NP_EDIT_INPUT_CLASS} value={q.result} onChange={(e) => { const arr = [...editForm.qualifications]; arr[i] = { ...arr[i], result: e.target.value }; uf('qualifications', arr); }} />
                   } />
                   <EditRow label="Year" field={`q-${i}-year`} children={
-                    <input className={editInputClass} value={q.year} onChange={(e) => { const arr = [...editForm.qualifications]; arr[i] = { ...arr[i], year: e.target.value }; uf('qualifications', arr); }} />
+                    <input className={NP_EDIT_INPUT_CLASS} value={q.year} onChange={(e) => { const arr = [...editForm.qualifications]; arr[i] = { ...arr[i], year: e.target.value }; uf('qualifications', arr); }} />
                   } />
                 </div>
               </div>
@@ -963,7 +979,7 @@ export default function NurseProfile() {
           <div className="np-edit-form">
             {(editForm.trainingCourses || []).map((course, i) => (
               <div key={i} className="np-edit-inline-row">
-                <input className={editInputClass} value={course} onChange={(e) => { const arr = [...editForm.trainingCourses]; arr[i] = e.target.value; uf('trainingCourses', arr); }} placeholder="Course name" />
+                <input className={NP_EDIT_INPUT_CLASS} value={course} onChange={(e) => { const arr = [...editForm.trainingCourses]; arr[i] = e.target.value; uf('trainingCourses', arr); }} placeholder="Course name" />
                 {editForm.trainingCourses.length > 1 && (
                   <button type="button" className="np-edit-block__remove" onClick={() => uf('trainingCourses', editForm.trainingCourses.filter((_, j) => j !== i))}>
                     <FiTrash2 size={14} />
@@ -990,16 +1006,16 @@ export default function NurseProfile() {
                   )}
                 </div>
                 <div className="np-edit-form np-edit-form--grid">
-                  <EditRow label="Job title" field={`emp-${i}-title`} children={<input className={editInputClass} value={emp.jobTitle} onChange={(e) => { const arr = [...editForm.employmentHistory]; arr[i] = { ...arr[i], jobTitle: e.target.value }; uf('employmentHistory', arr); }} />} />
-                  <EditRow label="Employer" field={`emp-${i}-emp`} children={<input className={editInputClass} value={emp.employerName} onChange={(e) => { const arr = [...editForm.employmentHistory]; arr[i] = { ...arr[i], employerName: e.target.value }; uf('employmentHistory', arr); }} />} />
-                  <EditRow label="Business type" field={`emp-${i}-biz`} children={<input className={editInputClass} value={emp.businessType} onChange={(e) => { const arr = [...editForm.employmentHistory]; arr[i] = { ...arr[i], businessType: e.target.value }; uf('employmentHistory', arr); }} />} />
-                  <EditRow label="Start date" field={`emp-${i}-date`} children={<input type="date" className={editInputClass} value={emp.startDate} onChange={(e) => { const arr = [...editForm.employmentHistory]; arr[i] = { ...arr[i], startDate: e.target.value }; uf('employmentHistory', arr); }} />} />
-                  <EditRow label="Grade" field={`emp-${i}-grade`} children={<input className={editInputClass} value={emp.grade} onChange={(e) => { const arr = [...editForm.employmentHistory]; arr[i] = { ...arr[i], grade: e.target.value }; uf('employmentHistory', arr); }} />} />
-                  <EditRow label="Reporting officer" field={`emp-${i}-ro`} children={<input className={editInputClass} value={emp.reportingOfficer} onChange={(e) => { const arr = [...editForm.employmentHistory]; arr[i] = { ...arr[i], reportingOfficer: e.target.value }; uf('employmentHistory', arr); }} />} />
-                  <EditRow label="Contact person" field={`emp-${i}-cp`} children={<input className={editInputClass} value={emp.contactPerson} onChange={(e) => { const arr = [...editForm.employmentHistory]; arr[i] = { ...arr[i], contactPerson: e.target.value }; uf('employmentHistory', arr); }} />} />
-                  <EditRow label="Address" field={`emp-${i}-addr`} children={<input className={editInputClass} value={emp.address} onChange={(e) => { const arr = [...editForm.employmentHistory]; arr[i] = { ...arr[i], address: e.target.value }; uf('employmentHistory', arr); }} />} />
-                  <EditRow label="Description of duties" field={`emp-${i}-duties`} wide children={<textarea className={editInputClass} rows={3} value={emp.descriptionOfDuties} onChange={(e) => { const arr = [...editForm.employmentHistory]; arr[i] = { ...arr[i], descriptionOfDuties: e.target.value }; uf('employmentHistory', arr); }} />} />
-                  <EditRow label="Reason for leaving" field={`emp-${i}-leave`} wide children={<input className={editInputClass} value={emp.reasonForLeaving} onChange={(e) => { const arr = [...editForm.employmentHistory]; arr[i] = { ...arr[i], reasonForLeaving: e.target.value }; uf('employmentHistory', arr); }} />} />
+                  <EditRow label="Job title" field={`emp-${i}-title`} children={<input className={NP_EDIT_INPUT_CLASS} value={emp.jobTitle} onChange={(e) => { const arr = [...editForm.employmentHistory]; arr[i] = { ...arr[i], jobTitle: e.target.value }; uf('employmentHistory', arr); }} />} />
+                  <EditRow label="Employer" field={`emp-${i}-emp`} children={<input className={NP_EDIT_INPUT_CLASS} value={emp.employerName} onChange={(e) => { const arr = [...editForm.employmentHistory]; arr[i] = { ...arr[i], employerName: e.target.value }; uf('employmentHistory', arr); }} />} />
+                  <EditRow label="Business type" field={`emp-${i}-biz`} children={<input className={NP_EDIT_INPUT_CLASS} value={emp.businessType} onChange={(e) => { const arr = [...editForm.employmentHistory]; arr[i] = { ...arr[i], businessType: e.target.value }; uf('employmentHistory', arr); }} />} />
+                  <EditRow label="Start date" field={`emp-${i}-date`} children={<input type="date" className={NP_EDIT_INPUT_CLASS} value={emp.startDate} onChange={(e) => { const arr = [...editForm.employmentHistory]; arr[i] = { ...arr[i], startDate: e.target.value }; uf('employmentHistory', arr); }} />} />
+                  <EditRow label="Grade" field={`emp-${i}-grade`} children={<input className={NP_EDIT_INPUT_CLASS} value={emp.grade} onChange={(e) => { const arr = [...editForm.employmentHistory]; arr[i] = { ...arr[i], grade: e.target.value }; uf('employmentHistory', arr); }} />} />
+                  <EditRow label="Reporting officer" field={`emp-${i}-ro`} children={<input className={NP_EDIT_INPUT_CLASS} value={emp.reportingOfficer} onChange={(e) => { const arr = [...editForm.employmentHistory]; arr[i] = { ...arr[i], reportingOfficer: e.target.value }; uf('employmentHistory', arr); }} />} />
+                  <EditRow label="Contact person" field={`emp-${i}-cp`} children={<input className={NP_EDIT_INPUT_CLASS} value={emp.contactPerson} onChange={(e) => { const arr = [...editForm.employmentHistory]; arr[i] = { ...arr[i], contactPerson: e.target.value }; uf('employmentHistory', arr); }} />} />
+                  <EditRow label="Address" field={`emp-${i}-addr`} children={<input className={NP_EDIT_INPUT_CLASS} value={emp.address} onChange={(e) => { const arr = [...editForm.employmentHistory]; arr[i] = { ...arr[i], address: e.target.value }; uf('employmentHistory', arr); }} />} />
+                  <EditRow label="Description of duties" field={`emp-${i}-duties`} wide children={<textarea className={NP_EDIT_INPUT_CLASS} rows={3} value={emp.descriptionOfDuties} onChange={(e) => { const arr = [...editForm.employmentHistory]; arr[i] = { ...arr[i], descriptionOfDuties: e.target.value }; uf('employmentHistory', arr); }} />} />
+                  <EditRow label="Reason for leaving" field={`emp-${i}-leave`} wide children={<input className={NP_EDIT_INPUT_CLASS} value={emp.reasonForLeaving} onChange={(e) => { const arr = [...editForm.employmentHistory]; arr[i] = { ...arr[i], reasonForLeaving: e.target.value }; uf('employmentHistory', arr); }} />} />
                 </div>
               </div>
             ))}
@@ -1011,9 +1027,9 @@ export default function NurseProfile() {
       case 'supporting-staff':
         return (
           <div className="np-edit-form np-edit-form--grid">
-            <EditRow label="Has staff relation" field="staffRelation" options={['No', 'Yes']} />
-            {ef('staffRelation') === 'Yes' && <EditRow label="Relation detail" field="staffRelationDetail" wide />}
-            <EditRow label="How applied" field="vacancyAdvertised" wide />
+            <EditRow label="Has staff relation" field="staffRelation" options={['No', 'Yes']} getValue={getEditField} setValue={setEditField} />
+            {ef('staffRelation') === 'Yes' && <EditRow label="Relation detail" field="staffRelationDetail" wide getValue={getEditField} setValue={setEditField} />}
+            <EditRow label="How applied" field="vacancyAdvertised" wide getValue={getEditField} setValue={setEditField} />
           </div>
         );
       case 'supporting-referees':
@@ -1023,9 +1039,9 @@ export default function NurseProfile() {
               <div key={i} className="np-edit-block">
                 <div className="np-edit-block__head"><span>Referee {i + 1}</span></div>
                 <div className="np-edit-form np-edit-form--grid">
-                  <EditRow label="Name" field={`ref-${i}-name`} children={<input className={editInputClass} value={ref.name} onChange={(e) => { const refs = [...editForm.referees]; refs[i] = { ...refs[i], name: e.target.value }; uf('referees', refs); }} />} />
-                  <EditRow label="Address" field={`ref-${i}-addr`} children={<input className={editInputClass} value={ref.address} onChange={(e) => { const refs = [...editForm.referees]; refs[i] = { ...refs[i], address: e.target.value }; uf('referees', refs); }} />} />
-                  <EditRow label="Phone" field={`ref-${i}-tel`} children={<input className={editInputClass} value={ref.telephone} onChange={(e) => { const refs = [...editForm.referees]; refs[i] = { ...refs[i], telephone: e.target.value }; uf('referees', refs); }} />} />
+                  <EditRow label="Name" field={`ref-${i}-name`} children={<input className={NP_EDIT_INPUT_CLASS} value={ref.name} onChange={(e) => { const refs = [...editForm.referees]; refs[i] = { ...refs[i], name: e.target.value }; uf('referees', refs); }} />} />
+                  <EditRow label="Address" field={`ref-${i}-addr`} children={<input className={NP_EDIT_INPUT_CLASS} value={ref.address} onChange={(e) => { const refs = [...editForm.referees]; refs[i] = { ...refs[i], address: e.target.value }; uf('referees', refs); }} />} />
+                  <EditRow label="Phone" field={`ref-${i}-tel`} children={<input className={NP_EDIT_INPUT_CLASS} value={ref.telephone} onChange={(e) => { const refs = [...editForm.referees]; refs[i] = { ...refs[i], telephone: e.target.value }; uf('referees', refs); }} />} />
                 </div>
               </div>
             ))}
