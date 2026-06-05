@@ -27,6 +27,7 @@ import {
   resolveMongoIdFromCandidates,
   resolvePatientMutationId,
 } from '../utils/patients';
+import { TablePageLoaderPanel } from '../components/TablePageLoader';
 import { invalidateMedicalReportsCache } from '../utils/medicalReports';
 import { findAdmissionDraftForPatient } from '../utils/admissionDrafts';
 import { ADMISSION_SECTION_COUNT } from '../utils/admissionResume';
@@ -3514,25 +3515,241 @@ function toNoteTimeString(value, fallbackTime) {
   return parsed.toTimeString().slice(0, 5);
 }
 
-function normalizeNurseNote(rawNote, fallback = {}) {
-  const raw = rawNote && typeof rawNote === 'object' ? rawNote : {};
-  const timestamp = raw?.recordedAt || raw?.createdAt || raw?.updatedAt || raw?.takenAt || fallback?.timestamp || '';
-  const nurseName = String(
+function isUnknownNurseLabel(name) {
+  const s = String(name || '').trim();
+  if (!s) return true;
+  if (isUnknownReporterLabel(s)) return true;
+  return /^unknown\s*nurse$/i.test(s);
+}
+
+function isIdLikeNurseLabel(name) {
+  const s = String(name || '').trim();
+  if (!s) return false;
+  if (isUuidV4ish(s) || isLikelyMongoObjectId(s)) return true;
+  if (/^nurse:/i.test(s)) return true;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
+}
+
+function isResolvableNurseName(name) {
+  const s = String(name || '').trim();
+  if (!s) return false;
+  if (isUnknownNurseLabel(s)) return false;
+  if (isIdLikeNurseLabel(s)) return false;
+  return true;
+}
+
+function resolveSessionDisplayName(user, tokenPayload) {
+  const u = user && typeof user === 'object' ? user : {};
+  const token = tokenPayload && typeof tokenPayload === 'object' ? tokenPayload : {};
+  const combined = `${u.firstName || u.givenName || ''} ${u.lastName || u.familyName || ''}`.trim();
+  const tokenCombined = `${token.firstName || token.givenName || ''} ${token.lastName || token.familyName || ''}`.trim();
+  const emailLocal = String(u.email || token.email || '').split('@')[0]?.trim();
+  return String(
+    u.name
+    || u.fullName
+    || u.displayName
+    || u.staffName
+    || u.nurseName
+    || combined
+    || tokenCombined
+    || vitalRecorderDisplayName(u)
+    || nurseObjectToDisplayName(u)
+    || token.name
+    || token.fullName
+    || u.username
+    || (emailLocal && !emailLocal.includes('+') ? emailLocal : '')
+    || ''
+  ).trim();
+}
+
+function collectSessionNurseIds(currentUser, tokenPayload) {
+  const ids = [];
+  const push = (v) => {
+    if (v == null) return;
+    const s = String(v).trim();
+    if (s && !ids.includes(s)) ids.push(s);
+  };
+
+  const u = currentUser && typeof currentUser === 'object' ? currentUser : {};
+  const token = tokenPayload && typeof tokenPayload === 'object' ? tokenPayload : {};
+
+  push(u.nurseId);
+  push(token.nurseId);
+  push(u.id);
+  push(u._id);
+  push(u.userId);
+  push(u.staffId);
+  push(u.uuid);
+  push(token.userId);
+  push(token.id);
+  push(token.sub);
+
+  collectNurseIdCandidates(u).forEach(push);
+  return ids;
+}
+
+function mergeNurseDirectories(incidentNurses, assignedNurses = []) {
+  const rows = Array.isArray(incidentNurses) ? [...incidentNurses] : [];
+
+  (Array.isArray(assignedNurses) ? assignedNurses : []).forEach((entry) => {
+    if (!entry) return;
+    const name = String(entry.name || nurseObjectToDisplayName(entry) || '').trim();
+    if (!name) return;
+
+    const idsForMatch = [
+      ...new Set([
+        ...collectNurseIdCandidates(entry),
+        String(entry.id || '').trim(),
+        String(entry.nurseId || '').trim(),
+      ].filter(Boolean)),
+    ];
+
+    const existing = rows.find((row) => (
+      row.name === name
+      || idsForMatch.some((id) => Array.isArray(row.idsForMatch) && row.idsForMatch.includes(id))
+    ));
+
+    if (existing) {
+      existing.idsForMatch = [...new Set([...(existing.idsForMatch || []), ...idsForMatch])];
+      if (!existing.name) existing.name = name;
+      return;
+    }
+
+    rows.push({
+      id: idsForMatch[0] || name,
+      name,
+      idsForMatch,
+    });
+  });
+
+  return rows;
+}
+
+function resolveNurseNameFromDirectory(nurseId, nurses, session = {}) {
+  const candidates = [...new Set(
+    [nurseId, ...(Array.isArray(session.extraIds) ? session.extraIds : [])]
+      .map((v) => String(v || '').trim())
+      .filter(Boolean),
+  )];
+
+  if (!candidates.length) return '';
+
+  const directory = Array.isArray(nurses) ? nurses : [];
+  for (const nid of candidates) {
+    const row = directory.find((n) => Array.isArray(n.idsForMatch) && n.idsForMatch.includes(nid));
+    if (row?.name) return row.name;
+  }
+
+  const sessionIds = Array.isArray(session.sessionNurseIds)
+    ? session.sessionNurseIds
+    : [session.currentNurseId].filter(Boolean);
+  const sessionName = String(session.currentUserName || session.sessionName || '').trim();
+
+  if (sessionName && candidates.some((nid) => sessionIds.includes(nid))) {
+    return sessionName;
+  }
+
+  return '';
+}
+
+function resolveNoteNurseName(raw, fallback = {}) {
+  const fromPopulated =
+    vitalRecorderDisplayName(raw?.takenBy)
+    || vitalRecorderDisplayName(raw?.recordedBy)
+    || vitalRecorderDisplayName(raw?.author)
+    || vitalRecorderDisplayName(raw?.createdBy)
+    || vitalRecorderDisplayName(raw?.user)
+    || nurseObjectToDisplayName(raw?.nurse)
+    || nurseObjectToDisplayName(raw?.user)
+    || vitalRecorderDisplayName(raw?.nurse);
+  const direct = String(
     raw?.nurseName
-    || raw?.recordedBy
-    || raw?.author
+    || raw?.recordedByName
+    || raw?.authorName
     || raw?.createdByName
     || raw?.staffName
-    || (typeof raw?.nurse === 'string' ? raw.nurse : raw?.nurse?.name)
+    || raw?.recorderName
+    || raw?.takerName
+    || (typeof raw?.recordedBy === 'string' && !isIdLikeNurseLabel(raw.recordedBy) ? raw.recordedBy : '')
+    || (typeof raw?.nurse === 'string' && !isIdLikeNurseLabel(raw.nurse) ? raw.nurse : '')
     || fallback?.nurse
     || ''
   ).trim();
+  const candidate = fromPopulated || direct;
+  return isResolvableNurseName(candidate) ? candidate : '';
+}
+
+function noteBelongsToSession(note, session = {}) {
+  const sessionIds = Array.isArray(session.sessionNurseIds)
+    ? session.sessionNurseIds.map((id) => String(id).trim()).filter(Boolean)
+    : [];
+  const noteIds = noteAuthorIdList(note);
+
+  if (!sessionIds.length) return false;
+  if (!noteIds.length) return session.notesScope === 'nurse';
+  return noteIds.some((id) => sessionIds.includes(id));
+}
+
+function resolveNoteNurseDisplayName(note, context = {}) {
+  const {
+    nurses = [],
+    sessionName = '',
+    sessionNurseIds = [],
+    notesScope = 'patient',
+    primaryNurse = '',
+  } = context;
+
+  const session = {
+    currentUserName: sessionName,
+    sessionName,
+    sessionNurseIds,
+    notesScope,
+    extraIds: [note?.nurse, note?.nurseId].filter(Boolean),
+  };
+
+  if (isResolvableNurseName(note?.nurse)) {
+    return String(note.nurse).trim();
+  }
+
+  const fromDirectory = resolveNurseNameFromDirectory(note?.nurseId, nurses, session)
+    || resolveNurseNameFromDirectory(note?.nurse, nurses, session);
+  if (fromDirectory) return fromDirectory;
+
+  if (sessionName && noteBelongsToSession(note, { sessionNurseIds, notesScope })) {
+    return sessionName;
+  }
+
+  const primary = String(primaryNurse || '').trim();
+  if (primary && !isIdLikeNurseLabel(primary)) return primary;
+
+  const authorIds = noteAuthorIdList(note);
+  if (sessionName && (!authorIds.length || noteBelongsToSession(note, { sessionNurseIds, notesScope }))) {
+    return sessionName;
+  }
+
+  return 'Unknown Nurse';
+}
+
+function enrichNurseNoteNames(notes, nurses, session = {}) {
+  return notes.map((note) => ({
+    ...note,
+    nurse: resolveNoteNurseDisplayName(note, {
+      nurses,
+      sessionName: session.currentUserName || session.sessionName || '',
+      sessionNurseIds: session.sessionNurseIds || [],
+      notesScope: session.notesScope || 'patient',
+      primaryNurse: session.primaryNurse || '',
+    }),
+  }));
+}
+
+function normalizeNurseNote(rawNote, fallback = {}) {
+  const raw = rawNote && typeof rawNote === 'object' ? rawNote : {};
+  const timestamp = raw?.recordedAt || raw?.createdAt || raw?.updatedAt || raw?.takenAt || fallback?.timestamp || '';
+  const nurseName = resolveNoteNurseName(raw, fallback);
+  const nurseIdCandidates = collectNoteAuthorIdCandidates(raw);
   const nurseId = String(
-    raw?.nurseId
-    || raw?.recordedById
-    || raw?.authorId
-    || raw?.createdBy
-    || (typeof raw?.nurse === 'object' ? raw?.nurse?.id || raw?.nurse?._id : '')
+    nurseIdCandidates[0]
     || fallback?.nurseId
     || ''
   ).trim();
@@ -3716,8 +3933,9 @@ function isUnknownReporterLabel(name) {
 
 function nurseObjectToDisplayName(nurse) {
   if (!nurse || typeof nurse !== 'object') return '';
-  const combined = `${nurse.firstName || ''} ${nurse.lastName || ''}`.trim();
-  return String(nurse.name || nurse.fullName || combined || '').trim();
+  const personal = nurse.personal && typeof nurse.personal === 'object' ? nurse.personal : {};
+  const combined = `${nurse.firstName || personal.firstName || nurse.givenName || ''} ${nurse.lastName || personal.lastName || nurse.familyName || ''}`.trim();
+  return String(nurse.name || nurse.fullName || nurse.displayName || nurse.nurseName || combined || '').trim();
 }
 
 function normalizeIncident(rawIncident, fallback = {}) {
@@ -3808,6 +4026,50 @@ function collectNurseIdCandidates(raw) {
 
   push(raw._id);
   return out;
+}
+
+/** Nurse-note payloads must not treat the note's own `id` as the authoring nurse id. */
+function collectNoteAuthorIdCandidates(raw) {
+  const out = [];
+  const push = (v) => {
+    if (v == null) return;
+    const s = String(v).trim();
+    if (s && !out.includes(s)) out.push(s);
+  };
+  if (!raw || typeof raw !== 'object') return out;
+
+  push(raw.nurseId);
+  push(raw.nurse_id);
+  push(raw.nurseUuid);
+  push(raw.recordedById);
+  push(raw.authorId);
+  push(raw.userId);
+  push(raw.accountId);
+
+  if (typeof raw.createdBy === 'string') push(raw.createdBy);
+  if (typeof raw.nurse === 'string' && isIdLikeNurseLabel(raw.nurse)) push(raw.nurse);
+
+  const nestedSources = [raw.nurse, raw.user, raw.takenBy, raw.recordedBy, raw.author, raw.createdBy];
+  nestedSources.forEach((entry) => {
+    if (!entry || typeof entry !== 'object') return;
+    push(entry.nurseId);
+    push(entry.id);
+    push(entry._id);
+    push(entry.uuid);
+    push(entry.userId);
+  });
+
+  return out;
+}
+
+function noteAuthorIdList(note) {
+  const ids = collectNoteAuthorIdCandidates(note);
+  if (ids.length) return ids;
+  const nurseField = String(note?.nurse || '').trim();
+  if (nurseField && isIdLikeNurseLabel(nurseField)) ids.push(nurseField);
+  const nurseId = String(note?.nurseId || '').trim();
+  if (nurseId) ids.push(nurseId);
+  return [...new Set(ids)];
 }
 
 /** Nurse id for POST /care-plan-checklist/mark — API expects UUID (or Mongo id); avoid email/sub. */
@@ -3922,14 +4184,12 @@ export default function PatientProfile() {
   const [cardSectionError, setCardSectionError] = useState('');
   const [savingProfileCard, setSavingProfileCard] = useState(false);
   const currentUser = getUser();
-  const currentUserName = String(
-    currentUser?.name
-    || currentUser?.fullName
-    || currentUser?.username
-    || currentUser?.staffName
-    || currentUser?.nurseName
-    || ''
-  ).trim();
+  const tokenPayload = useMemo(() => parseJwtPayload(getToken()), []);
+  const currentUserName = resolveSessionDisplayName(currentUser, tokenPayload);
+  const sessionNurseIds = useMemo(
+    () => collectSessionNurseIds(currentUser, tokenPayload),
+    [currentUser, tokenPayload],
+  );
 
   const setProfileUpdateField = (path, value) => {
     const keys = String(path || '').split('.').filter(Boolean);
@@ -4286,8 +4546,13 @@ export default function PatientProfile() {
   /* Nurse Notes state */
   const [nurseNotes, setNurseNotes] = useState([]);
   const [notesLoading, setNotesLoading] = useState(false);
+  const [notesRefreshing, setNotesRefreshing] = useState(false);
+  const [notesLoaded, setNotesLoaded] = useState(false);
+  const notesLoadedRef = useRef(false);
+  const incidentNursesRef = useRef([]);
+  const remotePatientRef = useRef(null);
+  const notesEnrichSessionRef = useRef({ currentUserName: '', sessionNurseIds: [] });
   const [notesError, setNotesError] = useState('');
-  const [notesScope, setNotesScope] = useState('patient'); // 'patient' | 'nurse'
   const [showNoteForm, setShowNoteForm] = useState(false);
   const [noteForm, setNoteForm] = useState({ date: new Date().toISOString().slice(0, 10), time: new Date().toTimeString().slice(0, 5), nurse: '', category: 'Assessment', priority: 'Normal', content: '' });
   const [noteFilter, setNoteFilter] = useState('All');
@@ -4295,7 +4560,10 @@ export default function PatientProfile() {
   const [savingNote, setSavingNote] = useState(false);
   const [noteSaveError, setNoteSaveError] = useState('');
   const [deletingNoteId, setDeletingNoteId] = useState(null);
-  const currentNurseId = resolveCurrentNurseId(currentUser, parseJwtPayload(getToken()));
+  const [incidentNurses, setIncidentNurses] = useState([]);
+  const [incidentNursesLoading, setIncidentNursesLoading] = useState(false);
+  const [incidentNursesError, setIncidentNursesError] = useState('');
+  const currentNurseId = resolveCurrentNurseId(currentUser, tokenPayload);
 
   const ROUTE_OPTIONS = ['Oral', 'IV', 'IM', 'SC', 'Topical', 'Inhaled', 'Rectal', 'Sublingual'];
   const medicationFrequencySelectValue = normalizeMedicationFrequency(medForm.frequency) || medForm.frequency || '';
@@ -4984,7 +5252,10 @@ export default function PatientProfile() {
     setNoteForm({
       date: new Date().toISOString().slice(0, 10),
       time: new Date().toTimeString().slice(0, 5),
-      nurse: currentUserName || '',
+      nurse:
+        resolveNurseNameFromDirectory(currentNurseId, incidentNurses, { currentNurseId, currentUserName })
+        || currentUserName
+        || '',
       category: 'Assessment',
       priority: 'Normal',
       content: '',
@@ -5000,7 +5271,11 @@ export default function PatientProfile() {
     setNoteForm({
       date: note.date || new Date().toISOString().slice(0, 10),
       time: note.time || new Date().toTimeString().slice(0, 5),
-      nurse: note.nurse || currentUserName || '',
+      nurse:
+        note.nurse
+        || resolveNurseNameFromDirectory(note.nurseId, incidentNurses, { currentNurseId, currentUserName })
+        || currentUserName
+        || '',
       category: note.category || 'Assessment',
       priority: note.priority || 'Normal',
       content: note.content || '',
@@ -5008,27 +5283,35 @@ export default function PatientProfile() {
     setShowNoteForm(true);
   };
 
-  const loadNurseNotes = useCallback(async () => {
-    const patientIdValue = String(effectivePatientId || '').trim();
-    const nurseIdValue = String(currentNurseId || '').trim();
+  useEffect(() => {
+    incidentNursesRef.current = incidentNurses;
+  }, [incidentNurses]);
 
-    let path = '';
-    if (notesScope === 'nurse') {
-      if (!nurseIdValue) {
-        setNurseNotes([]);
-        setNotesError('Sign-in info is missing — cannot load your notes.');
-        return;
-      }
-      path = `/nurse-notes/nurse/${encodeURIComponent(nurseIdValue)}`;
-    } else {
-      if (!patientIdValue) {
-        setNurseNotes([]);
-        return;
-      }
-      path = `/nurse-notes/patient/${encodeURIComponent(patientIdValue)}`;
+  useEffect(() => {
+    remotePatientRef.current = remotePatient;
+  }, [remotePatient]);
+
+  useEffect(() => {
+    notesEnrichSessionRef.current = { currentUserName, sessionNurseIds };
+  }, [currentUserName, sessionNurseIds]);
+
+  const loadNurseNotes = useCallback(async ({ refresh = false } = {}) => {
+    const patientIdValue = String(effectivePatientId || '').trim();
+
+    if (!patientIdValue) {
+      setNurseNotes([]);
+      setNotesLoaded(true);
+      return;
     }
 
-    setNotesLoading(true);
+    const path = `/nurse-notes/patient/${encodeURIComponent(patientIdValue)}`;
+    const isInitialLoad = !refresh && !notesLoadedRef.current;
+
+    if (refresh) {
+      setNotesRefreshing(true);
+    } else if (isInitialLoad) {
+      setNotesLoading(true);
+    }
     setNotesError('');
 
     try {
@@ -5047,21 +5330,48 @@ export default function PatientProfile() {
         throw new Error(payload?.message || payload?.error || 'Unable to load nurse notes.');
       }
 
+      const patientSnapshot = remotePatientRef.current;
+      const assignedNurses = Array.isArray(patientSnapshot?.assignedNurses) ? patientSnapshot.assignedNurses : [];
+      const directory = mergeNurseDirectories(incidentNursesRef.current, assignedNurses);
+      const { currentUserName: sessionName, sessionNurseIds: sessionIds } = notesEnrichSessionRef.current;
       const items = extractNurseNoteList(payload)
         .map((item) => normalizeNurseNote(item, { patientId: patientIdValue }))
-        .filter((item) => item.content);
-      setNurseNotes(sortNurseNotes(items));
+        .filter((item) => item.content)
+        .filter((item) => !item.patientId || String(item.patientId) === patientIdValue);
+      setNurseNotes((prev) => {
+        const enriched = sortNurseNotes(enrichNurseNoteNames(items, directory, {
+          currentUserName: sessionName,
+          sessionName,
+          sessionNurseIds: sessionIds,
+          notesScope: 'patient',
+          primaryNurse: vitalRecorderDisplayName(patientSnapshot?.nurse) || String(patientSnapshot?.nurse || '').trim(),
+        }));
+        return enriched.map((note) => {
+          const prior = prev.find((row) => String(row.id) === String(note.id));
+          if (prior && isResolvableNurseName(prior.nurse) && !isResolvableNurseName(note.nurse)) {
+            return { ...note, nurse: prior.nurse };
+          }
+          return note;
+        });
+      });
     } catch (error) {
-      setNurseNotes([]);
+      setNurseNotes((prev) => (refresh && prev.length ? prev : []));
       setNotesError(error?.message || 'Unable to load nurse notes.');
     } finally {
       setNotesLoading(false);
+      setNotesRefreshing(false);
+      notesLoadedRef.current = true;
+      setNotesLoaded(true);
     }
-  }, [effectivePatientId, currentNurseId, notesScope]);
+  }, [effectivePatientId]);
 
   useEffect(() => {
+    notesLoadedRef.current = false;
+    setNotesLoaded(false);
+    setNurseNotes([]);
+    setNotesError('');
     loadNurseNotes();
-  }, [loadNurseNotes]);
+  }, [effectivePatientId, loadNurseNotes]);
 
   const handleAddNote = async () => {
     if (savingNote) return;
@@ -5078,12 +5388,25 @@ export default function PatientProfile() {
     }
 
     const noteForApi = noteContentToApi(plainContent);
+    const recordedNurseName = String(
+      currentUserName
+      || resolveNurseNameFromDirectory(currentNurseId, incidentNurses, {
+        currentNurseId,
+        currentUserName,
+        sessionNurseIds,
+      })
+      || noteForm.nurse
+      || ''
+    ).trim();
+
     const payload = isEditing
       ? { note: noteForApi }
       : {
           nurseId: currentNurseId,
           patientId: effectivePatientId,
           note: noteForApi,
+          nurseName: recordedNurseName,
+          recordedBy: recordedNurseName,
         };
 
     setSavingNote(true);
@@ -5108,7 +5431,14 @@ export default function PatientProfile() {
         throw new Error(data?.message || data?.error || (isEditing ? 'Unable to update note.' : 'Unable to save note.'));
       }
 
-      const nurseName = String(noteForm.nurse || currentUserName || p?.nurse || '').trim();
+      const nurseName = String(
+        recordedNurseName
+        || resolveNoteNurseName(data?.note || data?.nurseNote || data?.data || data)
+        || resolveNurseNameFromDirectory(currentNurseId, incidentNurses, { currentNurseId, currentUserName })
+        || currentUserName
+        || noteForm.nurse
+        || ''
+      ).trim();
       const savedNote = normalizeNurseNote(
         data?.note || data?.nurseNote || data?.data || data,
         {
@@ -5133,7 +5463,6 @@ export default function PatientProfile() {
 
       resetNoteForm();
       setShowNoteForm(false);
-      loadNurseNotes();
     } catch (error) {
       setNoteSaveError(error?.message || (isEditing ? 'Unable to update note.' : 'Unable to save note.'));
     } finally {
@@ -5187,6 +5516,7 @@ export default function PatientProfile() {
     }
   };
   const filteredNotes = nurseNotes
+    .filter((n) => !effectivePatientId || !n.patientId || String(n.patientId) === String(effectivePatientId))
     .filter(n => noteFilter === 'All' || n.category === noteFilter)
     .sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || new Date(b.date + ' ' + b.time) - new Date(a.date + ' ' + a.time));
   const getCategoryColor = (cat) => {
@@ -5216,9 +5546,6 @@ export default function PatientProfile() {
   const [incidentDeleteModalError, setIncidentDeleteModalError] = useState('');
   const [updatingIncidentStatusId, setUpdatingIncidentStatusId] = useState(null);
   const [editingIncidentId, setEditingIncidentId] = useState(null);
-  const [incidentNurses, setIncidentNurses] = useState([]);
-  const [incidentNursesLoading, setIncidentNursesLoading] = useState(false);
-  const [incidentNursesError, setIncidentNursesError] = useState('');
 
   const resetIncidentForm = () => {
     setEditingIncidentId(null);
@@ -5304,10 +5631,20 @@ export default function PatientProfile() {
   }, []);
 
   useEffect(() => {
+    loadIncidentNurses();
+  }, [loadIncidentNurses]);
+
+  useEffect(() => {
     if (showIncidentsMegaModal && incidentNurses.length === 0 && !incidentNursesLoading) {
       loadIncidentNurses();
     }
   }, [showIncidentsMegaModal, incidentNurses.length, incidentNursesLoading, loadIncidentNurses]);
+
+  useEffect(() => {
+    if (showNotesMegaModal && incidentNurses.length === 0 && !incidentNursesLoading) {
+      loadIncidentNurses();
+    }
+  }, [showNotesMegaModal, incidentNurses.length, incidentNursesLoading, loadIncidentNurses]);
 
   useEffect(() => {
     if (!incidentNurses.length) return;
@@ -6957,6 +7294,33 @@ export default function PatientProfile() {
   const p = remotePatient || localPatient;
   const isPatientDeactivated = isPatientDeactivatedStatus(p?.status);
   const assignedNursesForProfile = Array.isArray(p?.assignedNurses) ? p.assignedNurses : [];
+  const nurseNotesDirectory = useMemo(
+    () => mergeNurseDirectories(incidentNurses, assignedNursesForProfile),
+    [incidentNurses, assignedNursesForProfile],
+  );
+  const nurseNotesDisplayContext = useMemo(() => ({
+    nurses: nurseNotesDirectory,
+    sessionName: currentUserName,
+    sessionNurseIds,
+    notesScope: 'patient',
+    primaryNurse: vitalRecorderDisplayName(p?.nurse) || String(p?.nurse || '').trim(),
+  }), [nurseNotesDirectory, currentUserName, sessionNurseIds, p?.nurse]);
+
+  useEffect(() => {
+    setNurseNotes((prev) => {
+      if (!prev.length) return prev;
+      const next = enrichNurseNoteNames(prev, nurseNotesDirectory, {
+        currentUserName,
+        sessionName: currentUserName,
+        sessionNurseIds,
+        notesScope: 'patient',
+        primaryNurse: vitalRecorderDisplayName(p?.nurse) || String(p?.nurse || '').trim(),
+      });
+      const changed = next.some((note, index) => note.nurse !== prev[index]?.nurse);
+      return changed ? next : prev;
+    });
+  }, [nurseNotesDirectory, currentUserName, sessionNurseIds, p?.nurse]);
+
   const assignedNurseMatchKeys = useMemo(() => {
     const keys = new Set();
     assignedNursesForProfile.forEach((entry) => {
@@ -10090,13 +10454,12 @@ export default function PatientProfile() {
                   <div>
                     <h3>
                       Nurse Notes
-                      <span className="patient-notes-mega-modal__count">{nurseNotes.length}</span>
-                      {notesLoading && <span className="patient-notes-mega-modal__loading">Loading…</span>}
+                      {notesLoaded && (
+                        <span className="patient-notes-mega-modal__count">{filteredNotes.length}</span>
+                      )}
                     </h3>
                     <p>
-                      {notesScope === 'nurse'
-                        ? `All nurse notes you have authored across patients.`
-                        : `Document observations, interventions, and care updates for ${p.name}. Notes sync to the patient timeline immediately.`}
+                      {`Document observations, interventions, and care updates for ${p.name}. Notes sync to the patient timeline immediately.`}
                     </p>
                   </div>
                 </div>
@@ -10111,7 +10474,13 @@ export default function PatientProfile() {
                       resetNoteForm();
                     } else {
                       resetNoteForm();
-                      setNoteForm((prev) => ({ ...prev, nurse: currentUserName || prev.nurse }));
+                      setNoteForm((prev) => ({
+                        ...prev,
+                        nurse:
+                          resolveNurseNameFromDirectory(currentNurseId, incidentNurses, { currentNurseId, currentUserName })
+                          || currentUserName
+                          || prev.nurse,
+                      }));
                       setShowNoteForm(true);
                     }
                   }}
@@ -10134,26 +10503,6 @@ export default function PatientProfile() {
               {/* Toolbar */}
               <div className="patient-notes-toolbar">
                 <div className="patient-notes-toolbar__group">
-                  <div className="patient-notes-toolbar__scope">
-                    <button
-                      type="button"
-                      onClick={() => setNotesScope('patient')}
-                      className={`patient-notes-toolbar__scope-btn${notesScope === 'patient' ? ' is-active' : ''}`}
-                    >
-                      <FiUser size={12} /> This patient
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setNotesScope('nurse')}
-                      disabled={!currentNurseId}
-                      title={currentNurseId ? 'View all notes I authored' : 'Nurse identity unavailable'}
-                      className={`patient-notes-toolbar__scope-btn${notesScope === 'nurse' ? ' is-active' : ''}${!currentNurseId ? ' is-disabled' : ''}`}
-                    >
-                      <FiClipboard size={12} /> All my notes
-                    </button>
-                  </div>
-                </div>
-                <div className="patient-notes-toolbar__group">
                   <select
                     value={noteFilter}
                     onChange={e => setNoteFilter(e.target.value)}
@@ -10164,9 +10513,10 @@ export default function PatientProfile() {
                   </select>
                   <button
                     type="button"
-                    onClick={loadNurseNotes}
+                    onClick={() => loadNurseNotes({ refresh: true })}
                     title="Refresh notes"
-                    className="patient-notes-toolbar__icon-btn"
+                    disabled={notesRefreshing}
+                    className={`patient-notes-toolbar__icon-btn${notesRefreshing ? ' is-spinning' : ''}`}
                   >
                     <FiRefreshCw size={13} />
                   </button>
@@ -10210,14 +10560,23 @@ export default function PatientProfile() {
                     </div>
                     <div className="col-md-3">
                       <label className="patient-notes-form__label">
-                        <FiUser size={11} /> Nurse
+                        <FiUser size={11} /> Recorded by
                       </label>
                       <input
                         type="text"
-                        placeholder="Nurse name"
-                        value={noteForm.nurse}
-                        onChange={e => setNoteForm({ ...noteForm, nurse: e.target.value })}
-                        className="patient-notes-form__input"
+                        readOnly
+                        value={
+                          noteForm.nurse
+                          || resolveNurseNameFromDirectory(currentNurseId, nurseNotesDirectory, {
+                            currentNurseId,
+                            currentUserName,
+                            sessionNurseIds,
+                          })
+                          || currentUserName
+                          || 'Nurse name unavailable'
+                        }
+                        className="patient-notes-form__input patient-notes-form__input--readonly"
+                        title="Captured from your signed-in nurse profile"
                       />
                     </div>
                     <div className="col-md-2">
@@ -10283,97 +10642,111 @@ export default function PatientProfile() {
               )}
 
               {/* Notes Timeline */}
-              {filteredNotes.length === 0 ? (
+              <div className="patient-notes-mega-modal__records">
+              {notesLoading && !notesLoaded ? (
+                <TablePageLoaderPanel
+                  progress={72}
+                  title="Loading nurse notes"
+                  subtitle="Fetching care records for this patient…"
+                  icon={FiEdit2}
+                  ariaLabel="Loading nurse notes"
+                />
+              ) : filteredNotes.length === 0 ? (
                 <div className="patient-notes-empty">
-                  <FiEdit2 size={32} className="patient-notes-empty__icon" />
+                  <span className="patient-notes-empty__icon" aria-hidden>
+                    <FiEdit2 size={28} />
+                  </span>
                   <div className="patient-notes-empty__title">
-                    {notesLoading
-                      ? 'Loading nurse notes…'
-                      : noteFilter !== 'All'
-                        ? `No notes found in "${noteFilter}" category`
-                        : notesScope === 'nurse'
-                          ? 'You have not created any nurse notes yet'
-                          : 'No nurse notes yet for this patient'}
+                    {noteFilter !== 'All'
+                      ? `No records in "${noteFilter}"`
+                      : 'No records'}
                   </div>
-                  {!notesLoading && (
+                  {noteFilter === 'All' && (
                     <div className="patient-notes-empty__hint">
-                      {notesScope === 'nurse'
-                        ? 'Switch to "This patient" and click "Add Note" to create one.'
-                        : 'Click "Add Note" to create the first nurse note for this patient.'}
+                      Click &quot;Add Note&quot; to create the first nurse note for this patient.
                     </div>
                   )}
                 </div>
               ) : (
-                <div className="patient-notes-list">
-                  {filteredNotes.map((note) => (
-                    <article
-                      key={note.id}
-                      className="patient-notes-card"
-                      style={{ borderLeftColor: getCategoryColor(note.category) }}
-                    >
-                      <header className="patient-notes-card__header">
-                        <div className="patient-notes-card__chips">
-                          <span
-                            className="patient-notes-card__chip"
-                            style={{ background: getCategoryColor(note.category) + '18', color: getCategoryColor(note.category) }}
-                          >
-                            {note.category}
-                          </span>
-                          {note.priority === 'High' && (
-                            <span className="patient-notes-card__chip patient-notes-card__chip--warn">High Priority</span>
-                          )}
-                          {note.priority === 'Urgent' && (
-                            <span className="patient-notes-card__chip patient-notes-card__chip--danger">Urgent</span>
-                          )}
-                          {note.pinned && (
-                            <span className="patient-notes-card__chip patient-notes-card__chip--pin">Pinned</span>
-                          )}
-                          <span className="patient-notes-card__meta">
-                            <FiCalendar size={11} /> {note.date}
-                          </span>
-                          <span className="patient-notes-card__meta">
-                            <FiClock size={11} /> {note.time}
-                          </span>
-                        </div>
-                        <div className="patient-notes-card__actions">
-                          <button
-                            type="button"
-                            onClick={() => handlePinNote(note.id)}
-                            title={note.pinned ? 'Unpin note' : 'Pin note'}
-                            className={`patient-notes-card__icon-btn${note.pinned ? ' is-pinned' : ''}`}
-                          >
-                            <FiAlertCircle size={14} />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => startEditNote(note)}
-                            title="Edit note"
-                            className="patient-notes-card__edit-btn"
-                          >
-                            <FiEdit2 size={11} /> Edit
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteNote(note.id)}
-                            disabled={deletingNoteId === note.id}
-                            title="Delete note"
-                            className="patient-notes-card__icon-btn patient-notes-card__icon-btn--danger"
-                          >
-                            <FiX size={14} />
-                          </button>
-                        </div>
-                      </header>
-                      <div className="patient-notes-card__body">
-                        <div className="patient-notes-card__content">{note.content}</div>
-                        <div className="patient-notes-card__author">
-                          <span className="patient-notes-card__author-avatar"><FiUser size={11} /></span>
-                          <span>{note.nurse || 'Unknown Nurse'}</span>
-                        </div>
-                      </div>
-                    </article>
-                  ))}
+                <div className={`patient-notes-table-card${notesRefreshing ? ' is-refreshing' : ''}`}>
+                  <div className="table-responsive">
+                    <table className="patient-notes-table">
+                      <thead>
+                        <tr>
+                          <th>Date &amp; Time</th>
+                          <th>Nurse</th>
+                          <th>Category</th>
+                          <th>Priority</th>
+                          <th>Note</th>
+                          <th className="patient-notes-table__actions-head">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredNotes.map((note, idx) => {
+                          const nurseLabel = resolveNoteNurseDisplayName(note, nurseNotesDisplayContext);
+                          return (
+                            <tr key={note.id} className={idx % 2 === 0 ? '' : 'is-alt'}>
+                              <td className="patient-notes-table__when">
+                                <span className="patient-notes-table__date">{note.date}</span>
+                                <span className="patient-notes-table__time">{note.time}</span>
+                                {note.pinned && <span className="patient-notes-table__pin">Pinned</span>}
+                              </td>
+                              <td className="patient-notes-table__nurse">
+                                <span className="patient-notes-table__nurse-avatar" aria-hidden>
+                                  <FiUser size={12} />
+                                </span>
+                                <span>{nurseLabel}</span>
+                              </td>
+                              <td>
+                                <span
+                                  className="patient-notes-table__chip"
+                                  style={{ background: `${getCategoryColor(note.category)}18`, color: getCategoryColor(note.category) }}
+                                >
+                                  {note.category}
+                                </span>
+                              </td>
+                              <td>
+                                <span className={`patient-notes-table__priority patient-notes-table__priority--${(note.priority || 'normal').toLowerCase()}`}>
+                                  {note.priority || 'Normal'}
+                                </span>
+                              </td>
+                              <td className="patient-notes-table__content">{note.content}</td>
+                              <td className="patient-notes-table__actions">
+                                <button
+                                  type="button"
+                                  onClick={() => handlePinNote(note.id)}
+                                  title={note.pinned ? 'Unpin note' : 'Pin note'}
+                                  className={`patient-notes-table__icon-btn${note.pinned ? ' is-pinned' : ''}`}
+                                >
+                                  <FiAlertCircle size={14} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => startEditNote(note)}
+                                  title="Edit note"
+                                  className="patient-notes-table__icon-btn patient-notes-table__icon-btn--edit"
+                                >
+                                  <FiEdit2 size={14} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteNote(note.id)}
+                                  disabled={deletingNoteId === note.id}
+                                  title="Delete note"
+                                  className="patient-notes-table__icon-btn patient-notes-table__icon-btn--danger"
+                                >
+                                  <FiX size={14} />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
+              </div>
             </div>
           </div>
         </div>

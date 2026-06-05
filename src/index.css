@@ -560,9 +560,9 @@ body.sidebar-resizing {
   margin: 12px 10px 14px;
   padding: 14px;
   border-radius: 14px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  background: linear-gradient(160deg, #fff7cc 0%, #fde047 58%, #facc15 100%);
+  border: none;
+  box-shadow: 0 4px 14px rgba(234, 179, 8, 0.22);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -577,7 +577,7 @@ body.sidebar-resizing {
   right: 0;
   width: 88px;
   height: 88px;
-  background: radial-gradient(circle at 100% 0%, rgba(69, 182, 254, 0.14), transparent 70%);
+  background: radial-gradient(circle at 100% 0%, rgba(255, 255, 255, 0.45), transparent 70%);
   pointer-events: none;
 }
 
@@ -588,9 +588,9 @@ body.sidebar-resizing {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(145deg, #45b6fe 0%, #2e7db8 100%);
-  color: #fff;
-  box-shadow: 0 4px 12px rgba(69, 182, 254, 0.28);
+  background: #fff;
+  color: #ca8a04;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
   flex-shrink: 0;
   position: relative;
   z-index: 1;
@@ -610,7 +610,7 @@ body.sidebar-resizing {
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #64748b;
+  color: #854d0e;
 }
 
 .sidebar-plan-card__name {
@@ -626,7 +626,7 @@ body.sidebar-resizing {
   margin: 4px 0 0;
   font-size: 12px;
   font-weight: 600;
-  color: #64748b;
+  color: #713f12;
   line-height: 1.35;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -5769,6 +5769,18 @@ body.sidebar-resizing {
   gap: 12px;
 }
 
+.patient-notes-mega-modal__title-row {
+  align-items: center;
+}
+
+.patient-notes-mega-modal__title-icon {
+  line-height: 0;
+}
+
+.patient-notes-mega-modal__title-icon svg {
+  display: block;
+}
+
 .patient-vitals-mega-modal__title-icon,
 .patient-notes-mega-modal__title-icon,
 .patient-incidents-mega-modal__title-icon,
@@ -5942,6 +5954,37 @@ body.sidebar-resizing {
   padding: 2px 8px;
   border-radius: 999px;
   background: #EEF4FB;
+}
+
+.patient-notes-mega-modal__records {
+  flex: 1;
+  min-height: 280px;
+  display: flex;
+  flex-direction: column;
+}
+
+.patient-notes-mega-modal__records .reports-table-loader--panel {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+}
+
+.patient-notes-mega-modal__records .reports-table-loader__icon {
+  display: block;
+  margin: 0 auto;
+  line-height: 0;
+}
+
+.patient-notes-toolbar__icon-btn.is-spinning svg {
+  animation: reports-loader-spin 0.85s linear infinite;
+}
+
+.patient-notes-table-card.is-refreshing {
+  opacity: 0.72;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
 }
 
 /* Toolbar */
@@ -6176,20 +6219,237 @@ body.sidebar-resizing {
 }
 
 .patient-notes-empty__icon {
-  color: #BBDDFB;
-  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 14px;
+  border-radius: 16px;
+  background: rgba(69, 182, 254, 0.1);
+  color: #7eb8e8;
+  line-height: 0;
+}
+
+.patient-notes-empty__icon svg {
+  display: block;
 }
 
 .patient-notes-empty__title {
-  font-size: 14px;
-  font-weight: 700;
+  font-size: 15px;
+  font-weight: 800;
   color: #2A3B4D;
   margin-bottom: 4px;
+  letter-spacing: -0.01em;
 }
 
 .patient-notes-empty__hint {
   font-size: 12.5px;
   color: #8A99AC;
+}
+
+.patient-notes-form__input--readonly {
+  background: #f8fafc;
+  color: #475569;
+  cursor: default;
+}
+
+/* Notes table */
+.patient-notes-table-card {
+  background: #fff;
+  border: 1px solid #e5ecf3;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.patient-notes-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.patient-notes-table thead th {
+  padding: 11px 14px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: #45B6FE;
+  background: #F0F7FE;
+  border-bottom: 2px solid #45B6FE;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.patient-notes-table__actions-head {
+  text-align: center;
+  width: 120px;
+}
+
+.patient-notes-table tbody tr {
+  border-bottom: 1px solid #f1f5f9;
+  transition: background 0.14s ease;
+}
+
+.patient-notes-table tbody tr:hover {
+  background: #F8FBFF;
+}
+
+.patient-notes-table tbody tr.is-alt {
+  background: #fafbfc;
+}
+
+.patient-notes-table tbody tr.is-alt:hover {
+  background: #F8FBFF;
+}
+
+.patient-notes-table td {
+  padding: 12px 14px;
+  vertical-align: middle;
+  font-size: 12.5px;
+  color: #2A3B4D;
+}
+
+.patient-notes-table__when {
+  white-space: nowrap;
+}
+
+.patient-notes-table__date {
+  display: block;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.patient-notes-table__time {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: #64748b;
+}
+
+.patient-notes-table__pin {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #e0f2fe;
+  color: #0369a1;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.patient-notes-table__nurse {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.patient-notes-table__nurse-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #45B6FE 0%, #2E7DB8 100%);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.patient-notes-table__chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.patient-notes-table__priority {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.patient-notes-table__priority--high {
+  background: #fffbeb;
+  color: #b45309;
+}
+
+.patient-notes-table__priority--urgent {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.patient-notes-table__content {
+  max-width: 360px;
+  white-space: pre-wrap;
+  line-height: 1.55;
+  color: #475569;
+}
+
+.patient-notes-table__actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-align: center;
+}
+
+.patient-notes-table__icon-btn {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #8A99AC;
+  cursor: pointer;
+  padding: 0;
+  line-height: 0;
+  flex-shrink: 0;
+  transition: background 0.14s ease, color 0.14s ease, border-color 0.14s ease;
+}
+
+.patient-notes-table__icon-btn svg {
+  display: block;
+  margin: 0 auto;
+}
+
+.patient-notes-table__icon-btn:hover {
+  background: #F1F4F8;
+  color: #2A3B4D;
+}
+
+.patient-notes-table__icon-btn.is-pinned {
+  color: #0284c7;
+  background: #e0f2fe;
+}
+
+.patient-notes-table__icon-btn--edit:hover {
+  background: #EAF4FE;
+  color: #1F5A8B;
+  border-color: #BBDDFB;
+}
+
+.patient-notes-table__icon-btn--danger:hover {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.patient-notes-table__icon-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* Notes list */
@@ -7030,6 +7290,10 @@ body.sidebar-resizing {
   .patient-notes-card__actions,
   .patient-incidents-card__actions {
     align-self: flex-end;
+  }
+
+  .patient-notes-table__content {
+    max-width: 220px;
   }
 }
 
@@ -8090,12 +8354,13 @@ body.sidebar-resizing {
   border-radius: 10px;
   background: linear-gradient(135deg, #45b6fe 0%, #2e7db8 100%);
   color: #fff;
-  font-size: 11px;
-  font-weight: 800;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  letter-spacing: 0.02em;
+}
+
+.db2-watchlist-patient__avatar svg {
+  flex-shrink: 0;
 }
 
 .db2-watchlist-patient__body {
@@ -8175,8 +8440,34 @@ body.sidebar-resizing {
   white-space: nowrap;
 }
 
-.db2-watchlist-table__cell--nurse span {
+.db2-watchlist-nurse {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.db2-watchlist-nurse__avatar {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #34d399 0%, #059669 100%);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  letter-spacing: 0.02em;
+}
+
+.db2-watchlist-nurse__name {
   display: block;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #334155;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -16428,25 +16719,31 @@ button.dashboard-stat-card:active {
 }
 
 [data-theme="dark"] .sidebar-plan-card {
-  background: #0f172a;
-  border-color: #1e293b;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+  background: linear-gradient(160deg, #854d0e 0%, #a16207 52%, #ca8a04 100%);
+  border: none;
+  box-shadow: 0 4px 14px rgba(234, 179, 8, 0.18);
+}
+
+[data-theme="dark"] .sidebar-plan-card__icon {
+  background: #fff;
+  color: #a16207;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
 }
 
 [data-theme="dark"] .sidebar-plan-card::before {
-  background: radial-gradient(circle at 100% 0%, rgba(69, 182, 254, 0.12), transparent 70%);
+  background: radial-gradient(circle at 100% 0%, rgba(255, 255, 255, 0.12), transparent 70%);
 }
 
 [data-theme="dark"] .sidebar-plan-card__eyebrow {
-  color: #94a3b8;
+  color: #fef08a;
 }
 
 [data-theme="dark"] .sidebar-plan-card__name {
-  color: #f1f5f9;
+  color: #fffbeb;
 }
 
 [data-theme="dark"] .sidebar-plan-card__agency {
-  color: #94a3b8;
+  color: #fde68a;
 }
 
 [data-theme="dark"] .sidebar-plan-card__link {
@@ -16662,6 +16959,7 @@ button.dashboard-stat-card:active {
 
 [data-theme="dark"] .db2-watchlist-patient__body strong { color: #e2e8f0; }
 [data-theme="dark"] .db2-watchlist-patient__meta { color: #64748b; }
+[data-theme="dark"] .db2-watchlist-nurse__name { color: #cbd5e1; }
 [data-theme="dark"] .db2-watchlist-type {
   background: #172554;
   border-color: #1e40af;

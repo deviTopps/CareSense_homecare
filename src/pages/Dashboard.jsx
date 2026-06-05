@@ -434,7 +434,7 @@ export default function Dashboard() {
                       <td className="db2-watchlist-table__cell db2-watchlist-table__cell--patient">
                         <div className="db2-watchlist-patient">
                           <span className="db2-watchlist-patient__avatar" aria-hidden>
-                            {patientInitials(flag.patient)}
+                            <FiUser size={16} />
                           </span>
                           <div className="db2-watchlist-patient__body">
                             <strong title={flag.patient}>{flag.patient}</strong>
@@ -463,7 +463,14 @@ export default function Dashboard() {
                         <CaseStatusBadge status={flag.caseStatus} />
                       </td>
                       <td className="db2-watchlist-table__cell db2-watchlist-table__cell--nurse">
-                        <span title={flag.nurse}>{flag.nurse}</span>
+                        <div className="db2-watchlist-nurse">
+                          <span className="db2-watchlist-nurse__avatar" aria-hidden>
+                            {patientInitials(flag.nurse)}
+                          </span>
+                          <span className="db2-watchlist-nurse__name" title={flag.nurse}>
+                            {flag.nurse}
+                          </span>
+                        </div>
                       </td>
                       <td className="db2-watchlist-table__cell db2-watchlist-table__cell--date">
                         {flag.flaggedDate}

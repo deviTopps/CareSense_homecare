@@ -6,7 +6,15 @@ import Overlay from 'react-bootstrap/Overlay';
 import { FiPlus, FiCalendar, FiUser, FiXCircle, FiCheckCircle } from '../icons/hugeicons-feather';
 import DataTableHeader, { HospitalStatus } from '../components/DataTableHeader';
 import { fetchAllPatients } from '../utils/patients';
-import { apiFetch, createCareVisit, fetchOtherCareVisits, fetchUpcomingCareVisits } from '../api';
+import {
+  apiFetch,
+  createCareVisit,
+  fetchAuthUsers,
+  fetchOtherCareVisits,
+  fetchUpcomingCareVisits,
+  getToken,
+  getUser,
+} from '../api';
 
 const VISIT_FILTER_OPTIONS = ['All Visits', 'Up Coming Visits'];
 
@@ -34,7 +42,7 @@ const FREQUENCY_OPTIONS = [
   { value: 'monthly', label: 'Monthly' },
 ];
 
-/** Default dates / frequency for schedule form (patient & nurse chosen from lists). */
+/** Default dates / frequency for schedule form (patient & nurse from fetched lists). */
 const SAMPLE_SCHEDULE_VISIT = {
   patientId: 'e426444d-02a0-4f90-90d4-930b1745f199',
   visitingNurse: 'cfcfc648-5d30-44ba-9c94-9d921d1b3d05',
@@ -42,6 +50,160 @@ const SAMPLE_SCHEDULE_VISIT = {
   nextVisit: '2026-05-12',
   frequency: 'weekly',
 };
+
+function isIdLikeNurseValue(value) {
+  const s = String(value || '').trim();
+  if (!s) return false;
+  return UUID_RE.test(s) || isLikelyMongoId(s);
+}
+
+function parseJwtPayload(token) {
+  const rawToken = String(token || '').trim();
+  if (!rawToken) return null;
+  try {
+    const base64Url = rawToken.split('.')[1] || '';
+    if (!base64Url) return null;
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = `${base64}${'='.repeat((4 - (base64.length % 4)) % 4)}`;
+    return JSON.parse(atob(padded));
+  } catch {
+    return null;
+  }
+}
+
+function collectSessionNurseIds() {
+  const user = getUser();
+  const token = parseJwtPayload(getToken());
+  const ids = [];
+  const push = (v) => {
+    if (v == null) return;
+    const s = String(v).trim();
+    if (s && !ids.includes(s)) ids.push(s);
+  };
+  push(user?.nurseId);
+  push(user?.id);
+  push(user?._id);
+  push(user?.userId);
+  push(user?.staffId);
+  push(user?.uuid);
+  push(token?.nurseId);
+  push(token?.userId);
+  push(token?.id);
+  push(token?.sub);
+  return ids;
+}
+
+function collectNurseRecordIds(n) {
+  const out = [];
+  const push = (v) => {
+    if (v == null) return;
+    const s = String(v).trim();
+    if (s && !out.includes(s)) out.push(s);
+  };
+  if (!n || typeof n !== 'object') return out;
+  push(n.nurseId);
+  push(n.uuid);
+  push(n.userUuid);
+  push(n.nurseUuid);
+  push(n.id);
+  push(n._id);
+  push(n.userId);
+  push(n.staffId);
+  return out;
+}
+
+function isStaffRole(role) {
+  const normalized = String(role || '').trim().toLowerCase();
+  return normalized === 'staff' || normalized === 'stuff';
+}
+
+function extractAuthUserArray(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.users)) return payload.users;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.items)) return payload.items;
+  return [];
+}
+
+function mapStaffUserToNurseShape(user) {
+  const id = String(user?._id || user?.id || user?.userId || '').trim();
+  const firstName = user?.firstName || '';
+  const lastName = user?.lastName || '';
+  const name = [firstName, lastName].filter(Boolean).join(' ').trim()
+    || String(user?.name || user?.email || '').trim();
+  return {
+    _id: id,
+    id,
+    userId: id,
+    firstName,
+    lastName,
+    name,
+    email: user?.email || '',
+    role: user?.role || 'staff',
+    jobTitle: 'Staff',
+    isStaff: true,
+  };
+}
+
+function mergeNursesWithStaffUsers(nurseList, userList) {
+  const nurses = Array.isArray(nurseList) ? [...nurseList] : [];
+  const users = Array.isArray(userList) ? userList : [];
+
+  const emailToAuthUserId = new Map();
+  users.forEach((user) => {
+    const email = String(user?.email || '').trim().toLowerCase();
+    const authId = String(user?._id || user?.id || user?.userId || '').trim();
+    if (email && authId) emailToAuthUserId.set(email, authId);
+  });
+
+  const mergedNurses = nurses.map((n) => {
+    if (!isStaffRole(n?.role)) return n;
+    const email = String(n?.email || '').trim().toLowerCase();
+    const authUserId = email ? emailToAuthUserId.get(email) : '';
+    if (!authUserId) return { ...n, isStaff: true };
+    return {
+      ...n,
+      id: authUserId,
+      _id: authUserId,
+      userId: authUserId,
+      isStaff: true,
+    };
+  });
+
+  const knownEmails = new Set(
+    mergedNurses.map((n) => String(n?.email || '').trim().toLowerCase()).filter(Boolean),
+  );
+  const knownIds = new Set();
+  mergedNurses.forEach((n) => {
+    collectNurseRecordIds(n).forEach((id) => knownIds.add(id));
+  });
+
+  const extraStaff = users
+    .filter((user) => isStaffRole(user?.role))
+    .filter((user) => {
+      const email = String(user?.email || '').trim().toLowerCase();
+      const id = String(user?._id || user?.id || user?.userId || '').trim();
+      if (email && knownEmails.has(email)) return false;
+      if (id && knownIds.has(id)) return false;
+      return Boolean(id);
+    })
+    .map(mapStaffUserToNurseShape);
+
+  return [...mergedNurses, ...extraStaff];
+}
+
+function pickDefaultVisitingNurseId(nurseOptions) {
+  if (!Array.isArray(nurseOptions) || !nurseOptions.length) return '';
+  const sessionIds = collectSessionNurseIds();
+  for (const option of nurseOptions) {
+    if (sessionIds.includes(option.apiId)) return option.apiId;
+    if (Array.isArray(option.idsForMatch) && sessionIds.some((sid) => option.idsForMatch.includes(sid))) {
+      return option.apiId;
+    }
+  }
+  const sample = nurseOptions.find((o) => o.apiId === SAMPLE_SCHEDULE_VISIT.visitingNurse);
+  return sample?.apiId || nurseOptions[0].apiId;
+}
 
 function isLikelyMongoId(s) {
   return /^[a-f\d]{24}$/i.test(String(s || ''));
@@ -306,6 +468,21 @@ function scheduleFormFromVisitRow(v) {
     lastVisit: v?.prevVisit || '',
     nextVisit: v?.nextVisit || '',
     frequency: normalizeFrequencyForForm(raw),
+  };
+}
+
+/** API payload fields from an existing visit row (may be id or name). */
+function visitApiFieldsFromRow(v) {
+  const raw = v?.raw && typeof v.raw === 'object' ? v.raw : {};
+  const visitingRef = raw?.visitingNurse ?? raw?.visiting_nurse;
+  const assignedRef = raw?.assignedNurse ?? raw?.assigned_nurse;
+  let visitingNurse = pickNurseIdFromVisitRaw(raw);
+
+  if (!visitingNurse && typeof visitingRef === 'string') visitingNurse = visitingRef.trim();
+  if (!visitingNurse && typeof assignedRef === 'string') visitingNurse = assignedRef.trim();
+  return {
+    patientId: pickPatientIdFromVisitRaw(raw),
+    visitingNurse: String(visitingNurse || '').trim(),
   };
 }
 
@@ -631,9 +808,17 @@ export default function Scheduling() {
         const first = n?.firstName || '';
         const last = n?.lastName || '';
         const name = String(n?.name || `${first} ${last}`.trim()).trim();
-        const role = String(n?.jobTitle || n?.specialisation || n?.specialization || '').trim();
+        const role = isStaffRole(n?.role) || n?.isStaff
+          ? 'Staff'
+          : String(n?.jobTitle || n?.specialisation || n?.specialization || '').trim();
         const label = role ? `${name} · ${role}` : name;
-        return { apiId, label: label || 'Nurse', name, key: `${apiId || name}-${i}` };
+        return {
+          apiId,
+          label: label || 'Nurse',
+          name,
+          idsForMatch: collectNurseRecordIds(n),
+          key: `${apiId || name}-${i}`,
+        };
       })
       .filter((o) => o.apiId && o.label)
       .sort((a, b) => a.label.localeCompare(b.label));
@@ -655,10 +840,7 @@ export default function Scheduling() {
     if (!nurseOptions.length) return;
     setScheduleForm((f) => {
       if (nurseOptions.some((o) => o.apiId === f.visitingNurse)) return f;
-      const preferSample = SAMPLE_SCHEDULE_VISIT.visitingNurse;
-      const next =
-        nurseOptions.some((o) => o.apiId === preferSample) ? preferSample : nurseOptions[0].apiId;
-      return { ...f, visitingNurse: next };
+      return { ...f, visitingNurse: pickDefaultVisitingNurseId(nurseOptions) };
     });
   }, [nurseOptions]);
 
@@ -763,9 +945,10 @@ export default function Scheduling() {
     setRefsError('');
     setRefsLoading(true);
     try {
-      const [patientList, nurseRes] = await Promise.all([
+      const [patientList, nurseRes, usersRes] = await Promise.all([
         fetchAllPatients(),
         apiFetch('/nurses', { method: 'GET', quiet: true }, onUnauthorized),
+        fetchAuthUsers({ limit: 500 }, onUnauthorized).catch(() => null),
       ]);
       setPatientsRaw(Array.isArray(patientList) ? patientList : []);
 
@@ -787,10 +970,16 @@ export default function Scheduling() {
             : Array.isArray(nurseData?.items)
               ? nurseData.items
               : [];
-      setNursesRaw(nurseList);
+
+      let userList = [];
+      if (usersRes?.ok) {
+        const usersPayload = await usersRes.json().catch(() => ({}));
+        userList = extractAuthUserArray(usersPayload);
+      }
+      setNursesRaw(mergeNursesWithStaffUsers(nurseList, userList));
     } catch (e) {
       if (e.message !== 'Session expired. Please log in again.') {
-        setRefsError(e.message || 'Could not load patients or nurses.');
+        setRefsError(e.message || 'Could not load patients, nurses, or staff.');
       }
       setPatientsRaw([]);
       setNursesRaw([]);
@@ -867,14 +1056,10 @@ export default function Scheduling() {
         patientOptions.some((o) => o.apiId === SAMPLE_SCHEDULE_VISIT.patientId)
           ? SAMPLE_SCHEDULE_VISIT.patientId
           : patientOptions[0]?.apiId ?? f.patientId;
-      const nid =
-        nurseOptions.some((o) => o.apiId === SAMPLE_SCHEDULE_VISIT.visitingNurse)
-          ? SAMPLE_SCHEDULE_VISIT.visitingNurse
-          : nurseOptions[0]?.apiId ?? f.visitingNurse;
       return {
         ...f,
         patientId: pid,
-        visitingNurse: nid,
+        visitingNurse: pickDefaultVisitingNurseId(nurseOptions),
         lastVisit: SAMPLE_SCHEDULE_VISIT.lastVisit,
         nextVisit: SAMPLE_SCHEDULE_VISIT.nextVisit,
         frequency: SAMPLE_SCHEDULE_VISIT.frequency,
@@ -895,6 +1080,10 @@ export default function Scheduling() {
     }
     if (!visitingNurse) {
       setScheduleError('Select a visiting nurse.');
+      return;
+    }
+    if (!isIdLikeNurseValue(visitingNurse)) {
+      setScheduleError('Visiting nurse must be a Mongo id or nurse UUID.');
       return;
     }
     if (!lastVisit || !nextVisit) {
@@ -922,9 +1111,9 @@ export default function Scheduling() {
         lookups.patientNamesById.get(patientId) ||
         'Patient';
       const nurseLabel =
-        nurseOptions.find((o) => o.apiId === visitingNurse)?.label ||
-        lookups.nurseNamesById.get(visitingNurse) ||
-        '';
+        nurseOptions.find((o) => o.apiId === visitingNurse)?.label
+        || lookups.nurseNamesById.get(visitingNurse)
+        || '';
       /** Show immediately so refresh errors do not block feedback. */
       setShowScheduleModal(false);
       setScheduleSuccessModal({
@@ -956,18 +1145,23 @@ export default function Scheduling() {
       setCompleteVisitError('Choose both the visit date and the next visit date.');
       return;
     }
-    const { patientId, visitingNurse } = scheduleFormFromVisitRow(completeVisitRow);
+    const { patientId, visitingNurse } = visitApiFieldsFromRow(completeVisitRow);
+    const visitingNurseId = String(visitingNurse || '').trim();
     if (!String(patientId || '').trim()) {
       setCompleteVisitError('Patient could not be determined for this visit.');
       return;
     }
-    if (!String(visitingNurse || '').trim()) {
+    if (!visitingNurseId) {
       setCompleteVisitError('Visiting nurse could not be determined for this visit.');
+      return;
+    }
+    if (!isIdLikeNurseValue(visitingNurseId)) {
+      setCompleteVisitError('Visiting nurse must be a Mongo id or nurse UUID.');
       return;
     }
     const payload = {
       patientId: String(patientId).trim(),
-      visitingNurse: String(visitingNurse).trim(),
+      visitingNurse: visitingNurseId,
       lastVisit: visitYmdApi,
       nextVisit: nextYmdApi,
       frequency: completeVisitForm.frequency,
@@ -1041,12 +1235,18 @@ export default function Scheduling() {
               className="patients-cta-btn patients-cta-btn--compact"
               onClick={() => {
                 setScheduleError('');
+                setScheduleForm((f) => ({
+                  ...f,
+                  visitingNurse: nurseOptions.some((o) => o.apiId === f.visitingNurse)
+                    ? f.visitingNurse
+                    : pickDefaultVisitingNurseId(nurseOptions),
+                }));
                 setShowScheduleModal(true);
               }}
               disabled={refsLoading || !patientOptions.length || !nurseOptions.length}
               title={
                 refsLoading || !patientOptions.length || !nurseOptions.length
-                  ? 'Load patients and nurses first.'
+                  ? 'Load patients, nurses, and staff first.'
                   : undefined
               }
             >
@@ -1513,7 +1713,7 @@ export default function Scheduling() {
                   </div>
                 ) : null}
                 {refsLoading ? (
-                  <p className="text-muted small mb-3">Loading patients and nurses…</p>
+                  <p className="text-muted small mb-3">Loading patients, nurses, and staff…</p>
                 ) : null}
                 <div className="row g-3">
                   <div className="col-12 col-lg-6">
@@ -1545,7 +1745,7 @@ export default function Scheduling() {
                       className="form-label"
                       style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--kh-text-secondary)' }}
                     >
-                      Visiting nurse
+                      Visiting nurse / staff
                     </label>
                     <select
                       className="form-select form-control-kh"
@@ -1554,7 +1754,7 @@ export default function Scheduling() {
                       disabled={!nurseOptions.length || scheduleSaving}
                     >
                       {nurseOptions.length === 0 ? (
-                        <option value="">No nurses loaded</option>
+                        <option value="">No nurses or staff loaded</option>
                       ) : (
                         nurseOptions.map((o) => (
                           <option key={o.key} value={o.apiId}>
