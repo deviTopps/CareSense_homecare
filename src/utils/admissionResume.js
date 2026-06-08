@@ -54,7 +54,7 @@ export async function fetchAdmissionPatientBundle(patientId) {
 
   let raw = payload?.patient || payload?.data?.patient || payload?.data || payload;
 
-  const [hygienePsych, sleepNutrition, breathPain, infectionControl] = await Promise.all([
+  const [hygienePsych, sleepNutrition, breathPain, infectionControl, initialVitals] = await Promise.all([
     fetchOptionalSection([
       `/patients/hygiene-psychological?patientId=${encoded}`,
       `/patients/hygiene-psychological/${encoded}`,
@@ -75,6 +75,11 @@ export async function fetchAdmissionPatientBundle(patientId) {
       `/patients/infection-control/${encoded}`,
       `/patients/${encoded}/infection-control`,
     ]),
+    fetchOptionalSection([
+      `/patients/initial-vitals?patientId=${encoded}`,
+      `/patients/initial-vitals/${encoded}`,
+      `/patients/${encoded}/initial-vitals`,
+    ]),
   ]);
 
   if (hygienePsych) {
@@ -88,6 +93,9 @@ export async function fetchAdmissionPatientBundle(patientId) {
   }
   if (infectionControl) {
     raw = mergeSectionRecord(raw, 'infectionControl', infectionControl.infectionControl || infectionControl);
+  }
+  if (initialVitals) {
+    raw = mergeSectionRecord(raw, 'initialVitals', initialVitals.initialVitals || initialVitals);
   }
 
   return raw;

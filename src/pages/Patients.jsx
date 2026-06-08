@@ -31,6 +31,11 @@ import {
   buildAdmissionResumeDraft,
   fetchAdmissionPatientBundle,
 } from '../utils/admissionResume';
+import {
+  buildInitialVitalsMedicationFields,
+  cachePatientAdmissionMedications,
+  syncAdmissionMedicationsToApi,
+} from '../utils/admissionMedications';
 import TablePageLoader from '../components/TablePageLoader';
 import DataTableHeader, { HospitalStatus } from '../components/DataTableHeader';
 import HospitalBoardToolbar from '../components/HospitalBoardToolbar';
@@ -403,6 +408,7 @@ const initialAdmissionForm = {
     temperature: '',
     urinalysis: '',
     weight: '',
+    currentMedications: '',
   },
   profileImage: {
     objectKey: '',
@@ -1798,6 +1804,7 @@ export default function Patients() {
         },
       });
 
+      const currentMedications = String(admissionForm.vitals.currentMedications || '').trim();
       await postJson('/patients/initial-vitals', {
         patientId,
         bloodPressure: admissionForm.vitals.bloodPressure,
@@ -1808,7 +1815,17 @@ export default function Patients() {
         temperature: admissionForm.vitals.temperature,
         urinalysis: admissionForm.vitals.urinalysis,
         weight: admissionForm.vitals.weight,
+        ...buildInitialVitalsMedicationFields(currentMedications),
       });
+
+      if (currentMedications) {
+        cachePatientAdmissionMedications(patientId, currentMedications);
+        try {
+          await syncAdmissionMedicationsToApi(patientId, currentMedications, postJson);
+        } catch {
+          /* best-effort structured medication sync */
+        }
+      }
 
       const objectKey = String(admissionForm.profileImage.objectKey || '').trim();
       const mediaId = String(admissionForm.profileImage.mediaId || '').trim();

@@ -183,6 +183,7 @@ export function buildAdmissionFormFromApiPatient(raw, baseForm) {
     temperature: vitals.temperature || '',
     urinalysis: vitals.urinalysis || '',
     weight: vitals.weight || '',
+    currentMedications: vitals.currentMedications || patient.currentMedications || patient.medications || '',
   };
 
   return next;

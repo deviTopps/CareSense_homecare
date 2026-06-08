@@ -1,4 +1,10 @@
 import { apiFetch } from '../api';
+import {
+  admissionMedicationsTextFromVitals,
+  buildInitialVitalsMedicationFields,
+  cachePatientAdmissionMedications,
+  syncAdmissionMedicationsToApi,
+} from './admissionMedications';
 import { collectAdmissionDraftLookupIds } from './admissionDrafts';
 import {
   extractApiPatientId,
@@ -320,6 +326,7 @@ export async function saveAdmissionTab(tabKey, form, patientId, api = createAdmi
     }
     case 'vitals': {
       if (!resolvedPatientId) throw new Error('Save personal details first to create the patient record.');
+      const currentMedications = admissionMedicationsTextFromVitals(form.vitals);
       await postOrPatch(postJson, patchJson, '/patients/initial-vitals', {
         patientId: resolvedPatientId,
         bloodPressure: form.vitals.bloodPressure,
@@ -330,7 +337,16 @@ export async function saveAdmissionTab(tabKey, form, patientId, api = createAdmi
         temperature: form.vitals.temperature,
         urinalysis: form.vitals.urinalysis,
         weight: form.vitals.weight,
+        ...buildInitialVitalsMedicationFields(currentMedications),
       });
+      if (currentMedications) {
+        cachePatientAdmissionMedications(resolvedPatientId, currentMedications);
+        try {
+          await syncAdmissionMedicationsToApi(resolvedPatientId, currentMedications, postJson);
+        } catch {
+          // initial-vitals saved; structured medication sync is best-effort
+        }
+      }
       const objectKey = String(form.profileImage?.objectKey || '').trim();
       const mediaId = String(form.profileImage?.mediaId || '').trim();
       if (objectKey && mediaId) {

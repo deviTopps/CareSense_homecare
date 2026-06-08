@@ -33,6 +33,12 @@ import { invalidateMedicalReportsCache } from '../utils/medicalReports';
 import { findAdmissionDraftForPatient } from '../utils/admissionDrafts';
 import { ADMISSION_SECTION_COUNT } from '../utils/admissionResume';
 import {
+  admissionMedicationTextToRecords,
+  collectCachedAdmissionMedicationTexts,
+  extractMedicationTextFromPatientRaw,
+  splitAdmissionMedicationText,
+} from '../utils/admissionMedications';
+import {
   buildDailyCarePlanChecklistPath,
   fetchPatientCompletedDailyCarePlans,
   listRecentIsoDates,
@@ -816,15 +822,17 @@ async function resolvePatientProfileImageUrl({ mediaId, objectKey }) {
   return null;
 }
 
-async function hydratePatientProfile(rawPatient, fallbackId) {
+function buildQuickPatientProfile(rawPatient, fallbackId) {
   const normalized = normalizePatientProfile(rawPatient, fallbackId);
   const cachedImage = getCachedPatientPhoto(normalized?.id || fallbackId);
-  const mergedProfileImage = mergeProfileImage(normalized?.profileImage, cachedImage);
-  const mergedProfile = {
+  return {
     ...normalized,
-    profileImage: mergedProfileImage,
+    profileImage: mergeProfileImage(normalized?.profileImage, cachedImage),
   };
+}
 
+async function hydratePatientProfile(rawPatient, fallbackId) {
+  const mergedProfile = buildQuickPatientProfile(rawPatient, fallbackId);
   const existingUrl = mergedProfile?.profileImage?.url || null;
 
   if (existingUrl) {
@@ -1132,7 +1140,17 @@ function normalizePatientProfile(rawPatient, fallbackId) {
       weight: initialVitals?.weight || rawPatient?.weight || '',
       urinalysis: initialVitals?.urinalysis || rawPatient?.urinalysis || '',
     },
-    medications: rawPatient?.currentMedications || rawPatient?.medications || '',
+    medications:
+      extractMedicationTextFromPatientRaw(rawPatient)
+      || collectCachedAdmissionMedicationTexts([
+        fallbackId,
+        rawPatient?.uuid,
+        rawPatient?.patientUuid,
+        rawPatient?.patientId,
+        rawPatient?._id,
+        rawPatient?.id,
+      ])
+      || '',
     communication: {
       needs: boolFromYesNo(communicationStyle?.anyCommunicationNeeds, null),
       hearing: boolFromYesNo(communicationStyle?.anyHearingNeeds, null),
@@ -2429,6 +2447,95 @@ async function fetchPatientSleepNutritionRecord(patientId) {
   return null;
 }
 
+function unwrapInitialVitalsPayload(payload) {
+  if (!payload || typeof payload !== 'object') return null;
+  const candidates = [
+    payload,
+    payload.data,
+    payload.record,
+    payload.initialVitals,
+    payload.initial_vitals,
+    payload.vitals,
+  ];
+  for (const candidate of candidates) {
+    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) continue;
+    if (
+      candidate.bloodPressure != null
+      || candidate.bloodSugar != null
+      || candidate.currentMedications != null
+      || candidate.current_medications != null
+      || candidate.medications != null
+    ) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+async function fetchPatientInitialVitalsRecord(patientId) {
+  const pid = encodeURIComponent(String(patientId || '').trim());
+  if (!pid) return null;
+
+  const paths = [
+    `/patients/initial-vitals?patientId=${pid}`,
+    `/patients/initial-vitals/${pid}`,
+    `/patients/${pid}/initial-vitals`,
+  ];
+
+  for (const path of paths) {
+    try {
+      const response = await apiFetch(path, { method: 'GET', quiet: true });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) continue;
+      const unwrapped = unwrapInitialVitalsPayload(payload);
+      if (unwrapped) return unwrapped;
+    } catch {
+      // try next path
+    }
+  }
+
+  return null;
+}
+
+function mergeRawPatientWithInitialVitals(rawPatient, initialVitalsRecord) {
+  if (!rawPatient || typeof rawPatient !== 'object' || !initialVitalsRecord) return rawPatient;
+  const iv = initialVitalsRecord.initialVitals || initialVitalsRecord.initial_vitals || initialVitalsRecord;
+  return {
+    ...rawPatient,
+    initialVitals: { ...(rawPatient.initialVitals || {}), ...iv },
+    vitals: { ...(rawPatient.vitals || {}), ...iv },
+  };
+}
+
+function collectAdmissionMedicationTextSources(rawPatient, patientIdValue) {
+  const idCandidates = collectSleepNutritionLookupIds(rawPatient, patientIdValue);
+  const draft = findAdmissionDraftForPatient({
+    patientId: patientIdValue,
+    id: patientIdValue,
+    uuid: rawPatient?.uuid,
+    profileRouteId: patientIdValue,
+  });
+  const draftText = String(draft?.form?.vitals?.currentMedications || '').trim();
+
+  const seen = new Set();
+  const unique = [];
+  [
+    extractMedicationTextFromPatientRaw(rawPatient),
+    draftText,
+    collectCachedAdmissionMedicationTexts(idCandidates),
+  ]
+    .map((text) => String(text || '').trim())
+    .filter(Boolean)
+    .forEach((text) => {
+      const key = text.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      unique.push(text);
+    });
+
+  return unique;
+}
+
 async function enrichRawPatientRecord(rawPatient, patientId) {
   if (!rawPatient || typeof rawPatient !== 'object') return rawPatient;
 
@@ -2436,36 +2543,51 @@ async function enrichRawPatientRecord(rawPatient, patientId) {
   const idCandidates = collectSleepNutritionLookupIds(rawPatient, patientId);
 
   for (const pid of idCandidates) {
+    const [
+      hygienePsych,
+      sleepNutrition,
+      breathPain,
+      infectionControl,
+      initialVitals,
+    ] = await Promise.all([
+      fetchPatientHygienePsychologicalRecord(pid),
+      fetchPatientSleepNutritionRecord(pid),
+      fetchPatientBreathPainRecord(pid),
+      fetchPatientInfectionControlRecord(pid),
+      fetchPatientInitialVitalsRecord(pid),
+    ]);
+
     let candidate = merged;
     let foundSection = false;
 
-    const hygienePsych = await fetchPatientHygienePsychologicalRecord(pid);
     if (hygienePsych) {
       candidate = mergeRawPatientWithHygienePsychological(candidate, hygienePsych);
       foundSection = true;
     }
 
-    const sleepNutrition = await fetchPatientSleepNutritionRecord(pid);
     if (sleepNutrition) {
       candidate = mergeRawPatientWithSleepNutrition(candidate, sleepNutrition);
       foundSection = true;
     }
 
-    const breathPain = await fetchPatientBreathPainRecord(pid);
     if (breathPain) {
       candidate = mergeRawPatientWithBreathPain(candidate, breathPain);
       foundSection = true;
     }
 
-    const infectionControl = await fetchPatientInfectionControlRecord(pid);
     if (infectionControl) {
       candidate = mergeRawPatientWithInfectionControl(candidate, infectionControl);
       foundSection = true;
     }
 
+    if (initialVitals) {
+      candidate = mergeRawPatientWithInitialVitals(candidate, initialVitals);
+      foundSection = true;
+    }
+
     if (foundSection) {
       merged = candidate;
-      if (hygienePsych) break;
+      if (hygienePsych || initialVitals) break;
     }
   }
 
@@ -2968,8 +3090,13 @@ async function enrichMedicationListWithDetails(items, patientId = '') {
     const normalized = normalizeMedicationRecord(item, { patientId });
     const medicationId = extractMedicationApiId(normalized, normalized, patientId);
     const hasStartDate = Boolean(normalizeMedicationDateForInput(normalized.startDate));
+    const hasCoreFields = Boolean(
+      normalized.drug
+      && normalizeDosageForMedicationSignature(normalized.dosage)
+      && normalizeFrequencyForMedicationSignature(normalized.frequency),
+    );
 
-    if (!medicationId || hasStartDate) {
+    if (!medicationId || hasStartDate || hasCoreFields) {
       return normalized;
     }
 
@@ -2982,6 +3109,46 @@ async function enrichMedicationListWithDetails(items, patientId = '') {
   }));
 
   return enriched;
+}
+
+function medicationListPathsForPatientId(pid) {
+  const q = encodeURIComponent(String(pid || '').trim());
+  return [
+    `/patients/${q}/medications`,
+    `/medications?patientId=${q}`,
+    `/medications/patient/${q}`,
+    `/medications/${q}`,
+  ];
+}
+
+async function fetchMedicationListPayloadForPatientId(pid) {
+  const paths = medicationListPathsForPatientId(pid);
+  const results = await Promise.all(paths.map(async (path) => {
+    try {
+      const res = await apiFetch(path, { method: 'GET', quiet: true });
+      let payload = {};
+      try {
+        payload = await res.json();
+      } catch {
+        payload = {};
+      }
+      return { ok: res.ok, status: res.status, payload };
+    } catch {
+      return { ok: false, status: 0, payload: {} };
+    }
+  }));
+
+  const success = results.find((result) => result.ok);
+  if (success) {
+    return { found: true, payload: success.payload };
+  }
+
+  const nonNotFound = results.find((result) => result.status && result.status !== 404);
+  if (nonNotFound) {
+    return { found: false, payload: nonNotFound.payload };
+  }
+
+  return { found: false, payload: {} };
 }
 
 function createMedicationReminderState(source = {}) {
@@ -3139,13 +3306,37 @@ function extractCarePlanRowsFromPatientPayload(raw) {
   return [];
 }
 
+function normalizeDosageForMedicationSignature(dosage) {
+  const value = String(dosage || '').trim().toLowerCase();
+  if (!value || value === '—' || value === '-' || value === 'n/a' || value === 'na') return '';
+  return value;
+}
+
+function normalizeFrequencyForMedicationSignature(frequency) {
+  const value = String(
+    normalizeMedicationFrequency(frequency) || frequency || '',
+  ).trim().toLowerCase();
+  if (!value || value === '—' || value === '-' || value === 'scheduled' || value === 'n/a' || value === 'na') {
+    return '';
+  }
+  return value;
+}
+
 function buildMedicationSignature(medication) {
-  return [
-    String(medication?.drug || '').trim().toLowerCase(),
-    String(medication?.dosage || '').trim().toLowerCase(),
-    String(medication?.frequency || '').trim().toLowerCase(),
-    String(medication?.route || '').trim().toLowerCase(),
-  ].join('|');
+  const drug = String(medication?.drug || '').trim().toLowerCase();
+  if (!drug) return '';
+  const dosage = normalizeDosageForMedicationSignature(medication?.dosage);
+  const frequency = normalizeFrequencyForMedicationSignature(medication?.frequency);
+  const route = String(medication?.route || medication?.intake || 'oral').trim().toLowerCase();
+  return [drug, dosage, frequency, route].join('|');
+}
+
+function buildMedicationLooseSignature(medication) {
+  const drug = String(medication?.drug || '').trim().toLowerCase();
+  if (!drug) return '';
+  const dosage = normalizeDosageForMedicationSignature(medication?.dosage);
+  const route = String(medication?.route || medication?.intake || 'oral').trim().toLowerCase();
+  return [drug, dosage, route].join('|');
 }
 
 function medicationRecordRichnessScore(medication) {
@@ -3182,24 +3373,41 @@ function mergeMedicationRecordFields(primary, secondary) {
 }
 
 function mergeMedicationRecords(records) {
-  const byKey = new Map();
+  const bySignature = new Map();
+  const byLooseSignature = new Map();
+
+  const storeMergedRecord = (merged) => {
+    const signature = buildMedicationSignature(merged);
+    const looseSignature = buildMedicationLooseSignature(merged);
+    if (signature) bySignature.set(signature, merged);
+    if (looseSignature) byLooseSignature.set(looseSignature, merged);
+  };
 
   records.forEach((record) => {
-    if (!record || !record.drug) return;
+    if (!record || !String(record.drug || '').trim()) return;
     const normalized = normalizeMedicationRecord(record, record);
-    const idKey = String(normalized.medicationId || normalized.id || '').trim();
     const signature = buildMedicationSignature(normalized);
-    const mapKey = idKey || `sig:${signature}`;
+    const looseSignature = buildMedicationLooseSignature(normalized);
+    if (!signature && !looseSignature) return;
 
-    if (byKey.has(mapKey)) {
-      byKey.set(mapKey, mergeMedicationRecordFields(byKey.get(mapKey), normalized));
+    if (signature && bySignature.has(signature)) {
+      storeMergedRecord(mergeMedicationRecordFields(bySignature.get(signature), normalized));
       return;
     }
 
-    byKey.set(mapKey, normalized);
+    if (looseSignature && byLooseSignature.has(looseSignature)) {
+      storeMergedRecord(mergeMedicationRecordFields(byLooseSignature.get(looseSignature), normalized));
+      return;
+    }
+
+    storeMergedRecord(normalized);
   });
 
-  return Array.from(byKey.values());
+  const unique = new Map();
+  byLooseSignature.forEach((record) => {
+    unique.set(buildMedicationLooseSignature(record), record);
+  });
+  return Array.from(unique.values());
 }
 
 function normalizeDrugOption(rawDrug) {
@@ -4232,29 +4440,40 @@ export default function PatientProfile() {
       }
 
       const rawPatient = data?.patient || data?.data || data;
-      const enrichedPatient = rawPatient && typeof rawPatient === 'object'
-        ? await enrichRawPatientRecord(rawPatient, effectivePatientId)
-        : null;
-      rawPatientApiRef.current = enrichedPatient && typeof enrichedPatient === 'object' ? enrichedPatient : null;
-      const apiPatientId = extractApiPatientId(enrichedPatient || rawPatient);
-      const mutationPatientId = resolvePatientMutationId(enrichedPatient || rawPatient, effectivePatientId);
-      const hydratedProfile = await hydratePatientProfile(
-        enrichedPatient || rawPatient,
-        mutationPatientId || apiPatientId || effectivePatientId,
-      );
-      setRemotePatient(hydratedProfile);
+      if (!rawPatient || typeof rawPatient !== 'object') {
+        throw new Error('Patient record was empty.');
+      }
+
+      rawPatientApiRef.current = rawPatient;
+      const apiPatientId = extractApiPatientId(rawPatient);
+      const mutationPatientId = resolvePatientMutationId(rawPatient, effectivePatientId);
+      const profileId = mutationPatientId || apiPatientId || effectivePatientId;
+
+      setRemotePatient(buildQuickPatientProfile(rawPatient, profileId));
+      setProfileLoading(false);
+      setPatientApiSyncVersion((n) => n + 1);
 
       const routeId = String(effectivePatientId || '').trim();
       const canonicalRouteId = mutationPatientId || apiPatientId;
       if (canonicalRouteId && canonicalRouteId !== routeId) {
         navigate(`/patients/${encodeURIComponent(canonicalRouteId)}`, { replace: true });
       }
+
+      void (async () => {
+        try {
+          const enrichedPatient = await enrichRawPatientRecord(rawPatient, effectivePatientId);
+          rawPatientApiRef.current = enrichedPatient;
+          const hydratedProfile = await hydratePatientProfile(enrichedPatient, profileId);
+          setRemotePatient(hydratedProfile);
+          setPatientApiSyncVersion((n) => n + 1);
+        } catch {
+          // Core profile is already visible; section enrichment is best-effort.
+        }
+      })();
     } catch (error) {
       setProfileError(error?.message || 'Unable to load patient profile.');
       rawPatientApiRef.current = null;
-    } finally {
       setProfileLoading(false);
-      setPatientApiSyncVersion((n) => n + 1);
     }
   }, [effectivePatientId, navigate]);
 
@@ -4269,12 +4488,15 @@ export default function PatientProfile() {
       return;
     }
 
+    const rawPatient = rawPatientApiRef.current;
+    const idCandidates = collectSleepNutritionLookupIds(rawPatient, patientIdValue);
+
     const cachedItems = mergeMedicationRecords(
       getCachedPatientMedications(patientIdValue).map(item => normalizeMedicationRecord(item, { patientId: patientIdValue, source: 'cache' }))
     );
 
     try {
-      const embedded = extractMedicationRowsFromPatientPayload(rawPatientApiRef.current);
+      const embedded = extractMedicationRowsFromPatientPayload(rawPatient);
       if (embedded.length > 0) {
         const patientMedicationItems = await enrichMedicationListWithDetails(
           embedded.filter((item) => item?.drug || item?.medicationId || item?.id),
@@ -4286,39 +4508,22 @@ export default function PatientProfile() {
         return;
       }
 
-      const q = encodeURIComponent(patientIdValue);
-      /* Try common backend shapes — many deployments omit GET /medications/:patientId */
-      const medicationListPaths = [
-        `/patients/${q}/medications`,
-        `/medications?patientId=${q}`,
-        `/medications/patient/${q}`,
-        `/medications/${q}`,
-      ];
+      let patientMedicationPayload = null;
+      let foundMedicationList = false;
 
-      let patientMedicationResponse = null;
-      let patientMedicationPayload = {};
-
-      for (const path of medicationListPaths) {
-        const res = await apiFetch(path, { method: 'GET', quiet: true });
-        let payload = {};
-        try {
-          payload = await res.json();
-        } catch {
-          payload = {};
-        }
-        if (res.ok) {
-          patientMedicationResponse = res;
-          patientMedicationPayload = payload;
+      for (const pid of idCandidates) {
+        const result = await fetchMedicationListPayloadForPatientId(pid);
+        if (result.found) {
+          patientMedicationPayload = result.payload;
+          foundMedicationList = true;
           break;
         }
-        if (res.status !== 404) {
-          patientMedicationResponse = res;
-          patientMedicationPayload = payload;
-          break;
+        if (result.payload && Object.keys(result.payload).length > 0) {
+          patientMedicationPayload = result.payload;
         }
       }
 
-      if (patientMedicationResponse?.ok) {
+      if (foundMedicationList) {
         const patientMedicationItems = await enrichMedicationListWithDetails(
           extractMedicationList(patientMedicationPayload),
           patientIdValue,
@@ -4414,10 +4619,6 @@ export default function PatientProfile() {
   }, [effectivePatientId]);
 
   useEffect(() => {
-    loadVitalRecords();
-  }, [loadVitalRecords]);
-
-  useEffect(() => {
     loadLatestVitalRecord();
   }, [loadLatestVitalRecord]);
 
@@ -4491,6 +4692,11 @@ export default function PatientProfile() {
   const [showVitalsMegaModal, setShowVitalsMegaModal] = useState(false);
   const [showNotesMegaModal, setShowNotesMegaModal] = useState(false);
   const [showIncidentsMegaModal, setShowIncidentsMegaModal] = useState(false);
+
+  useEffect(() => {
+    if (!showVitalsMegaModal && tab !== 'vitals') return;
+    loadVitalRecords();
+  }, [showVitalsMegaModal, tab, loadVitalRecords]);
   const [showMedicationsMegaModal, setShowMedicationsMegaModal] = useState(false);
   const [showGenerateReportModal, setShowGenerateReportModal] = useState(false);
   const [generateReportSubmitting, setGenerateReportSubmitting] = useState(false);
@@ -5368,12 +5574,22 @@ export default function PatientProfile() {
   }, [effectivePatientId]);
 
   useEffect(() => {
+    if (!remotePatient) return undefined;
+
     notesLoadedRef.current = false;
     setNotesLoaded(false);
     setNurseNotes([]);
     setNotesError('');
-    loadNurseNotes();
-  }, [effectivePatientId, loadNurseNotes]);
+
+    const scheduleLoad = () => { void loadNurseNotes(); };
+    if (typeof window.requestIdleCallback === 'function') {
+      const idleId = window.requestIdleCallback(scheduleLoad, { timeout: 2000 });
+      return () => window.cancelIdleCallback(idleId);
+    }
+
+    const timer = window.setTimeout(scheduleLoad, 300);
+    return () => window.clearTimeout(timer);
+  }, [effectivePatientId, remotePatient, loadNurseNotes]);
 
   const handleAddNote = async () => {
     if (savingNote) return;
@@ -5601,10 +5817,6 @@ export default function PatientProfile() {
     }
   }, [effectivePatientId]);
 
-  useEffect(() => {
-    loadIncidents();
-  }, [loadIncidents]);
-
   const loadIncidentNurses = useCallback(async () => {
     setIncidentNursesLoading(true);
     setIncidentNursesError('');
@@ -5633,20 +5845,15 @@ export default function PatientProfile() {
   }, []);
 
   useEffect(() => {
+    if (!showIncidentsMegaModal && !showNotesMegaModal && tab !== 'assignednurses') return;
+    if (incidentNurses.length > 0 || incidentNursesLoading) return;
     loadIncidentNurses();
-  }, [loadIncidentNurses]);
+  }, [showIncidentsMegaModal, showNotesMegaModal, tab, incidentNurses.length, incidentNursesLoading, loadIncidentNurses]);
 
   useEffect(() => {
-    if (showIncidentsMegaModal && incidentNurses.length === 0 && !incidentNursesLoading) {
-      loadIncidentNurses();
-    }
-  }, [showIncidentsMegaModal, incidentNurses.length, incidentNursesLoading, loadIncidentNurses]);
-
-  useEffect(() => {
-    if (showNotesMegaModal && incidentNurses.length === 0 && !incidentNursesLoading) {
-      loadIncidentNurses();
-    }
-  }, [showNotesMegaModal, incidentNurses.length, incidentNursesLoading, loadIncidentNurses]);
+    if (!showIncidentsMegaModal && tab !== 'incidents') return;
+    loadIncidents();
+  }, [showIncidentsMegaModal, tab, loadIncidents]);
 
   useEffect(() => {
     if (!incidentNurses.length) return;
@@ -6146,8 +6353,9 @@ export default function PatientProfile() {
 
   useEffect(() => {
     if (patientApiSyncVersion === 0) return;
+    if (tab !== 'careplan' && tab !== 'checkliststatus') return;
     loadCarePlans();
-  }, [patientApiSyncVersion, loadCarePlans]);
+  }, [patientApiSyncVersion, tab, loadCarePlans]);
 
   const [checklistStatusDate, setChecklistStatusDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [dailyChecklistByDate, setDailyChecklistByDate] = useState({});
@@ -6255,8 +6463,9 @@ export default function PatientProfile() {
 
   useEffect(() => {
     if (patientApiSyncVersion === 0) return;
+    if (tab !== 'checkliststatus') return;
     void loadPatientCompletedCarePlans();
-  }, [patientApiSyncVersion, loadPatientCompletedCarePlans]);
+  }, [patientApiSyncVersion, tab, loadPatientCompletedCarePlans]);
 
   useEffect(() => {
     if (tab !== 'checkliststatus') return;
@@ -7517,10 +7726,7 @@ export default function PatientProfile() {
   if (!p.mobility.independent) flags.push({ label: 'Mobility Assist Required', status: 'warn', detail: 'Not independent' });
   if (flags.length === 0) flags.push({ label: 'No active clinical flags', status: 'ok', detail: '' });
 
-  const medicationList = String(p.medications || '')
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean);
+  const medicationList = splitAdmissionMedicationText(p.medications);
   const existingMedicationEntries = medicationList
     .map((entry, index) => {
       const parsed = parseLegacyMedicationEntry(entry);
@@ -7536,9 +7742,8 @@ export default function PatientProfile() {
       };
     })
     .filter(item => !deletedExistingMeds.includes(item.originalIndex));
-  const existingMedicationSignatures = new Set(existingMedicationEntries.map(buildMedicationSignature));
-  const persistedMedicationEntries = addedMeds.filter(item => !existingMedicationSignatures.has(buildMedicationSignature(item)));
-  const activeMedicationRecords = [...existingMedicationEntries, ...persistedMedicationEntries];
+  const activeMedicationRecords = mergeMedicationRecords([...existingMedicationEntries, ...addedMeds]);
+  const persistedMedicationEntries = activeMedicationRecords.filter((item) => item.source !== 'existing');
   const medicationReminderCount = activeMedicationRecords.filter(item => Array.isArray(item?.reminders?.times) && item.reminders.times.length > 0).length;
   const medicationOralCount = activeMedicationRecords.filter(item => String(item?.route || '').trim().toLowerCase() === 'oral').length;
   const medicationNewCount = persistedMedicationEntries.length;
@@ -7712,9 +7917,16 @@ export default function PatientProfile() {
       resetIncidentForm();
     };
 
-    if (nextTab === 'vitals') { closeAll(); setShowVitalsMegaModal(true); return; }
+    if (nextTab === 'vitals') { closeAll(); setShowVitalsMegaModal(true); loadVitalRecords(); return; }
     if (nextTab === 'notes') { closeAll(); setShowNotesMegaModal(true); return; }
     if (nextTab === 'incidents') { closeAll(); setShowIncidentsMegaModal(true); loadIncidents(); return; }
+    if (nextTab === 'careplan' || nextTab === 'checkliststatus') {
+      closeAll();
+      setTab(nextTab);
+      loadCarePlans();
+      if (nextTab === 'checkliststatus') void loadPatientCompletedCarePlans();
+      return;
+    }
     if (nextTab === 'medications') { closeAll(); setShowMedicationsMegaModal(true); return; }
 
     closeAll();
@@ -8544,17 +8756,6 @@ export default function PatientProfile() {
 
           {/* Center column */}
           <div className="col-lg-4">
-            <Panel title="Primary Diagnosis" variant="summary">
-              {String(p.diagnosis || '').trim() || hasMedicalHistoryData ? (
-                <>
-                  <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--kh-text)', marginBottom: 8 }}>{p.diagnosis || 'No diagnosis recorded'}</div>
-                  <div style={{ fontSize: 12, color: 'var(--kh-text-muted)', lineHeight: 1.6 }}>
-                    <span style={{ fontWeight: 600 }}>History:</span> {p.medicalHistory || 'No medical history recorded'}
-                  </div>
-                </>
-              ) : <NoDataState />}
-            </Panel>
-
             <Panel title="Clinical Flags">
               {flags.map((f, i) => <FlagItem key={i} label={f.label} detail={f.detail} />)}
             </Panel>
