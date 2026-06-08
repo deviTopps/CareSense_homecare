@@ -1061,11 +1061,13 @@
 }
 
 @media (max-width: 768px) {
-  .patients-board-card table.hospital-table thead {
+  .patients-board-card table.hospital-table thead,
+  .patients-board-card.scheduling-visits-board table.hospital-table thead {
     display: none;
   }
 
-  .patients-board-card table.hospital-table tbody tr {
+  .patients-board-card table.hospital-table tbody tr,
+  .patients-board-card.scheduling-visits-board table.hospital-table tbody tr {
     display: block;
     margin-bottom: 12px;
     border: 1px solid #eef2f6;
@@ -1073,7 +1075,8 @@
     overflow: hidden;
   }
 
-  .patients-board-card table.hospital-table tbody td {
+  .patients-board-card table.hospital-table tbody td,
+  .patients-board-card.scheduling-visits-board table.hospital-table tbody td {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -1082,7 +1085,8 @@
     border-bottom: 1px solid #f0f2f5 !important;
   }
 
-  .patients-board-card table.hospital-table tbody td::before {
+  .patients-board-card table.hospital-table tbody td::before,
+  .patients-board-card.scheduling-visits-board table.hospital-table tbody td::before {
     content: attr(data-label);
     font-size: 10px;
     font-weight: 700;
@@ -1092,12 +1096,15 @@
     flex-shrink: 0;
   }
 
-  .patients-board-card table.hospital-table tbody td.col-num::before {
+  .patients-board-card table.hospital-table tbody td.col-num::before,
+  .patients-board-card.scheduling-visits-board table.hospital-table tbody td.col-num::before {
     content: '#';
   }
 
   .patients-board-card table.hospital-table tbody td[data-label='Actions']::before,
-  .patients-board-card table.hospital-table .patients-table-actions-cell::before {
+  .patients-board-card table.hospital-table .patients-table-actions-cell::before,
+  .patients-board-card.scheduling-visits-board table.hospital-table tbody td[data-label='Actions']::before,
+  .patients-board-card.scheduling-visits-board table.hospital-table .patients-table-actions-cell::before {
     content: 'Actions';
   }
 }
@@ -1156,8 +1163,96 @@
   box-shadow: 0 1px 3px rgba(16, 24, 40, 0.1) !important;
 }
 
-.scheduling-visits-board .care-visits-schedule-wrap {
+/* Care visits — same flat hospital table as Patients list */
+.patients-board-card.scheduling-visits-board .care-visits-table-wrap.hospital-table-wrap,
+.patients-board-card.scheduling-visits-board .patients-table-wrap.hospital-table-wrap {
+  padding: 0 !important;
   overflow-x: auto;
+}
+
+.patients-board-card.scheduling-visits-board table.hospital-table.care-visits-table {
+  min-width: 960px;
+}
+
+.patients-board-card.scheduling-visits-board table.hospital-table thead th.col-num {
+  text-align: center !important;
+  width: 52px;
+}
+
+.patients-board-card.scheduling-visits-board table.hospital-table .cv-th-patient {
+  min-width: 200px;
+}
+
+.patients-board-card.scheduling-visits-board table.hospital-table .cv-th-prev,
+.patients-board-card.scheduling-visits-board table.hospital-table .cv-th-next {
+  white-space: nowrap;
+}
+
+.patients-board-card.scheduling-visits-board table.hospital-table .patients-table-actions-col,
+.patients-board-card.scheduling-visits-board table.hospital-table .patients-table-actions-cell {
+  width: 128px;
+  min-width: 128px;
+  text-align: right !important;
+}
+
+.patients-board-card.scheduling-visits-board table.hospital-table .patients-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.patients-board-card.scheduling-visits-board table.hospital-table .cv-next-highlight {
+  color: var(--hospital-btn-primary) !important;
+  font-weight: 600 !important;
+}
+
+.patients-board-card.scheduling-visits-board .hospital-table-empty-row td {
+  padding: 32px 20px !important;
+  text-align: center;
+  color: #667085;
+  font-size: 13px;
+  border: none !important;
+  background: #fff !important;
+}
+
+.patients-board-card.scheduling-visits-board .reports-table-loader {
+  min-height: 280px;
+}
+
+.patients-board-card.scheduling-visits-board .hospital-table-actions .cv-actions-dropdown-toggle.patients-row-actions__toggle {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  padding: 0 !important;
+  border: none !important;
+  border-radius: 8px !important;
+  background: transparent !important;
+  color: #98a3b8 !important;
+  box-shadow: none !important;
+}
+
+.patients-board-card.scheduling-visits-board .hospital-table-actions .cv-actions-dropdown-toggle.patients-row-actions__toggle > span {
+  display: none !important;
+}
+
+.patients-board-card.scheduling-visits-board .hospital-table-actions .cv-actions-dropdown-toggle.patients-row-actions__toggle::before {
+  content: '';
+  display: block;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 -6px 0 currentColor, 0 6px 0 currentColor;
+}
+
+.patients-board-card.scheduling-visits-board .hospital-table-actions .cv-actions-dropdown-toggle.patients-row-actions__toggle:hover {
+  background: #f2f4f7 !important;
+  color: #475467 !important;
+}
+
+.patients-board-card.scheduling-visits-board .hospital-table-actions .cv-actions-dropdown-toggle.dropdown-toggle::after {
+  display: none !important;
 }
 
 [data-theme="dark"] .hospital-table-legend__item {

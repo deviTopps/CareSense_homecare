@@ -1099,12 +1099,12 @@ body.sidebar-resizing {
   border-right: 1px solid #e2e8f0;
 }
 
-/* Care visits (Scheduling): column widths, alignment, patient text overflow */
+/* Care visits (Scheduling): legacy table — hospital-table uses hospital-table.css */
 .care-visits-schedule-wrap.table-responsive {
   border-top: none;
 }
 
-.care-visits-schedule-wrap .care-visits-schedule-table.kh-table {
+.care-visits-schedule-wrap .care-visits-schedule-table.kh-table:not(.hospital-table) {
   min-width: 960px;
   table-layout: fixed;
 }

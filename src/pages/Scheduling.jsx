@@ -5,6 +5,7 @@ import Button from 'react-bootstrap/Button';
 import Overlay from 'react-bootstrap/Overlay';
 import { FiPlus, FiCalendar, FiUser, FiXCircle, FiCheckCircle, FiTrash2 } from '../icons/hugeicons-feather';
 import DataTableHeader, { HospitalStatus } from '../components/DataTableHeader';
+import TablePageLoader from '../components/TablePageLoader';
 import { fetchAllPatients } from '../utils/patients';
 import {
   apiFetch,
@@ -239,6 +240,64 @@ function patientDisplayName(p) {
   return name || 'Patient';
 }
 
+function isCareVisitPatientPlaceholder(label) {
+  return /^patient\s*\([a-f0-9-]{4,}/i.test(String(label || '').trim());
+}
+
+function registerPatientNameAliases(patientNamesById, patientRecord, name) {
+  const displayName = String(name || '').trim();
+  if (!displayName || isCareVisitPatientPlaceholder(displayName)) return;
+
+  const aliasSource = {
+    patientId: pickPatientApiId(patientRecord),
+    patient_id: patientRecord?.patientId,
+    patient: patientRecord,
+  };
+  collectCareVisitPatientIds(aliasSource).forEach((id) => {
+    patientNamesById.set(id, displayName);
+    patientNamesById.set(String(id).toLowerCase(), displayName);
+    const token = normalizeIdentityToken(id);
+    if (token.length >= 6) {
+      patientNamesById.set(token.slice(0, 8), displayName);
+    }
+  });
+}
+
+function resolvePatientLabelForVisit(raw, lookups) {
+  const embedded = pickPatientLabelFromVisitRaw(raw);
+  if (embedded && !isCareVisitPatientPlaceholder(embedded)) return embedded;
+
+  const visitIds = expandCareVisitPatientIdentity(raw, embedded, lookups);
+  for (const id of visitIds) {
+    const direct =
+      lookups?.patientNamesById?.get(id)
+      || lookups?.patientNamesById?.get(String(id).toLowerCase())
+      || lookups?.patientNamesById?.get(normalizeIdentityToken(id).slice(0, 8));
+    if (direct && !isCareVisitPatientPlaceholder(direct)) return direct;
+  }
+
+  if (lookups?.patientNamesById) {
+    for (const [registryId, name] of lookups.patientNamesById.entries()) {
+      if (!name || isCareVisitPatientPlaceholder(name)) continue;
+      const registryToken = normalizeIdentityToken(registryId);
+      if (!registryToken) continue;
+      for (const visitId of visitIds) {
+        const visitToken = normalizeIdentityToken(visitId);
+        if (!visitToken) continue;
+        if (
+          registryToken === visitToken
+          || (visitToken.length >= 6 && registryToken.startsWith(visitToken.slice(0, 8)))
+          || (registryToken.length >= 6 && visitToken.startsWith(registryToken.slice(0, 8)))
+        ) {
+          return name;
+        }
+      }
+    }
+  }
+
+  return '';
+}
+
 /** Backend may send `visitingNurse` / `assignedNurse` as a populated object. */
 function nurseDisplayFromObject(o) {
   if (!o || typeof o !== 'object' || Array.isArray(o)) return '';
@@ -349,29 +408,353 @@ function lookupCareVisitStatusOverride(lookups, keys) {
   return '';
 }
 
+function careVisitRowApiId(raw) {
+  return String(
+    raw?.id ?? raw?._id ?? raw?.uuid ?? raw?.visitId ?? raw?.careVisitId ?? raw?.care_visit_id ?? '',
+  ).trim();
+}
+
+function collectCareVisitPatientIds(raw) {
+  const ids = new Set();
+  const push = (value) => {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (normalized) ids.add(normalized);
+  };
+  if (!raw || typeof raw !== 'object') return ids;
+  push(raw.patientId);
+  push(raw.patient_id);
+  if (typeof raw.patient === 'string') {
+    push(raw.patient);
+  } else if (raw.patient && typeof raw.patient === 'object') {
+    ['uuid', 'patientUuid', 'patientId', 'id', '_id'].forEach((key) => push(raw.patient[key]));
+  }
+  push(pickPatientApiId(raw.patient));
+  push(pickPatientIdFromVisitRaw(raw));
+  return ids;
+}
+
+function collectCareVisitNurseIds(raw) {
+  const ids = new Set();
+  const push = (value) => {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (normalized && !normalized.startsWith('[object')) ids.add(normalized);
+  };
+  if (!raw || typeof raw !== 'object') return ids;
+  push(raw.nurseId);
+  push(raw.nurse_id);
+  push(raw.assignedNurseId);
+  push(raw.assigned_nurse_id);
+  const visitingRef = raw.visitingNurse ?? raw.visiting_nurse;
+  const assignedRef = raw.assignedNurse ?? raw.assigned_nurse;
+  if (typeof visitingRef === 'string') push(visitingRef);
+  else if (visitingRef && typeof visitingRef === 'object') {
+    collectNurseRecordIds(visitingRef).forEach(push);
+    push(pickVisitingNurseApiId(visitingRef));
+  }
+  if (typeof assignedRef === 'string') push(assignedRef);
+  else if (assignedRef && typeof assignedRef === 'object') {
+    collectNurseRecordIds(assignedRef).forEach(push);
+    push(pickVisitingNurseApiId(assignedRef));
+  }
+  if (raw.nurse && typeof raw.nurse === 'object') {
+    collectNurseRecordIds(raw.nurse).forEach(push);
+    push(pickVisitingNurseApiId(raw.nurse));
+  }
+  push(pickNurseIdFromVisitRaw(raw));
+  return ids;
+}
+
+function parsePatientPlaceholderPrefix(label) {
+  const match = String(label || '').trim().match(/^patient\s*\(([a-f0-9-]{6,})/i);
+  if (!match) return '';
+  return match[1].replace(/[^a-f0-9]/gi, '').toLowerCase();
+}
+
+function resolvePatientIdsFromDisplayName(name, lookups) {
+  const ids = new Set();
+  const normalized = String(name || '').trim().toLowerCase();
+  if (!normalized || /^patient\s*\(/i.test(normalized)) return ids;
+  if (!lookups?.patientNamesById) return ids;
+  for (const [id, patientName] of lookups.patientNamesById.entries()) {
+    if (String(patientName).trim().toLowerCase() === normalized) {
+      ids.add(String(id).toLowerCase());
+    }
+  }
+  return ids;
+}
+
+function normalizeIdentityToken(value) {
+  return String(value || '').trim().toLowerCase().replace(/[^a-f0-9]/gi, '');
+}
+
+function identityTokensOverlap(leftIds, rightIds) {
+  for (const left of leftIds) {
+    for (const right of rightIds) {
+      if (left === right) return true;
+      const ln = normalizeIdentityToken(left);
+      const rn = normalizeIdentityToken(right);
+      if (ln.length >= 6 && rn.length >= 6 && (ln.startsWith(rn.slice(0, 8)) || rn.startsWith(ln.slice(0, 8)))) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function expandCareVisitPatientIdentity(raw, displayLine = '', lookups = null) {
+  const ids = new Set(collectCareVisitPatientIds(raw));
+  const labels = [
+    displayLine,
+    pickPatientLabelFromVisitRaw(raw),
+  ].filter(Boolean);
+
+  labels.forEach((label) => {
+    const prefix = parsePatientPlaceholderPrefix(label);
+    if (prefix) ids.add(prefix);
+    resolvePatientIdsFromDisplayName(label, lookups).forEach((id) => ids.add(id));
+  });
+
+  return [...ids];
+}
+
+function careVisitPatientIdentityOverlaps(a, b, lookups = null, displayA = '', displayB = '') {
+  const left = expandCareVisitPatientIdentity(a, displayA, lookups);
+  const right = expandCareVisitPatientIdentity(b, displayB, lookups);
+  if (identityTokensOverlap(left, right)) return true;
+
+  const nameA = String(displayA || pickPatientLabelFromVisitRaw(a)).trim().toLowerCase();
+  const nameB = String(displayB || pickPatientLabelFromVisitRaw(b)).trim().toLowerCase();
+  return Boolean(
+    nameA
+    && nameB
+    && nameA === nameB
+    && !/^patient\s*\(/i.test(nameA),
+  );
+}
+
+function careVisitNurseIdsOverlap(a, b) {
+  const left = collectCareVisitNurseIds(a);
+  const right = collectCareVisitNurseIds(b);
+  if (!left.size && !right.size) return true;
+  for (const id of left) {
+    if (right.has(id)) return true;
+  }
+  const nameA = nurseLabelFromVisitRaw(a).toLowerCase();
+  const nameB = nurseLabelFromVisitRaw(b).toLowerCase();
+  if (nameA && nameB) return nameA === nameB;
+  return !left.size || !right.size;
+}
+
+function careVisitDatesOverlap(a, b) {
+  const nextA = normalizeVisitDateForUi(a?.nextVisit ?? a?.next_visit ?? '');
+  const nextB = normalizeVisitDateForUi(b?.nextVisit ?? b?.next_visit ?? '');
+  const lastA = normalizeVisitDateForUi(a?.lastVisit ?? a?.last_visit ?? '');
+  const lastB = normalizeVisitDateForUi(b?.lastVisit ?? b?.last_visit ?? '');
+
+  if (nextA && nextB) return nextA === nextB;
+  if (!nextA && !nextB) return !lastA || !lastB || lastA === lastB;
+  if (nextA && lastB) return nextA === lastB;
+  if (nextB && lastA) return nextB === lastA;
+  return false;
+}
+
+function careVisitRowsRepresentSameVisit(a, b, lookups = null, displayA = '', displayB = '') {
+  if (!a || !b) return false;
+  const idA = careVisitRowApiId(a);
+  const idB = careVisitRowApiId(b);
+  if (idA && idB && !idA.startsWith('cv-') && idA === idB) return true;
+  if (!careVisitDatesOverlap(a, b)) return false;
+  if (!careVisitPatientIdentityOverlaps(a, b, lookups, displayA, displayB)) return false;
+  return careVisitNurseIdsOverlap(a, b);
+}
+
 function careVisitRowStableKey(raw, index = 0) {
-  const id = String(raw?.id ?? raw?._id ?? raw?.uuid ?? raw?.visitId ?? raw?.careVisitId ?? '').trim();
+  const id = careVisitRowApiId(raw);
   if (id && !id.startsWith('cv-')) return `id:${id}`;
-  const patientId = pickPatientIdFromVisitRaw(raw);
-  const nurseId = pickNurseIdFromVisitRaw(raw);
+  const assignmentKey = careVisitRowAssignmentKey(raw);
+  if (assignmentKey) return `assign:${assignmentKey}`;
+  const name = pickPatientLabelFromVisitRaw(raw).toLowerCase();
+  const nurse = nurseLabelFromVisitRaw(raw).toLowerCase();
   const nextVisit = normalizeVisitDateForUi(raw?.nextVisit ?? raw?.next_visit ?? '');
   const lastVisit = normalizeVisitDateForUi(raw?.lastVisit ?? raw?.last_visit ?? '');
-  if (patientId && nurseId) return `pn:${patientId}::${nurseId}::${nextVisit || lastVisit}`;
-  if (patientId) return `p:${patientId}::${nextVisit || lastVisit}::${index}`;
-  const name = pickPatientLabelFromVisitRaw(raw).toLowerCase();
-  if (name) return `name:${name}::${nextVisit || lastVisit}::${index}`;
+  if (name) return `name:${name}::${nurse}::${nextVisit || lastVisit}::${index}`;
   return `row:${index}`;
 }
 
+function careVisitRowAssignmentKey(raw) {
+  const patientId = pickPatientIdFromVisitRaw(raw).toLowerCase();
+  const nurseId = pickNurseIdFromVisitRaw(raw).toLowerCase();
+  const nextVisit = normalizeVisitDateForUi(raw?.nextVisit ?? raw?.next_visit ?? '');
+  const lastVisit = normalizeVisitDateForUi(raw?.lastVisit ?? raw?.last_visit ?? '');
+  const date = nextVisit || lastVisit;
+  if (!patientId) return '';
+  if (nurseId) return `${patientId}::${nurseId}::${date}`;
+  return `${patientId}::${date}`;
+}
+
+function careVisitRowLooseAssignmentKey(raw) {
+  const patientId = pickPatientIdFromVisitRaw(raw).toLowerCase();
+  const nurseId = pickNurseIdFromVisitRaw(raw).toLowerCase();
+  if (!patientId || !nurseId) return '';
+  return `${patientId}::${nurseId}`;
+}
+
+function careVisitRowRichnessScore(raw) {
+  let score = 0;
+  const id = careVisitRowApiId(raw);
+  if (id && !id.startsWith('cv-')) score += 20;
+  const patientLabel = pickPatientLabelFromVisitRaw(raw);
+  if (patientLabel && !isCareVisitPatientPlaceholder(patientLabel)) score += 6;
+  if (raw?.patient && typeof raw.patient === 'object') score += 4;
+  if (nurseLabelFromVisitRaw(raw)) score += 2;
+  if (normalizeVisitDateForUi(raw?.nextVisit ?? raw?.next_visit ?? '')) score += 1;
+  if (normalizeVisitDateForUi(raw?.lastVisit ?? raw?.last_visit ?? '')) score += 1;
+  if (raw?.frequency) score += 1;
+  return score;
+}
+
+function mergeCareVisitRowPair(primary, secondary) {
+  const richer = careVisitRowRichnessScore(secondary) > careVisitRowRichnessScore(primary)
+    ? { ...primary, ...secondary }
+    : { ...secondary, ...primary };
+  return richer;
+}
+
 function mergeCareVisitRowLists(...lists) {
-  const byKey = new Map();
-  lists.flat().forEach((row, index) => {
+  const merged = [];
+
+  function findMatch(row) {
+    return merged.find((existing) => careVisitRowsRepresentSameVisit(existing, row)) || null;
+  }
+
+  lists.flat().forEach((row) => {
     if (!row || typeof row !== 'object') return;
-    const key = careVisitRowStableKey(row, index);
-    const prev = byKey.get(key);
-    byKey.set(key, prev ? { ...prev, ...row } : row);
+    const hit = findMatch(row);
+    if (hit) {
+      const hitIndex = merged.indexOf(hit);
+      const combined = mergeCareVisitRowPair(hit, row);
+      if (hitIndex >= 0) merged[hitIndex] = combined;
+      return;
+    }
+    merged.push(row);
   });
-  return [...byKey.values()];
+
+  return merged;
+}
+
+function mergeCareVisitRowListsWithLookups(rows, lookups) {
+  if (!Array.isArray(rows) || !rows.length) return [];
+  const merged = [];
+
+  rows.forEach((row) => {
+    if (!row || typeof row !== 'object') return;
+    const hit = merged.find((existing) => careVisitRowsRepresentSameVisit(existing, row, lookups));
+    if (hit) {
+      const hitIndex = merged.indexOf(hit);
+      const combined = mergeCareVisitRowPair(hit, row);
+      if (hitIndex >= 0) merged[hitIndex] = combined;
+      return;
+    }
+    merged.push(row);
+  });
+
+  return merged;
+}
+
+function pruneRedundantCareVisitCacheEntries(apiRows) {
+  if (!Array.isArray(apiRows) || !apiRows.length) return;
+  const cache = readCareVisitDateCache();
+  let changed = false;
+
+  apiRows.forEach((row) => {
+    const cacheKeys = careVisitOverrideKeys({
+      visitId: careVisitRowApiId(row),
+      patientId: pickPatientIdFromVisitRaw(row),
+      visitingNurse: pickNurseIdFromVisitRaw(row),
+      patientName: pickPatientLabelFromVisitRaw(row),
+    });
+
+    cacheKeys.forEach((key) => {
+      const entry = cache[key];
+      if (!entry || entry.status) return;
+
+      const apiNext = normalizeVisitDateForUi(row?.nextVisit ?? row?.next_visit ?? '');
+      const apiLast = normalizeVisitDateForUi(row?.lastVisit ?? row?.last_visit ?? '');
+      const cacheNext = normalizeVisitDateForUi(entry?.nextVisit ?? '');
+      const cacheLast = normalizeVisitDateForUi(entry?.lastVisit ?? '');
+      const datesMatch =
+        (!cacheNext || !apiNext || cacheNext === apiNext)
+        && (!cacheLast || !apiLast || cacheLast === apiLast);
+
+      if (datesMatch) {
+        delete cache[key];
+        changed = true;
+      }
+    });
+  });
+
+  if (changed) writeCareVisitDateCache(cache);
+}
+
+function mergeCareVisitRowsWithCacheFallback(baseRows) {
+  const base = mergeCareVisitRowLists(baseRows);
+  if (base.length > 0) {
+    pruneRedundantCareVisitCacheEntries(base);
+  }
+  const supplemental = base.length === 0
+    ? buildSupplementalRowsFromCache(readCareVisitDateCache(), base)
+    : [];
+  return applyCachedOverridesToRows(mergeCareVisitRowLists(base, supplemental));
+}
+
+function mappedCareVisitRichnessScore(row) {
+  let score = careVisitRowRichnessScore(row?.raw || {});
+  const patientLine = String(row?.patientLine || row?.patient || '').trim();
+  if (patientLine && !/^patient\s*\(/i.test(patientLine)) score += 10;
+  if (row?.nurseName && row.nurseName !== '—') score += 10;
+  if (row?.address) score += 2;
+  return score;
+}
+
+function mappedCareVisitsRepresentSameVisit(a, b, lookups) {
+  const rawA = a?.raw || {};
+  const rawB = b?.raw || {};
+  const displayA = a?.patientLine || a?.patient || '';
+  const displayB = b?.patientLine || b?.patient || '';
+
+  if (careVisitRowsRepresentSameVisit(rawA, rawB, lookups, displayA, displayB)) return true;
+
+  const nextA = a?.nextVisit || '';
+  const nextB = b?.nextVisit || '';
+  const prevA = a?.prevVisit || '';
+  const prevB = b?.prevVisit || '';
+  if (!nextA || nextA !== nextB || prevA !== prevB) return false;
+
+  return careVisitPatientIdentityOverlaps(rawA, rawB, lookups, displayA, displayB);
+}
+
+function dedupeMappedCareVisits(rows, lookups = null) {
+  if (!Array.isArray(rows) || !rows.length) return [];
+  const result = [];
+  rows.forEach((row) => {
+    const hit = result.find((existing) => mappedCareVisitsRepresentSameVisit(existing, row, lookups));
+    if (hit) {
+      const hitIndex = result.indexOf(hit);
+      if (hitIndex >= 0) {
+        result[hitIndex] = mappedCareVisitRichnessScore(row) > mappedCareVisitRichnessScore(hit)
+          ? row
+          : hit;
+      }
+      return;
+    }
+    result.push(row);
+  });
+  return result;
+}
+
+function filterPlaceholderCareVisitRows(rows) {
+  if (!Array.isArray(rows) || !rows.length) return [];
+  return rows.filter((row) => !isCareVisitPatientPlaceholder(row.patientLine));
 }
 
 function buildSupplementalRowsFromCache(cache, existingRows) {
@@ -384,6 +767,18 @@ function buildSupplementalRowsFromCache(cache, existingRows) {
       visitingNurse: pickNurseIdFromVisitRaw(row),
       patientName: pickPatientLabelFromVisitRaw(row),
     }).forEach((key) => existingKeys.add(key));
+
+    const nextVisit = normalizeVisitDateForUi(row?.nextVisit ?? row?.next_visit ?? '');
+    const lastVisit = normalizeVisitDateForUi(row?.lastVisit ?? row?.last_visit ?? '');
+    const patientIds = collectCareVisitPatientIds(row);
+    const nurseIds = collectCareVisitNurseIds(row);
+    patientIds.forEach((patientId) => {
+      existingKeys.add(patientId);
+      nurseIds.forEach((nurseId) => {
+        existingKeys.add(`${patientId}::${nurseId}`);
+        existingKeys.add(`${patientId}::${nurseId}::${nextVisit || lastVisit}`);
+      });
+    });
   });
 
   const supplemental = [];
@@ -705,12 +1100,7 @@ function formatVisitDateDisplay(ymd) {
 
 function extractCareVisitsList(payload) {
   if (payload == null) return [];
-  if (Array.isArray(payload)) return payload;
-
-  if (payload?.data != null && typeof payload.data === 'object' && !Array.isArray(payload.data)) {
-    const fromData = extractCareVisitsList(payload.data);
-    if (fromData.length) return fromData;
-  }
+  if (Array.isArray(payload)) return mergeCareVisitRowLists(payload);
 
   const LIST_KEYS = [
     'data',
@@ -738,42 +1128,33 @@ function extractCareVisitsList(payload) {
     'value',
   ];
 
-  const tryArray = (v) => {
-    if (Array.isArray(v)) return v;
-    if (v && typeof v === 'object') {
-      for (const nk of LIST_KEYS) {
-        const inner = v[nk];
-        if (Array.isArray(inner)) return inner;
+  const collected = [];
+  const collectFromObject = (obj) => {
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return;
+    for (const key of LIST_KEYS) {
+      const value = obj[key];
+      if (Array.isArray(value) && value.length) {
+        collected.push(...value);
       }
     }
-    return null;
   };
 
-  for (const k of LIST_KEYS) {
-    const v = payload[k];
-    const arr = tryArray(v);
-    if (arr) return arr;
-    if (Array.isArray(v)) return v;
+  collectFromObject(payload);
+  if (payload?.data != null && typeof payload.data === 'object') {
+    collectFromObject(payload.data);
   }
 
-  if (Array.isArray(payload?.edges)) {
-    const fromEdges = payload.edges.map((e) => e?.node).filter(Boolean);
-    if (fromEdges.length) return fromEdges;
+  if (Array.isArray(payload?.edges) && payload.edges.length) {
+    collected.push(...payload.edges.map((edge) => edge?.node).filter(Boolean));
   }
 
-  for (const v of Object.values(payload)) {
-    const arr = tryArray(v);
-    if (arr) return arr;
-    if (Array.isArray(v) && v.length > 0 && v[0] != null && typeof v[0] === 'object') return v;
-    if (v && typeof v === 'object' && !Array.isArray(v)) {
-      for (const inner of Object.values(v)) {
-        if (Array.isArray(inner) && inner.length > 0 && inner[0] != null && typeof inner[0] === 'object')
-          return inner;
-      }
-    }
+  if (collected.length) {
+    return mergeCareVisitRowLists(collected);
   }
 
-  if (typeof payload === 'object' && !Array.isArray(payload) && isCareVisitLikeRow(payload)) return [payload];
+  if (typeof payload === 'object' && !Array.isArray(payload) && isCareVisitLikeRow(payload)) {
+    return [payload];
+  }
 
   return [];
 }
@@ -940,35 +1321,7 @@ function mapCareVisitRow(raw, index, lookups) {
     );
   }
 
-  let patientLabel =
-    String(
-      raw?.patientName ??
-        raw?.patient_name ??
-        raw?.patientFullName ??
-        (typeof raw?.patient === 'string' ? raw.patient : ''),
-    ).trim();
-
-  if (!patientLabel && raw?.patient?.name) {
-    patientLabel = String(raw.patient.name).trim();
-  }
-
-  if (!patientLabel && typeof raw?.patient === 'object' && raw.patient) {
-    const p = raw.patient;
-    patientLabel =
-      patientDisplayName({
-        firstName: p.firstName,
-        lastName: p.lastName,
-        name: p.name,
-      }) || '';
-  }
-
-  if (!patientLabel && pid) {
-    patientLabel =
-      lookups.patientNamesById.get(String(pid)) ||
-      lookups.patientNamesById.get(String(pid).toLowerCase()) ||
-      '';
-  }
-  if (!patientLabel) patientLabel = pid ? `Patient (${String(pid).slice(0, 8)}…)` : 'Patient';
+  const patientLabel = resolvePatientLabelForVisit(raw, lookups);
 
   const addrSrc =
     raw?.address ??
@@ -1039,22 +1392,23 @@ function CareVisitRowActions({ visit, onMarkCompleted, onOpenUpdate, onRequestCa
   }, []);
 
   return (
-    <div className="care-visits-actions-dropdown d-inline-flex">
+    <div className="care-visits-actions-dropdown patients-row-actions d-inline-flex">
       <Button
         ref={toggleRef}
         variant="light"
         size="sm"
         id={`care-visit-actions-${visit.id}`}
         type="button"
-        className="cv-actions-dropdown-toggle dropdown-toggle"
+        className="cv-actions-dropdown-toggle patients-row-actions__toggle dropdown-toggle"
         aria-haspopup="menu"
         aria-expanded={open}
+        aria-label={`Actions for ${visit.patientLine || visit.patient || 'visit'}`}
         onClick={(e) => {
           e.stopPropagation();
           setOpen((o) => !o);
         }}
       >
-        Actions
+        <span>Actions</span>
       </Button>
       <Overlay
         show={open && overlayContainer}
@@ -1181,13 +1535,7 @@ export default function Scheduling() {
   const lookups = useMemo(() => {
     const patientNamesById = new Map();
     for (const p of patientsRaw) {
-      const id = pickPatientApiId(p);
-      const key = String(id || '').trim();
-      const name = patientDisplayName(p);
-      if (key) {
-        patientNamesById.set(key, name);
-        patientNamesById.set(key.toLowerCase(), name);
-      }
+      registerPatientNameAliases(patientNamesById, p, patientDisplayName(p));
     }
     const nurseNamesById = new Map();
     for (const n of nursesRaw) {
@@ -1310,7 +1658,7 @@ export default function Scheduling() {
       if (!res.ok) {
         throw new Error(json?.message || json?.error || `Could not load upcoming visits (${res.status})`);
       }
-      const list = applyCachedOverridesToRows(extractCareVisitsList(json));
+      const list = mergeCareVisitRowsWithCacheFallback(extractCareVisitsList(json));
       if (import.meta.env.DEV && list.length === 0 && json && typeof json === 'object' && !Array.isArray(json)) {
         const keys = Object.keys(json);
         if (keys.length) {
@@ -1377,7 +1725,7 @@ export default function Scheduling() {
         console.info(`[Care Visits] loaded ${list.length} rows via ${source}`);
       }
 
-      setOtherVisitRowsRaw(applyCachedOverridesToRows(list));
+      setOtherVisitRowsRaw(mergeCareVisitRowsWithCacheFallback(list));
     } catch (e) {
       if (e.message !== 'Session expired. Please log in again.') {
         setVisitsOtherError(e.message || 'Could not load care visits.');
@@ -1393,23 +1741,22 @@ export default function Scheduling() {
   }, [loadUpcomingVisitRows, loadOtherVisitRows]);
 
   const mergedAllVisitRowsRaw = useMemo(() => {
-    const merged = mergeCareVisitRowLists(upcomingVisitRowsRaw, otherVisitRowsRaw);
-    const supplemental = buildSupplementalRowsFromCache(readCareVisitDateCache(), merged);
-    return applyCachedOverridesToRows(mergeCareVisitRowLists(merged, supplemental));
-  }, [upcomingVisitRowsRaw, otherVisitRowsRaw, visitDateCacheVersion]);
-
-  const upcomingWithCacheRowsRaw = useMemo(() => {
-    const supplemental = buildSupplementalRowsFromCache(readCareVisitDateCache(), upcomingVisitRowsRaw);
-    return applyCachedOverridesToRows(mergeCareVisitRowLists(upcomingVisitRowsRaw, supplemental));
-  }, [upcomingVisitRowsRaw, visitDateCacheVersion]);
+    const base = otherVisitRowsRaw.length > 0 ? otherVisitRowsRaw : upcomingVisitRowsRaw;
+    return mergeCareVisitRowLists(base);
+  }, [upcomingVisitRowsRaw, otherVisitRowsRaw]);
 
   const activeVisitRowsRaw =
-    filter === 'All Visits' ? mergedAllVisitRowsRaw : upcomingWithCacheRowsRaw;
+    filter === 'All Visits' ? mergedAllVisitRowsRaw : upcomingVisitRowsRaw;
 
-  const visits = useMemo(
-    () => activeVisitRowsRaw.map((row, i) => mapCareVisitRow(row, i, lookups)),
-    [activeVisitRowsRaw, lookups],
-  );
+  const visits = useMemo(() => {
+    const withOverrides = applyCachedOverridesToRows(activeVisitRowsRaw);
+    const dedupedRaw = mergeCareVisitRowListsWithLookups(withOverrides, lookups);
+    const mapped = dedupedRaw
+      .map((row, i) => mapCareVisitRow(row, i, lookups))
+      .filter((row) => String(row.patientLine || row.patient || '').trim());
+    const deduped = dedupeMappedCareVisits(mapped, lookups);
+    return filterPlaceholderCareVisitRows(deduped);
+  }, [activeVisitRowsRaw, lookups, visitDateCacheVersion]);
 
   const loadReferences = useCallback(async () => {
     setRefsError('');
@@ -1865,78 +2212,85 @@ export default function Scheduling() {
           ]}
         />
 
-        <div className="table-responsive care-visits-schedule-wrap hospital-table-wrap">
-          <table className="table kh-table care-visits-schedule-table hospital-table">
+        <div className="table-responsive patients-table-wrap hospital-table-wrap care-visits-table-wrap">
+          <table className="table kh-table patients-table hospital-table care-visits-table" style={{ marginBottom: 0 }}>
             <thead>
               <tr>
+                <th className="col-num">#</th>
                 <th className="cv-th-patient">Patient</th>
                 <th className="cv-th-prev text-nowrap">Previous visit</th>
                 <th className="cv-th-next text-nowrap">Next visit</th>
                 <th className="cv-th-frequency">Frequency</th>
                 <th className="cv-th-nurse">Nurse</th>
                 <th className="cv-th-status">Status</th>
-                <th className="cv-th-actions text-end text-nowrap">Actions</th>
+                <th className="patients-table-actions-col cv-th-actions">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((v, i) => (
-                <tr key={`${careVisitRowStableKey(v.raw || {}, i)}-${i}`}>
-                  <td className="cv-cell-patient">
-                    <div className="d-flex align-items-center gap-2">
+              {visitsListLoading && (
+                <TablePageLoader
+                  title="Loading care visits"
+                  subtitle="Fetching scheduled, completed, and upcoming visits…"
+                  colSpan={8}
+                  skeletonColumns={8}
+                  icon={FiCalendar}
+                />
+              )}
+              {!visitsListLoading && filtered.map((v, i) => (
+                <tr key={`${careVisitRowStableKey(v.raw || {}, i)}-${i}`} className="patients-row-card">
+                  <td className="col-num" data-label="#">{i + 1}</td>
+                  <td data-label="Patient">
+                    <div className="d-flex align-items-center gap-2 patients-name-cell">
                       <div
-                        className="avatar sm flex-shrink-0 d-flex align-items-center justify-content-center"
+                        className="avatar sm patients-avatar d-flex align-items-center justify-content-center"
                         style={{
                           background: i % 2 === 0 ? '#45B6FE' : '#2E7DB8',
                           color: '#fff',
+                          borderRadius: '50%',
                         }}
                         aria-hidden
                       >
-                        <FiUser size={15} strokeWidth={2} />
+                        <FiUser size={16} strokeWidth={2} />
                       </div>
-                      <div className="cv-patient-stack">
-                        <div
-                          className="cv-patient-name"
-                          style={{ fontWeight: 600, color: 'var(--kh-text)', fontSize: 13 }}
-                          title={v.patientLine || v.patient}
-                        >
+                      <div>
+                        <div className="patients-name-primary" title={v.patientLine || v.patient}>
                           {v.patientLine || v.patient}
                         </div>
                         {v.address ? (
-                          <div
-                            className="cv-patient-addr"
-                            style={{ fontSize: 11, color: 'var(--kh-text-muted)' }}
-                          >
-                            <span title={v.address}>{v.address}</span>
+                          <div className="patients-name-secondary hospital-table__truncate" title={v.address}>
+                            {v.address}
                           </div>
                         ) : null}
                       </div>
                     </div>
                   </td>
-                  <td className="cv-cell-date">
+                  <td className="patients-table-date" data-label="Previous visit">
                     {formatVisitDateDisplay(v.prevVisit)}
                   </td>
-                  <td className="cv-cell-date" data-label="Next visit">
+                  <td className="patients-table-date" data-label="Next visit">
                     <span className={v.nextVisit ? 'cv-next-highlight' : ''}>
                       {formatVisitDateDisplay(v.nextVisit)}
                     </span>
                   </td>
-                  <td className="cv-cell-frequency" data-label="Frequency">
-                    <span className="cv-frequency-badge">
-                      {v.frequency || '—'}
-                    </span>
+                  <td className="patients-table-value" data-label="Frequency">
+                    {v.frequency || '—'}
                   </td>
-                  <td className="cv-cell-nurse" title={v.nurseName}>
+                  <td className="patients-table-value hospital-table__truncate" data-label="Nurse" title={v.nurseName}>
                     {v.nurseName}
                   </td>
-                  <td className="cv-cell-status align-middle" data-label="Status">
+                  <td data-label="Status">
                     <HospitalStatus
                       label={visitStatusLabel(v.status)}
                       tone={visitStatusTone(v.status)}
                     />
                   </td>
-                  <td className="cv-cell-actions">
-                    <div className="cv-actions-inner" onClick={(e) => e.stopPropagation()}>
-                      {v.status === 'scheduled' ? (
+                  <td
+                    className="patients-table-actions-cell hospital-table-actions-cell"
+                    data-label="Actions"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {v.status === 'scheduled' ? (
+                      <div className="hospital-table-actions">
                         <CareVisitRowActions
                           visit={v}
                           onMarkCompleted={openCompleteVisitModal}
@@ -1944,18 +2298,18 @@ export default function Scheduling() {
                           onRequestCancel={setCancelTarget}
                           onRequestDelete={setDeleteTarget}
                         />
-                      ) : null}
-                    </div>
+                      </div>
+                    ) : null}
                   </td>
                 </tr>
               ))}
+              {!visitsListLoading && filtered.length === 0 && (
+                <tr className="hospital-table-empty-row">
+                  <td colSpan={8}>No visits to show for this tab. Schedule a visit or try the other filter.</td>
+                </tr>
+              )}
             </tbody>
           </table>
-          {!visitsListLoading && filtered.length === 0 ? (
-            <div className="hospital-table-empty">
-              No visits to show for this tab. Schedule a visit or try the other filter.
-            </div>
-          ) : null}
         </div>
       </div>
 
