@@ -28,6 +28,7 @@ import {
   resolvePatientMutationId,
 } from '../utils/patients';
 import { TablePageLoaderPanel } from '../components/TablePageLoader';
+import PatientBillingTab from '../components/PatientBillingTab';
 import { invalidateMedicalReportsCache } from '../utils/medicalReports';
 import { findAdmissionDraftForPatient } from '../utils/admissionDrafts';
 import { ADMISSION_SECTION_COUNT } from '../utils/admissionResume';
@@ -387,6 +388,7 @@ const TABS = [
   { key: 'notes', label: 'Nurse Note' },
   { key: 'incidents', label: 'Incident Report' },
   { key: 'careplan', label: 'Care Plan' },
+  { key: 'billing', label: 'Billing' },
   { key: 'checkliststatus', label: 'Daily care', icon: <FiBarChart2 size={14} /> },
 ];
 
@@ -11647,6 +11649,14 @@ export default function PatientProfile() {
           )}
           </div>
         </div>
+      )}
+
+      {/* ── Billing Tab ── */}
+      {tab === 'billing' && (
+        <PatientBillingTab
+          patientId={effectivePatientId}
+          patientName={p?.name}
+        />
       )}
 
       {/* ── Care Checklist Status Tab ── */}

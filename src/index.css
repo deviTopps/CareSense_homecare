@@ -1164,6 +1164,24 @@ body.sidebar-resizing {
   font-variant-numeric: tabular-nums;
 }
 
+.care-visits-schedule-wrap .care-visits-schedule-table .cv-cell-frequency {
+  white-space: nowrap;
+}
+
+.care-visits-schedule-wrap .care-visits-schedule-table .cv-frequency-badge {
+  display: inline-block;
+  max-width: 100%;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #f0f7fe;
+  color: #2e7db8;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .care-visits-schedule-wrap .care-visits-schedule-table .cv-cell-time,
 .care-visits-schedule-wrap .care-visits-schedule-table .cv-cell-duration {
   white-space: nowrap;
@@ -1254,6 +1272,136 @@ body.sidebar-resizing {
 .dropdown-menu.care-visits-actions-menu .dropdown-item:active {
   background-color: #e8f4fc;
   color: #0f172a;
+}
+
+/* Care visit — cancel confirmation modal */
+.cv-cancel-modal {
+  padding: 32px 28px;
+  text-align: center;
+}
+
+.cv-cancel-modal__icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: #fef2f2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 16px;
+  flex-shrink: 0;
+}
+
+.cv-cancel-modal__icon svg {
+  display: block;
+  flex-shrink: 0;
+}
+
+.cv-cancel-modal__title {
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--kh-text);
+  margin: 0 0 8px;
+}
+
+.cv-cancel-modal__lead {
+  font-size: 13px;
+  color: var(--kh-text-muted);
+  line-height: 1.6;
+  margin: 0 0 4px;
+}
+
+.cv-cancel-modal__patient {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--kh-text);
+  margin: 0 0 12px;
+}
+
+.cv-cancel-modal__meta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--kh-text-muted);
+  margin: 0 0 24px;
+  line-height: 1.4;
+}
+
+.cv-cancel-modal__meta-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  line-height: 0;
+  color: var(--kh-text-muted);
+}
+
+.cv-cancel-modal__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.cv-cancel-modal__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 28px;
+  font-size: 13px;
+  font-weight: 700;
+  border-radius: 2px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.cv-cancel-modal__btn:disabled {
+  cursor: not-allowed;
+}
+
+.cv-cancel-modal__btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  line-height: 0;
+}
+
+.cv-cancel-modal__btn--ghost {
+  background: #fff;
+  color: var(--kh-text);
+  border: 1px solid #d1d5db;
+}
+
+.cv-cancel-modal__btn--ghost:not(:disabled):hover {
+  background: #f9fafb;
+}
+
+.cv-cancel-modal__btn--ghost:disabled {
+  opacity: 0.6;
+}
+
+.cv-cancel-modal__btn--danger {
+  background: #dc2626;
+  color: #fff;
+  border: 1px solid #dc2626;
+}
+
+.cv-cancel-modal__btn--danger:not(:disabled):hover {
+  background: #b91c1c;
+  border-color: #b91c1c;
+}
+
+.cv-cancel-modal__btn--danger:disabled {
+  opacity: 0.75;
+}
+
+.cv-delete-modal__icon {
+  background: #fef2f2;
 }
 
 /* â”€â”€ Badges â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */

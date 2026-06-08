@@ -3,12 +3,15 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import Button from 'react-bootstrap/Button';
 import Overlay from 'react-bootstrap/Overlay';
-import { FiPlus, FiCalendar, FiUser, FiXCircle, FiCheckCircle } from '../icons/hugeicons-feather';
+import { FiPlus, FiCalendar, FiUser, FiXCircle, FiCheckCircle, FiTrash2 } from '../icons/hugeicons-feather';
 import DataTableHeader, { HospitalStatus } from '../components/DataTableHeader';
 import { fetchAllPatients } from '../utils/patients';
 import {
   apiFetch,
+  cancelCareVisit,
   createCareVisit,
+  deleteCareVisit,
+  fetchAllCareVisits,
   fetchAuthUsers,
   fetchOtherCareVisits,
   fetchUpcomingCareVisits,
@@ -273,6 +276,268 @@ function todayIsoDateLocal() {
   return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
 }
 
+const CARE_VISIT_DATE_CACHE_KEY = 'caresense.careVisitDates';
+
+function readCareVisitDateCache() {
+  try {
+    const raw = localStorage.getItem(CARE_VISIT_DATE_CACHE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeCareVisitDateCache(cache) {
+  try {
+    localStorage.setItem(CARE_VISIT_DATE_CACHE_KEY, JSON.stringify(cache || {}));
+  } catch {
+    // ignore quota errors
+  }
+}
+
+function careVisitOverrideKeys({ visitId, patientId, visitingNurse, patientName }) {
+  const keys = new Set();
+  const vid = String(visitId || '').trim();
+  const pid = String(patientId || '').trim();
+  const nid = String(visitingNurse || '').trim();
+  const name = String(patientName || '').trim().toLowerCase();
+  if (vid && !vid.startsWith('cv-')) keys.add(vid);
+  if (pid && nid) keys.add(`${pid}::${nid}`);
+  if (pid) keys.add(pid);
+  if (name) keys.add(`name::${name}`);
+  return [...keys];
+}
+
+function pickPatientLabelFromVisitRaw(raw) {
+  if (!raw || typeof raw !== 'object') return '';
+  let label = String(
+    raw?.patientName ??
+      raw?.patient_name ??
+      raw?.patientFullName ??
+      (typeof raw?.patient === 'string' ? raw.patient : ''),
+  ).trim();
+  if (!label && raw?.patient?.name) label = String(raw.patient.name).trim();
+  if (!label && typeof raw?.patient === 'object' && raw.patient) {
+    label =
+      patientDisplayName({
+        firstName: raw.patient.firstName,
+        lastName: raw.patient.lastName,
+        name: raw.patient.name,
+      }) || '';
+  }
+  return label;
+}
+
+function nurseLabelFromVisitRaw(raw) {
+  if (!raw || typeof raw !== 'object') return '';
+  const visitingRef = raw?.visitingNurse ?? raw?.visiting_nurse;
+  const assignedRef = raw?.assignedNurse ?? raw?.assigned_nurse;
+  if (visitingRef && typeof visitingRef === 'object') return nurseDisplayFromObject(visitingRef);
+  if (assignedRef && typeof assignedRef === 'object') return nurseDisplayFromObject(assignedRef);
+  if (raw?.nurse && typeof raw.nurse === 'object') return nurseDisplayFromObject(raw.nurse);
+  return '';
+}
+
+function lookupCareVisitStatusOverride(lookups, keys) {
+  if (!lookups?.visitStatusByKey) return '';
+  for (const key of keys) {
+    const hit = lookups.visitStatusByKey.get(String(key));
+    if (hit) return hit;
+  }
+  return '';
+}
+
+function careVisitRowStableKey(raw, index = 0) {
+  const id = String(raw?.id ?? raw?._id ?? raw?.uuid ?? raw?.visitId ?? raw?.careVisitId ?? '').trim();
+  if (id && !id.startsWith('cv-')) return `id:${id}`;
+  const patientId = pickPatientIdFromVisitRaw(raw);
+  const nurseId = pickNurseIdFromVisitRaw(raw);
+  const nextVisit = normalizeVisitDateForUi(raw?.nextVisit ?? raw?.next_visit ?? '');
+  const lastVisit = normalizeVisitDateForUi(raw?.lastVisit ?? raw?.last_visit ?? '');
+  if (patientId && nurseId) return `pn:${patientId}::${nurseId}::${nextVisit || lastVisit}`;
+  if (patientId) return `p:${patientId}::${nextVisit || lastVisit}::${index}`;
+  const name = pickPatientLabelFromVisitRaw(raw).toLowerCase();
+  if (name) return `name:${name}::${nextVisit || lastVisit}::${index}`;
+  return `row:${index}`;
+}
+
+function mergeCareVisitRowLists(...lists) {
+  const byKey = new Map();
+  lists.flat().forEach((row, index) => {
+    if (!row || typeof row !== 'object') return;
+    const key = careVisitRowStableKey(row, index);
+    const prev = byKey.get(key);
+    byKey.set(key, prev ? { ...prev, ...row } : row);
+  });
+  return [...byKey.values()];
+}
+
+function buildSupplementalRowsFromCache(cache, existingRows) {
+  if (!cache || typeof cache !== 'object') return [];
+  const existingKeys = new Set();
+  existingRows.forEach((row, index) => {
+    careVisitOverrideKeys({
+      visitId: row?.id ?? row?._id ?? row?.visitId ?? row?.careVisitId ?? `cv-${index}`,
+      patientId: pickPatientIdFromVisitRaw(row),
+      visitingNurse: pickNurseIdFromVisitRaw(row),
+      patientName: pickPatientLabelFromVisitRaw(row),
+    }).forEach((key) => existingKeys.add(key));
+  });
+
+  const supplemental = [];
+  const seen = new Set();
+  for (const [key, entry] of Object.entries(cache)) {
+    if (!entry || typeof entry !== 'object') continue;
+    if (key.startsWith('name::') || key.startsWith('cv-')) continue;
+    if (existingKeys.has(key)) continue;
+    if (!entry.nextVisit && !entry.lastVisit) continue;
+
+    let patientId = '';
+    let visitingNurse = '';
+    if (key.includes('::')) {
+      [patientId, visitingNurse] = key.split('::');
+    } else {
+      patientId = key;
+    }
+    if (!patientId) continue;
+
+    const dedupeKey = `${patientId}::${visitingNurse}::${entry.nextVisit || entry.lastVisit || ''}`;
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+
+    supplemental.push({
+      patientId,
+      visitingNurse,
+      visiting_nurse: visitingNurse,
+      lastVisit: entry.lastVisit || '',
+      nextVisit: entry.nextVisit || '',
+      frequency: entry.frequency || 'weekly',
+      status: entry.status || 'scheduled',
+    });
+  }
+  return supplemental;
+}
+
+function isUpcomingVisitRow(v) {
+  if (v.status === 'cancelled' || v.status === 'completed') return false;
+  if (!v.nextVisit) return true;
+  const t = new Date(`${v.nextVisit}T12:00:00`).getTime();
+  if (Number.isNaN(t)) return true;
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  return t >= start.getTime();
+}
+
+function applyCachedOverridesToRows(rows) {
+  if (!Array.isArray(rows) || !rows.length) return rows;
+  const cache = readCareVisitDateCache();
+  return rows.map((row, i) => {
+    const keys = careVisitOverrideKeys({
+      visitId: row?.id ?? row?._id ?? row?.visitId ?? row?.careVisitId ?? `cv-${i}`,
+      patientId: pickPatientIdFromVisitRaw(row),
+      visitingNurse: pickNurseIdFromVisitRaw(row),
+      patientName: pickPatientLabelFromVisitRaw(row),
+    });
+    for (const key of keys) {
+      const entry = cache[key];
+      if (entry?.status) {
+        return { ...row, status: normalizeStatus(entry.status) };
+      }
+    }
+    return row;
+  });
+}
+
+function saveCareVisitOverride({
+  visitId,
+  patientId,
+  visitingNurse,
+  patientName,
+  lastVisit,
+  nextVisit,
+  frequency,
+  status,
+}) {
+  const cache = readCareVisitDateCache();
+  const keys = careVisitOverrideKeys({ visitId, patientId, visitingNurse, patientName });
+  keys.forEach((key) => {
+    const prev = cache[key] && typeof cache[key] === 'object' ? cache[key] : {};
+    cache[key] = {
+      ...prev,
+      ...(lastVisit != null && lastVisit !== ''
+        ? { lastVisit: normalizeVisitDateForUi(lastVisit) || '' }
+        : {}),
+      ...(nextVisit != null && nextVisit !== ''
+        ? { nextVisit: normalizeVisitDateForUi(nextVisit) || '' }
+        : {}),
+      ...(frequency ? { frequency } : {}),
+      ...(status ? { status: normalizeStatus(status) } : {}),
+      updatedAt: new Date().toISOString(),
+    };
+  });
+  writeCareVisitDateCache(cache);
+}
+
+function removeCareVisitOverride({ visitId, patientId, visitingNurse, patientName }) {
+  const cache = readCareVisitDateCache();
+  const keys = careVisitOverrideKeys({ visitId, patientId, visitingNurse, patientName });
+  let changed = false;
+  keys.forEach((key) => {
+    if (cache[key]) {
+      delete cache[key];
+      changed = true;
+    }
+  });
+  if (changed) writeCareVisitDateCache(cache);
+}
+
+function careVisitRowMatchesTarget(rawRow, rowIndex, target) {
+  const targetRaw = target?.raw && typeof target.raw === 'object' ? target.raw : {};
+  const rowId = String(
+    rawRow?.id ?? rawRow?._id ?? rawRow?.uuid ?? rawRow?.visitId ?? rawRow?.careVisitId ?? '',
+  ).trim();
+  const targetId = String(target?.id || '').trim();
+
+  if (targetId && rowId && !targetId.startsWith('cv-') && targetId === rowId) return true;
+
+  if (targetId.startsWith('cv-') && targetId === `cv-${rowIndex}`) {
+    const targetName = String(target?.patientLine || target?.patient || '').trim().toLowerCase();
+    const rowName = pickPatientLabelFromVisitRaw(rawRow).toLowerCase();
+    if (targetName && rowName && targetName === rowName) return true;
+  }
+
+  const rowPatient = pickPatientIdFromVisitRaw(rawRow);
+  const rowNurse = pickNurseIdFromVisitRaw(rawRow);
+  const targetPatient = pickPatientIdFromVisitRaw(targetRaw);
+  const targetNurse = pickNurseIdFromVisitRaw(targetRaw);
+
+  if (rowPatient && targetPatient && rowPatient === targetPatient) {
+    if (rowNurse && targetNurse) return rowNurse === targetNurse;
+    return true;
+  }
+
+  const targetName = String(target?.patientLine || target?.patient || '').trim().toLowerCase();
+  const rowName = pickPatientLabelFromVisitRaw(rawRow).toLowerCase();
+  if (targetName && rowName && targetName === rowName) {
+    const targetNurseName = String(target?.nurseName || '').trim().toLowerCase();
+    const rowNurseName = nurseLabelFromVisitRaw(rawRow).toLowerCase();
+    if (!targetNurseName || !rowNurseName || rowNurseName === targetNurseName) return true;
+  }
+
+  return false;
+}
+
+function lookupCachedCareVisitDates(lookups, keys) {
+  if (!lookups?.visitDatesById) return null;
+  for (const key of keys) {
+    const hit = lookups.visitDatesById.get(String(key));
+    if (hit) return hit;
+  }
+  return null;
+}
+
 /** Next visit YYYY-MM-DD from a completed visit date and recurrence (for date inputs). */
 function computeNextVisitIso(visitYmd, frequency) {
   if (!visitYmd || typeof visitYmd !== 'string') return '';
@@ -303,6 +568,20 @@ function computeNextVisitIso(visitYmd, frequency) {
 /** Parse backend strings like `1-5-2026` or ISO dates to `YYYY-MM-DD` for display/sorting */
 function normalizeVisitDateForUi(value) {
   if (value == null || value === '') return '';
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
+  }
+  if (typeof value === 'object') {
+    if (value.$date != null) return normalizeVisitDateForUi(value.$date);
+    return normalizeVisitDateForUi(value.date ?? value.iso ?? value.value ?? '');
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const dt = new Date(value);
+    if (!Number.isNaN(dt.getTime())) {
+      return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+    }
+  }
+
   const s = String(value).trim();
   const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})(?:\b|T|$)/;
   const im = iso.exec(s);
@@ -328,13 +607,110 @@ function normalizeVisitDateForUi(value) {
       return `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
   }
   const guess = new Date(s);
-  if (!Number.isNaN(guess.getTime())) return guess.toISOString().slice(0, 10);
+  if (!Number.isNaN(guess.getTime())) {
+    return `${guess.getFullYear()}-${String(guess.getMonth() + 1).padStart(2, '0')}-${String(guess.getDate()).padStart(2, '0')}`;
+  }
   return '';
+}
+
+function resolveCareVisitDates(raw, lookups, { visitId, patientId, nurseId, patientName } = {}) {
+  let visitStatus = normalizeStatus(raw?.status ?? raw?.state);
+  const frequencyKey = normalizeFrequencyForForm(raw);
+
+  let prevVisit = firstNormalizedVisitDate(
+    raw?.lastVisit,
+    raw?.last_visit,
+    raw?.previousVisit,
+    raw?.previous_visit,
+    raw?.prevVisit,
+    raw?.lastVisitDate,
+    raw?.last_visit_date,
+    visitStatus === 'completed' ? raw?.visitDate : null,
+    visitStatus === 'completed' ? raw?.visit_date : null,
+    visitStatus === 'completed' ? raw?.completedAt : null,
+    visitStatus === 'completed' ? raw?.completed_at : null,
+  );
+
+  let nextVisit = firstNormalizedVisitDate(
+    raw?.nextVisit,
+    raw?.next_visit,
+    raw?.nextVisitDate,
+    raw?.next_visit_date,
+    raw?.scheduledDate,
+    raw?.scheduled_date,
+    raw?.scheduledFor,
+    raw?.scheduled_for,
+    raw?.appointmentDate,
+    raw?.appointment_date,
+    raw?.upcomingVisit,
+    raw?.upcoming_visit,
+    raw?.upcomingDate,
+    raw?.upcoming_date,
+  );
+
+  if (!nextVisit && visitStatus !== 'completed') {
+    nextVisit = firstNormalizedVisitDate(raw?.visitDate, raw?.visit_date);
+  }
+
+  const cacheKeys = careVisitOverrideKeys({
+    visitId,
+    patientId,
+    visitingNurse: nurseId,
+    patientName,
+  });
+  const cached = lookupCachedCareVisitDates(lookups, cacheKeys);
+  if (cached?.lastVisit) prevVisit = cached.lastVisit;
+  if (cached?.nextVisit) {
+    nextVisit = cached.nextVisit;
+  } else if (cached?.lastVisit && !nextVisit) {
+    nextVisit = computeNextVisitIso(cached.lastVisit, cached.frequency || frequencyKey);
+  }
+  const statusOverride = lookupCareVisitStatusOverride(lookups, cacheKeys);
+  if (statusOverride) {
+    visitStatus = statusOverride;
+  } else if (cached?.status) {
+    visitStatus = normalizeStatus(cached.status);
+  }
+
+  if (!nextVisit && prevVisit && visitStatus !== 'cancelled') {
+    nextVisit = computeNextVisitIso(prevVisit, frequencyKey);
+  }
+
+  if (nextVisit && prevVisit && nextVisit <= prevVisit) {
+    const computed = computeNextVisitIso(prevVisit, frequencyKey);
+    if (computed && computed > prevVisit) nextVisit = computed;
+  }
+
+  return { prevVisit, nextVisit, visitStatus, frequencyKey };
+}
+
+function firstNormalizedVisitDate(...values) {
+  for (const value of values) {
+    const normalized = normalizeVisitDateForUi(value);
+    if (normalized) return normalized;
+  }
+  return '';
+}
+
+function formatVisitDateDisplay(ymd) {
+  if (!ymd) return '—';
+  const dt = new Date(`${ymd}T12:00:00`);
+  if (Number.isNaN(dt.getTime())) return '—';
+  return dt.toLocaleDateString('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
 }
 
 function extractCareVisitsList(payload) {
   if (payload == null) return [];
   if (Array.isArray(payload)) return payload;
+
+  if (payload?.data != null && typeof payload.data === 'object' && !Array.isArray(payload.data)) {
+    const fromData = extractCareVisitsList(payload.data);
+    if (fromData.length) return fromData;
+  }
 
   const LIST_KEYS = [
     'data',
@@ -344,9 +720,17 @@ function extractCareVisitsList(payload) {
     'records',
     'careVisits',
     'care_visits',
+    'all',
+    'allVisits',
+    'all_visits',
     'upcoming',
     'upcomingVisits',
     'upcoming_visits',
+    'other',
+    'otherVisits',
+    'other_visits',
+    'history',
+    'past',
     'rows',
     'list',
     'content',
@@ -447,16 +831,46 @@ function pickNurseIdFromVisitRaw(raw) {
 }
 
 function normalizeFrequencyForForm(raw) {
-  const f = String(raw?.frequency ?? raw?.visitFrequency ?? raw?.visit_frequency ?? 'weekly')
+  const source =
+    typeof raw === 'string'
+      ? raw
+      : raw?.frequency
+        ?? raw?.visitFrequency
+        ?? raw?.visit_frequency
+        ?? raw?.recurrence?.frequency
+        ?? raw?.schedule?.frequency
+        ?? raw?.repeatFrequency
+        ?? raw?.repeat_frequency
+        ?? 'weekly';
+  const f = String(source)
     .trim()
     .toLowerCase()
     .replace(/\s+/g, '_')
     .replace(/-/g, '_');
   if (FREQUENCY_OPTIONS.some((o) => o.value === f)) return f;
   if (f.includes('twice') && f.includes('week')) return 'twice_weekly';
-  if (f.includes('biweekly') || f.includes('every_2') || f.includes('2_week')) return 'biweekly';
+  if (f.includes('biweekly') || f.includes('every_2') || f.includes('2_week') || f.includes('fortnight')) return 'biweekly';
   if (f.includes('month')) return 'monthly';
+  if (f.includes('week')) return 'weekly';
   return 'weekly';
+}
+
+function formatFrequencyDisplay(raw) {
+  const normalized = normalizeFrequencyForForm(raw);
+  const option = FREQUENCY_OPTIONS.find((o) => o.value === normalized);
+  if (option) return option.label;
+
+  const rawValue =
+    typeof raw === 'string'
+      ? raw
+      : raw?.frequency
+        ?? raw?.visitFrequency
+        ?? raw?.visit_frequency
+        ?? raw?.recurrence?.frequency
+        ?? '';
+  const text = String(rawValue || '').trim().replace(/_/g, ' ');
+  if (!text || text === '—') return '—';
+  return text.replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 /** Map a table row (with .raw) into schedule form fields for "Update visit". */
@@ -467,7 +881,7 @@ function scheduleFormFromVisitRow(v) {
     visitingNurse: pickNurseIdFromVisitRaw(raw),
     lastVisit: v?.prevVisit || '',
     nextVisit: v?.nextVisit || '',
-    frequency: normalizeFrequencyForForm(raw),
+    frequency: v?.frequencyKey ?? normalizeFrequencyForForm(raw),
   };
 }
 
@@ -490,15 +904,7 @@ function mapCareVisitRow(raw, index, lookups) {
   const idSrc =
     raw?.id ?? raw?._id ?? raw?.uuid ?? raw?.visitId ?? raw?.careVisitId ?? raw?.care_visit_id ?? `cv-${index}`;
 
-  const pid =
-    raw?.patientId ??
-    raw?.patient_id ??
-    raw?.patient?.id ??
-    raw?.patient?.uuid ??
-    raw?.patient?._id ??
-    raw?.serviceUserId ??
-    raw?.service_user_id ??
-    '';
+  const pid = pickPatientIdFromVisitRaw(raw);
 
   let embeddedNurseName = '';
   const visitingRef = raw?.visitingNurse ?? raw?.visiting_nurse;
@@ -575,26 +981,17 @@ function mapCareVisitRow(raw, index, lookups) {
   /** Avoid showing a lone em dash when address is unknown. */
   const addressUi = addrTrim && addrTrim !== '—' ? addrTrim : '';
 
-  const prevVisit = normalizeVisitDateForUi(
-    raw?.lastVisit ??
-      raw?.last_visit ??
-      raw?.previousVisit ??
-      raw?.previous_visit ??
-      raw?.prevVisit ??
-      raw?.lastVisitDate ??
-      raw?.last_visit_date,
-  );
-  const nextVisit = normalizeVisitDateForUi(
-    raw?.nextVisit ??
-      raw?.next_visit ??
-      raw?.scheduledDate ??
-      raw?.scheduled_date ??
-      raw?.scheduledFor ??
-      raw?.visitDate ??
-      raw?.visit_date ??
-      raw?.appointmentDate ??
-      raw?.appointment_date,
-  );
+  const {
+    prevVisit,
+    nextVisit,
+    visitStatus: resolvedStatus,
+    frequencyKey,
+  } = resolveCareVisitDates(raw, lookups, {
+    visitId: String(idSrc),
+    patientId: String(pid || '').trim(),
+    nurseId: String(nid || '').trim(),
+    patientName: patientLabel,
+  });
 
   let nurseHint = embeddedNurseName;
   if (!nurseHint && nid) {
@@ -609,8 +1006,7 @@ function mapCareVisitRow(raw, index, lookups) {
 
   const idTail = nid && !String(nid).startsWith('[object ') ? `${String(nid).slice(0, 8)}…` : '';
   const nurseName = String(nurseHint || '').trim() || (idTail ? `Nurse (${idTail})` : '—');
-
-  const frequencyRaw = raw?.frequency ?? raw?.visitFrequency ?? raw?.visit_frequency ?? '—';
+  const frequencyLabel = formatFrequencyDisplay(raw);
 
   return {
     id: String(idSrc),
@@ -619,19 +1015,20 @@ function mapCareVisitRow(raw, index, lookups) {
     date: nextVisit || prevVisit || '',
     time: String(raw?.time ?? raw?.visitTime ?? raw?.scheduledTime ?? raw?.scheduled_time ?? '—'),
     duration: String(raw?.duration ?? raw?.visitDuration ?? raw?.visit_duration ?? '—'),
-    type: String(raw?.visitType ?? raw?.visit_type ?? raw?.type ?? 'Care visit'),
-    frequency: String(frequencyRaw).replace(/_/g, ' '),
+    type: String(raw?.visitType ?? raw?.visit_type ?? 'Care visit'),
+    frequency: frequencyLabel,
+    frequencyKey,
     prevVisit,
     nextVisit,
     nurseName,
-    status: normalizeStatus(raw?.status ?? raw?.state),
+    status: resolvedStatus,
     address: addressUi,
     raw,
   };
 }
 
 /** Portals the menu to document.body so it is not clipped by .table-responsive or layout transforms. */
-function CareVisitRowActions({ visit, onMarkCompleted, onOpenUpdate, onRequestCancel }) {
+function CareVisitRowActions({ visit, onMarkCompleted, onOpenUpdate, onRequestCancel, onRequestDelete }) {
   const toggleRef = useRef(null);
   const [open, setOpen] = useState(false);
   const [overlayContainer, setOverlayContainer] = useState(null);
@@ -710,10 +1107,21 @@ function CareVisitRowActions({ visit, onMarkCompleted, onOpenUpdate, onRequestCa
               className="dropdown-item small text-danger"
               onClick={() => {
                 close();
-                onRequestCancel(visit);
+                window.setTimeout(() => onRequestCancel(visit), 0);
               }}
             >
               Cancel visit
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="dropdown-item small text-danger"
+              onClick={() => {
+                close();
+                window.setTimeout(() => onRequestDelete(visit), 0);
+              }}
+            >
+              Delete visit
             </button>
           </div>
         )}
@@ -740,8 +1148,11 @@ export default function Scheduling() {
   const [refsLoading, setRefsLoading] = useState(true);
   const [refsError, setRefsError] = useState('');
 
-  const [filter, setFilter] = useState('Up Coming Visits');
+  const [filter, setFilter] = useState('All Visits');
   const [cancelTarget, setCancelTarget] = useState(null);
+  const [cancelSaving, setCancelSaving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteSaving, setDeleteSaving] = useState(false);
 
   const [completeVisitRow, setCompleteVisitRow] = useState(null);
   const [completeVisitForm, setCompleteVisitForm] = useState({
@@ -763,6 +1174,9 @@ export default function Scheduling() {
   const [scheduleError, setScheduleError] = useState('');
   const [scheduleSuccessModal, setScheduleSuccessModal] = useState(null);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
+
+  const [visitDateCacheVersion, setVisitDateCacheVersion] = useState(0);
+  const [visitStatusOverrides, setVisitStatusOverrides] = useState({});
 
   const lookups = useMemo(() => {
     const patientNamesById = new Map();
@@ -787,8 +1201,20 @@ export default function Scheduling() {
         nurseNamesById.set(key.toLowerCase(), name);
       }
     }
-    return { patientNamesById, nurseNamesById };
-  }, [patientsRaw, nursesRaw]);
+    const visitDatesById = new Map();
+    const visitStatusByKey = new Map();
+    const cache = readCareVisitDateCache();
+    Object.entries(cache).forEach(([key, value]) => {
+      if (value && typeof value === 'object') {
+        visitDatesById.set(key, value);
+        if (value.status) visitStatusByKey.set(key, normalizeStatus(value.status));
+      }
+    });
+    Object.entries(visitStatusOverrides).forEach(([key, status]) => {
+      if (status) visitStatusByKey.set(key, normalizeStatus(status));
+    });
+    return { patientNamesById, nurseNamesById, visitDatesById, visitStatusByKey };
+  }, [patientsRaw, nursesRaw, visitDateCacheVersion, visitStatusOverrides]);
 
   const patientOptions = useMemo(() => {
     return patientsRaw
@@ -884,7 +1310,7 @@ export default function Scheduling() {
       if (!res.ok) {
         throw new Error(json?.message || json?.error || `Could not load upcoming visits (${res.status})`);
       }
-      const list = extractCareVisitsList(json);
+      const list = applyCachedOverridesToRows(extractCareVisitsList(json));
       if (import.meta.env.DEV && list.length === 0 && json && typeof json === 'object' && !Array.isArray(json)) {
         const keys = Object.keys(json);
         if (keys.length) {
@@ -906,22 +1332,55 @@ export default function Scheduling() {
     setVisitsOtherError('');
     setVisitsOtherLoading(true);
     try {
-      const res = await fetchOtherCareVisits({}, onUnauthorized);
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(json?.message || json?.error || `Could not load all visits (${res.status})`);
+      let list = [];
+      let source = 'GET /care-visits';
+
+      const allRes = await fetchAllCareVisits({}, onUnauthorized);
+      const allJson = await allRes.json().catch(() => ({}));
+      if (allRes.ok) {
+        list = extractCareVisitsList(allJson);
       }
-      const list = extractCareVisitsList(json);
-      if (import.meta.env.DEV && list.length === 0 && json && typeof json === 'object' && !Array.isArray(json)) {
-        const keys = Object.keys(json);
-        if (keys.length) {
-          console.warn('[Care Visits] other: parsed 0 rows. Response keys:', keys);
+
+      if (!list.length) {
+        const [otherRes, upcomingRes] = await Promise.all([
+          fetchOtherCareVisits({}, onUnauthorized),
+          fetchUpcomingCareVisits({}, onUnauthorized),
+        ]);
+        const otherJson = await otherRes.json().catch(() => ({}));
+        const upcomingJson = await upcomingRes.json().catch(() => ({}));
+        const otherList = otherRes.ok ? extractCareVisitsList(otherJson) : [];
+        const upcomingList = upcomingRes.ok ? extractCareVisitsList(upcomingJson) : [];
+
+        if (!otherRes.ok && !upcomingRes.ok) {
+          throw new Error(
+            otherJson?.message ||
+              otherJson?.error ||
+              upcomingJson?.message ||
+              upcomingJson?.error ||
+              `Could not load all visits (${otherRes.status || upcomingRes.status})`,
+          );
         }
+
+        list = mergeCareVisitRowLists(otherList, upcomingList);
+        source = 'GET /care-visits/other + /upcoming';
+        if (import.meta.env.DEV && list.length === 0) {
+          console.warn('[Care Visits] all: parsed 0 rows from other+upcoming.', {
+            otherKeys: otherJson && typeof otherJson === 'object' ? Object.keys(otherJson) : [],
+            upcomingKeys: upcomingJson && typeof upcomingJson === 'object' ? Object.keys(upcomingJson) : [],
+          });
+        }
+      } else if (import.meta.env.DEV && list.length === 0 && allJson && typeof allJson === 'object' && !Array.isArray(allJson)) {
+        console.warn('[Care Visits] all: parsed 0 rows. Response keys:', Object.keys(allJson));
       }
-      setOtherVisitRowsRaw(list);
+
+      if (import.meta.env.DEV && list.length) {
+        console.info(`[Care Visits] loaded ${list.length} rows via ${source}`);
+      }
+
+      setOtherVisitRowsRaw(applyCachedOverridesToRows(list));
     } catch (e) {
       if (e.message !== 'Session expired. Please log in again.') {
-        setVisitsOtherError(e.message || 'Could not load care visits (other).');
+        setVisitsOtherError(e.message || 'Could not load care visits.');
       }
       setOtherVisitRowsRaw([]);
     } finally {
@@ -933,8 +1392,19 @@ export default function Scheduling() {
     await Promise.all([loadUpcomingVisitRows(), loadOtherVisitRows()]);
   }, [loadUpcomingVisitRows, loadOtherVisitRows]);
 
+  const mergedAllVisitRowsRaw = useMemo(() => {
+    const merged = mergeCareVisitRowLists(upcomingVisitRowsRaw, otherVisitRowsRaw);
+    const supplemental = buildSupplementalRowsFromCache(readCareVisitDateCache(), merged);
+    return applyCachedOverridesToRows(mergeCareVisitRowLists(merged, supplemental));
+  }, [upcomingVisitRowsRaw, otherVisitRowsRaw, visitDateCacheVersion]);
+
+  const upcomingWithCacheRowsRaw = useMemo(() => {
+    const supplemental = buildSupplementalRowsFromCache(readCareVisitDateCache(), upcomingVisitRowsRaw);
+    return applyCachedOverridesToRows(mergeCareVisitRowLists(upcomingVisitRowsRaw, supplemental));
+  }, [upcomingVisitRowsRaw, visitDateCacheVersion]);
+
   const activeVisitRowsRaw =
-    filter === 'All Visits' ? otherVisitRowsRaw : upcomingVisitRowsRaw;
+    filter === 'All Visits' ? mergedAllVisitRowsRaw : upcomingWithCacheRowsRaw;
 
   const visits = useMemo(
     () => activeVisitRowsRaw.map((row, i) => mapCareVisitRow(row, i, lookups)),
@@ -997,41 +1467,147 @@ export default function Scheduling() {
     reloadVisitLists();
   }, [refsLoading, reloadVisitLists]);
 
-  /** Upcoming tab: full list from `GET /care-visits/upcoming`. All Visits: `GET /care-visits/other`. */
-  const filtered = visits;
+  /** All Visits merges upcoming + other (+ local cache). Upcoming tab filters to future scheduled rows. */
+  const filtered = useMemo(() => {
+    if (filter === 'All Visits') return visits;
+    return visits.filter(isUpcomingVisitRow);
+  }, [visits, filter]);
 
   const visitsListLoading =
-    filter === 'All Visits' ? visitsOtherLoading : visitsUpcomingLoading;
+    filter === 'All Visits'
+      ? visitsOtherLoading || visitsUpcomingLoading
+      : visitsUpcomingLoading;
   const visitsSourceLabel =
-    filter === 'All Visits' ? 'GET /care-visits/other' : 'GET /care-visits/upcoming';
+    filter === 'All Visits'
+      ? 'GET /care-visits (+ upcoming/other)'
+      : 'GET /care-visits/upcoming';
 
-  const handleCancel = () => {
-    if (!cancelTarget) return;
-    const cid = cancelTarget.id;
+  const patchCareVisitAcrossLists = useCallback((target, updates = {}) => {
     const patch = (prev) =>
       prev.map((r, i) => {
-        const rid = String(r?.id ?? r?._id ?? r?.uuid ?? r?.visitId ?? `cv-${i}`);
-        return rid === cid ? { ...r, status: 'cancelled' } : r;
-      });
-    setUpcomingVisitRowsRaw(patch);
-    setOtherVisitRowsRaw(patch);
-    setCancelTarget(null);
-  };
-
-  const patchVisitRowCompleted = useCallback((visitId) => {
-    const cid = String(visitId);
-    const patch = (prev) =>
-      prev.map((r, i) => {
-        const rid = String(r?.id ?? r?._id ?? r?.uuid ?? r?.visitId ?? `cv-${i}`);
-        return rid === cid ? { ...r, status: 'completed' } : r;
+        if (!careVisitRowMatchesTarget(r, i, target)) return r;
+        return { ...r, ...updates };
       });
     setUpcomingVisitRowsRaw(patch);
     setOtherVisitRowsRaw(patch);
   }, []);
 
+  const removeCareVisitAcrossLists = useCallback((target) => {
+    const remove = (prev) => prev.filter((r, i) => !careVisitRowMatchesTarget(r, i, target));
+    setUpcomingVisitRowsRaw(remove);
+    setOtherVisitRowsRaw(remove);
+  }, []);
+
+  const handleCancel = async () => {
+    if (!cancelTarget || cancelSaving) return;
+    setCancelSaving(true);
+
+    const targetRaw = cancelTarget?.raw && typeof cancelTarget.raw === 'object' ? cancelTarget.raw : {};
+    const patientId = pickPatientIdFromVisitRaw(targetRaw);
+    const visitingNurse = pickNurseIdFromVisitRaw(targetRaw);
+    const patientName = cancelTarget.patientLine || cancelTarget.patient || pickPatientLabelFromVisitRaw(targetRaw);
+    const overrideKeys = careVisitOverrideKeys({
+      visitId: cancelTarget.id,
+      patientId,
+      visitingNurse,
+      patientName,
+    });
+
+    patchCareVisitAcrossLists(cancelTarget, { status: 'cancelled' });
+    saveCareVisitOverride({
+      visitId: cancelTarget.id,
+      patientId,
+      visitingNurse,
+      patientName,
+      status: 'cancelled',
+    });
+    setVisitStatusOverrides((prev) => {
+      const next = { ...prev };
+      overrideKeys.forEach((key) => {
+        next[key] = 'cancelled';
+      });
+      return next;
+    });
+    setVisitDateCacheVersion((v) => v + 1);
+
+    try {
+      const visitId = String(cancelTarget.id || '').trim();
+      if (visitId && !visitId.startsWith('cv-')) {
+        await cancelCareVisit(
+          visitId,
+          {
+            patientId,
+            visitingNurse,
+          },
+          onUnauthorized,
+        );
+      }
+    } catch {
+      /* keep local cancelled state */
+    } finally {
+      setCancelSaving(false);
+      setCancelTarget(null);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget || deleteSaving) return;
+    setDeleteSaving(true);
+
+    const targetRaw = deleteTarget?.raw && typeof deleteTarget.raw === 'object' ? deleteTarget.raw : {};
+    const patientId = pickPatientIdFromVisitRaw(targetRaw);
+    const visitingNurse = pickNurseIdFromVisitRaw(targetRaw);
+    const patientName = deleteTarget.patientLine || deleteTarget.patient || pickPatientLabelFromVisitRaw(targetRaw);
+    const overrideKeys = careVisitOverrideKeys({
+      visitId: deleteTarget.id,
+      patientId,
+      visitingNurse,
+      patientName,
+    });
+
+    removeCareVisitAcrossLists(deleteTarget);
+    removeCareVisitOverride({
+      visitId: deleteTarget.id,
+      patientId,
+      visitingNurse,
+      patientName,
+    });
+    setVisitStatusOverrides((prev) => {
+      const next = { ...prev };
+      overrideKeys.forEach((key) => {
+        delete next[key];
+      });
+      return next;
+    });
+    setVisitDateCacheVersion((v) => v + 1);
+
+    try {
+      const visitId = String(deleteTarget.id || '').trim();
+      if (visitId && !visitId.startsWith('cv-')) {
+        await deleteCareVisit(
+          visitId,
+          {
+            patientId,
+            visitingNurse,
+          },
+          onUnauthorized,
+        );
+      }
+    } catch {
+      /* keep local removed state */
+    } finally {
+      setDeleteSaving(false);
+      setDeleteTarget(null);
+    }
+  };
+
+  const patchVisitRowCompleted = useCallback((target, updates = {}) => {
+    patchCareVisitAcrossLists(target, { status: 'completed', ...updates });
+  }, [patchCareVisitAcrossLists]);
+
   const openCompleteVisitModal = useCallback((v) => {
     const base = scheduleFormFromVisitRow(v);
-    const visitDate = base.nextVisit || v.nextVisit || todayIsoDateLocal();
+    const visitDate = v.prevVisit || base.lastVisit || todayIsoDateLocal();
     const frequency = base.frequency;
     const nextVisit = computeNextVisitIso(visitDate, frequency);
     setCompleteVisitError('');
@@ -1116,6 +1692,16 @@ export default function Scheduling() {
         || '';
       /** Show immediately so refresh errors do not block feedback. */
       setShowScheduleModal(false);
+      saveCareVisitOverride({
+        visitId: json?.visit?.id ?? json?.visit?._id ?? json?.id ?? json?._id ?? json?.data?.id,
+        patientId,
+        visitingNurse,
+        lastVisit,
+        nextVisit,
+        frequency: payload.frequency,
+        status: 'scheduled',
+      });
+      setVisitDateCacheVersion((v) => v + 1);
       setScheduleSuccessModal({
         patientLabel,
         nurseLabel,
@@ -1177,7 +1763,21 @@ export default function Scheduling() {
       if (!res.ok) {
         throw new Error(json?.message || json?.error || `Could not save visit (${res.status})`);
       }
-      patchVisitRowCompleted(completeVisitRow.id);
+      patchVisitRowCompleted(completeVisitRow, {
+        lastVisit: visitYmdApi,
+        nextVisit: nextYmdApi,
+        frequency: completeVisitForm.frequency,
+      });
+      saveCareVisitOverride({
+        visitId: completeVisitRow.id,
+        patientId: String(patientId).trim(),
+        visitingNurse: visitingNurseId,
+        lastVisit: visitYmdApi,
+        nextVisit: nextYmdApi,
+        frequency: completeVisitForm.frequency,
+        status: 'completed',
+      });
+      setVisitDateCacheVersion((v) => v + 1);
       setCompleteVisitRow(null);
       setScheduleSuccessModal({
         patientLabel,
@@ -1272,8 +1872,6 @@ export default function Scheduling() {
                 <th className="cv-th-patient">Patient</th>
                 <th className="cv-th-prev text-nowrap">Previous visit</th>
                 <th className="cv-th-next text-nowrap">Next visit</th>
-                <th className="cv-th-time">Time</th>
-                <th className="cv-th-duration text-nowrap">Duration</th>
                 <th className="cv-th-frequency">Frequency</th>
                 <th className="cv-th-nurse">Nurse</th>
                 <th className="cv-th-status">Status</th>
@@ -1282,7 +1880,7 @@ export default function Scheduling() {
             </thead>
             <tbody>
               {filtered.map((v, i) => (
-                <tr key={v.id}>
+                <tr key={`${careVisitRowStableKey(v.raw || {}, i)}-${i}`}>
                   <td className="cv-cell-patient">
                     <div className="d-flex align-items-center gap-2">
                       <div
@@ -1315,30 +1913,16 @@ export default function Scheduling() {
                     </div>
                   </td>
                   <td className="cv-cell-date">
-                    {v.prevVisit
-                      ? new Date(`${v.prevVisit}T12:00:00`).toLocaleDateString('en-GB', {
-                          day: '2-digit',
-                          month: 'short',
-                          year: 'numeric',
-                        })
-                      : '—'}
+                    {formatVisitDateDisplay(v.prevVisit)}
                   </td>
                   <td className="cv-cell-date" data-label="Next visit">
                     <span className={v.nextVisit ? 'cv-next-highlight' : ''}>
-                      {v.nextVisit
-                        ? new Date(`${v.nextVisit}T12:00:00`).toLocaleDateString('en-GB', {
-                            day: '2-digit',
-                            month: 'short',
-                            year: 'numeric',
-                          })
-                        : '—'}
+                      {formatVisitDateDisplay(v.nextVisit)}
                     </span>
                   </td>
-                  <td className="cv-cell-time">{v.time}</td>
-                  <td className="cv-cell-duration">{v.duration}</td>
-                  <td>
-                    <span className="badge-kh text-nowrap d-inline-block" style={{ background: '#F0F7FE', color: '#2E7DB8', maxWidth: '100%' }}>
-                      {v.frequency}
+                  <td className="cv-cell-frequency" data-label="Frequency">
+                    <span className="cv-frequency-badge">
+                      {v.frequency || '—'}
                     </span>
                   </td>
                   <td className="cv-cell-nurse" title={v.nurseName}>
@@ -1358,6 +1942,7 @@ export default function Scheduling() {
                           onMarkCompleted={openCompleteVisitModal}
                           onOpenUpdate={openVisitUpdateModal}
                           onRequestCancel={setCancelTarget}
+                          onRequestDelete={setDeleteTarget}
                         />
                       ) : null}
                     </div>
@@ -1374,92 +1959,166 @@ export default function Scheduling() {
         </div>
       </div>
 
-      {/* Cancel Confirmation Modal */}
-      {cancelTarget && (
-        <div className="modal d-block" style={{ zIndex: 1060 }} onClick={() => setCancelTarget(null)}>
+      {/* Portal: page layout uses transform (Framer Motion) — fixed modals must mount on document.body */}
+      {cancelTarget &&
+        createPortal(
           <div
-            className="modal-dialog modal-dialog-centered"
-            style={{ maxWidth: 420 }}
-            onClick={(e) => e.stopPropagation()}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 9990,
+              backgroundColor: 'rgba(15, 23, 42, 0.5)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 16,
+            }}
+            onClick={() => {
+              if (!cancelSaving) setCancelTarget(null);
+            }}
+            role="presentation"
           >
-            <div className="modal-content">
-              <div className="modal-body" style={{ padding: '32px 28px', textAlign: 'center' }}>
-                <div
-                  style={{
-                    width: 56,
-                    height: 56,
-                    borderRadius: '50%',
-                    background: '#fef2f2',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    margin: '0 auto 16px',
-                  }}
-                >
-                  <FiXCircle size={28} style={{ color: '#dc2626' }} />
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="cancel-visit-modal-title"
+              className="bg-white shadow-lg"
+              style={{
+                borderRadius: 12,
+                maxWidth: 420,
+                width: '100%',
+                outline: 'none',
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="cv-cancel-modal">
+                <div className="cv-cancel-modal__icon" aria-hidden>
+                  <FiXCircle size={28} style={{ color: '#dc2626' }} strokeWidth={2} />
                 </div>
-                <h6 style={{ fontWeight: 700, fontSize: 16, color: 'var(--kh-text)', marginBottom: 8 }}>
+                <h6 id="cancel-visit-modal-title" className="cv-cancel-modal__title">
                   Cancel Visit
                 </h6>
-                <p style={{ fontSize: 13, color: 'var(--kh-text-muted)', lineHeight: 1.6, marginBottom: 4 }}>
+                <p className="cv-cancel-modal__lead">
                   Are you sure you want to cancel the visit for
                 </p>
-                <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--kh-text)', marginBottom: 4 }}>
+                <p className="cv-cancel-modal__patient">
                   {cancelTarget.patientLine || cancelTarget.patient}
                 </p>
-                <p style={{ fontSize: 12.5, color: 'var(--kh-text-muted)', marginBottom: 24 }}>
-                  <FiCalendar size={11} style={{ marginRight: 4 }} />
-                  {cancelTarget.nextVisit
-                    ? new Date(`${cancelTarget.nextVisit}T12:00:00`).toLocaleDateString('en-GB', {
-                        day: '2-digit',
-                        month: 'short',
-                        year: 'numeric',
-                      })
-                    : '—'}{' '}
-                  {cancelTarget.time && cancelTarget.time !== '—' ? `at ${cancelTarget.time}` : ''}
+                <p className="cv-cancel-modal__meta">
+                  <span className="cv-cancel-modal__meta-icon" aria-hidden>
+                    <FiCalendar size={13} strokeWidth={2} />
+                  </span>
+                  <span>
+                    {formatVisitDateDisplay(cancelTarget.nextVisit)}
+                    {cancelTarget.time && cancelTarget.time !== '—' ? ` at ${cancelTarget.time}` : ''}
+                  </span>
                 </p>
-                <div className="d-flex gap-2 justify-content-center">
+                <div className="cv-cancel-modal__actions">
                   <button
                     type="button"
+                    className="cv-cancel-modal__btn cv-cancel-modal__btn--ghost"
                     onClick={() => setCancelTarget(null)}
-                    style={{
-                      padding: '10px 28px',
-                      fontSize: 13,
-                      fontWeight: 700,
-                      borderRadius: 2,
-                      cursor: 'pointer',
-                      background: '#fff',
-                      color: 'var(--kh-text)',
-                      border: '1px solid #d1d5db',
-                    }}
+                    disabled={cancelSaving}
                   >
                     Keep Visit
                   </button>
                   <button
                     type="button"
+                    className="cv-cancel-modal__btn cv-cancel-modal__btn--danger"
                     onClick={handleCancel}
-                    style={{
-                      padding: '10px 28px',
-                      fontSize: 13,
-                      fontWeight: 700,
-                      borderRadius: 2,
-                      cursor: 'pointer',
-                      background: '#dc2626',
-                      color: '#fff',
-                      border: '1px solid #dc2626',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 6,
-                    }}
+                    disabled={cancelSaving}
                   >
-                    <FiXCircle size={14} /> Cancel Visit
+                    <span className="cv-cancel-modal__btn-icon" aria-hidden>
+                      <FiXCircle size={14} strokeWidth={2.25} />
+                    </span>
+                    <span>{cancelSaving ? 'Cancelling…' : 'Cancel Visit'}</span>
                   </button>
                 </div>
               </div>
             </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body,
+        )}
+
+      {deleteTarget &&
+        createPortal(
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 9990,
+              backgroundColor: 'rgba(15, 23, 42, 0.5)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 16,
+            }}
+            onClick={() => {
+              if (!deleteSaving) setDeleteTarget(null);
+            }}
+            role="presentation"
+          >
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="delete-visit-modal-title"
+              className="bg-white shadow-lg"
+              style={{
+                borderRadius: 12,
+                maxWidth: 420,
+                width: '100%',
+                outline: 'none',
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="cv-cancel-modal">
+                <div className="cv-cancel-modal__icon cv-delete-modal__icon" aria-hidden>
+                  <FiTrash2 size={26} style={{ color: '#dc2626' }} strokeWidth={2} />
+                </div>
+                <h6 id="delete-visit-modal-title" className="cv-cancel-modal__title">
+                  Delete Visit
+                </h6>
+                <p className="cv-cancel-modal__lead">
+                  This permanently removes the visit record for
+                </p>
+                <p className="cv-cancel-modal__patient">
+                  {deleteTarget.patientLine || deleteTarget.patient}
+                </p>
+                <p className="cv-cancel-modal__meta">
+                  <span className="cv-cancel-modal__meta-icon" aria-hidden>
+                    <FiCalendar size={13} strokeWidth={2} />
+                  </span>
+                  <span>
+                    {formatVisitDateDisplay(deleteTarget.nextVisit)}
+                    {deleteTarget.time && deleteTarget.time !== '—' ? ` at ${deleteTarget.time}` : ''}
+                  </span>
+                </p>
+                <div className="cv-cancel-modal__actions">
+                  <button
+                    type="button"
+                    className="cv-cancel-modal__btn cv-cancel-modal__btn--ghost"
+                    onClick={() => setDeleteTarget(null)}
+                    disabled={deleteSaving}
+                  >
+                    Keep Visit
+                  </button>
+                  <button
+                    type="button"
+                    className="cv-cancel-modal__btn cv-cancel-modal__btn--danger"
+                    onClick={handleDelete}
+                    disabled={deleteSaving}
+                  >
+                    <span className="cv-cancel-modal__btn-icon" aria-hidden>
+                      <FiTrash2 size={14} strokeWidth={2.25} />
+                    </span>
+                    <span>{deleteSaving ? 'Deleting…' : 'Delete Visit'}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
 
       {completeVisitRow &&
         createPortal(

@@ -281,22 +281,99 @@ export async function createCareVisit(payload, onUnauthorized) {
   );
 }
 
-/** GET `/care-visits/upcoming` — upcoming visits list. */
-export async function fetchUpcomingCareVisits(params = {}, onUnauthorized) {
+const DEFAULT_CARE_VISITS_LIST_LIMIT = 500;
+
+function careVisitsListQuery(params = {}) {
   const qs = new URLSearchParams();
   if (params.page != null) qs.set('page', String(params.page));
-  if (params.limit != null) qs.set('limit', String(params.limit));
-  const q = qs.toString();
+  qs.set('limit', String(params.limit != null ? params.limit : DEFAULT_CARE_VISITS_LIST_LIMIT));
+  return qs.toString();
+}
+
+/** GET `/care-visits` — full care visits list when supported by the backend. */
+export async function fetchAllCareVisits(params = {}, onUnauthorized) {
+  const q = careVisitsListQuery(params);
+  return apiFetch(`/care-visits${q ? `?${q}` : ''}`, { method: 'GET', quiet: true }, onUnauthorized);
+}
+
+/** GET `/care-visits/upcoming` — upcoming visits list. */
+export async function fetchUpcomingCareVisits(params = {}, onUnauthorized) {
+  const q = careVisitsListQuery(params);
   return apiFetch(`/care-visits/upcoming${q ? `?${q}` : ''}`, { method: 'GET', quiet: true }, onUnauthorized);
 }
 
-/** GET `/care-visits/other` — all/other visits list (backend-defined). */
+/** GET `/care-visits/other` — completed/cancelled/past visits (backend-defined). */
 export async function fetchOtherCareVisits(params = {}, onUnauthorized) {
-  const qs = new URLSearchParams();
-  if (params.page != null) qs.set('page', String(params.page));
-  if (params.limit != null) qs.set('limit', String(params.limit));
-  const q = qs.toString();
+  const q = careVisitsListQuery(params);
   return apiFetch(`/care-visits/other${q ? `?${q}` : ''}`, { method: 'GET', quiet: true }, onUnauthorized);
+}
+
+/** Cancel a care visit — tries common backend route shapes. */
+export async function cancelCareVisit(visitId, payload = {}, onUnauthorized) {
+  const id = encodeURIComponent(String(visitId || '').trim());
+  const body = JSON.stringify({ status: 'cancelled', ...payload });
+  const attempts = [
+    { method: 'PATCH', path: `/care-visits/${id}`, body },
+    { method: 'PUT', path: `/care-visits/${id}`, body },
+    { method: 'POST', path: `/care-visits/${id}/cancel`, body: JSON.stringify(payload) },
+    { method: 'POST', path: '/care-visits/cancel', body: JSON.stringify({ visitId, status: 'cancelled', ...payload }) },
+  ];
+
+  let lastResponse = null;
+  for (const attempt of attempts) {
+    try {
+      const response = await apiFetch(
+        attempt.path,
+        {
+          method: attempt.method,
+          headers: { 'Content-Type': 'application/json' },
+          body: attempt.body,
+          quiet: true,
+        },
+        onUnauthorized,
+      );
+      if (response.ok) return response;
+      lastResponse = response;
+      if (response.status !== 404 && response.status !== 405) break;
+    } catch {
+      // try next route shape
+    }
+  }
+  return lastResponse;
+}
+
+/** Delete a care visit — tries common backend route shapes. */
+export async function deleteCareVisit(visitId, payload = {}, onUnauthorized) {
+  const id = encodeURIComponent(String(visitId || '').trim());
+  const body = JSON.stringify({ visitId, ...payload });
+  const attempts = [
+    { method: 'DELETE', path: `/care-visits/${id}` },
+    { method: 'POST', path: `/care-visits/${id}/delete`, body },
+    { method: 'POST', path: '/care-visits/delete', body },
+  ];
+
+  let lastResponse = null;
+  for (const attempt of attempts) {
+    try {
+      const response = await apiFetch(
+        attempt.path,
+        {
+          method: attempt.method,
+          ...(attempt.body
+            ? { headers: { 'Content-Type': 'application/json' }, body: attempt.body }
+            : {}),
+          quiet: true,
+        },
+        onUnauthorized,
+      );
+      if (response.ok) return response;
+      lastResponse = response;
+      if (response.status !== 404 && response.status !== 405) break;
+    } catch {
+      // try next route shape
+    }
+  }
+  return lastResponse;
 }
 
 /**
