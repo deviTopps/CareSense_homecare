@@ -602,21 +602,16 @@ body.cs-lp-nav-open {
 /* ── Stats strip ── */
 .cs-stats {
   padding: 0 0 clamp(32px, 4vw, 48px);
-  margin-top: 0;
+  margin: clamp(24px, 4vw, 40px) 0;
 }
 
 .cs-stats__list {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 1px;
+  gap: clamp(16px, 3vw, 24px);
   list-style: none;
   margin: 0;
   padding: 0;
-  border-radius: var(--cs-radius-lg);
-  overflow: hidden;
-  border: 1px solid var(--cs-border);
-  background: var(--cs-border);
-  box-shadow: var(--cs-shadow);
 }
 
 .cs-stats__item {
