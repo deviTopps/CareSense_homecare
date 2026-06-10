@@ -1,14 +1,14 @@
-import { NURSE1_MOCKUP_SRC } from '../constants/brandAssets';
+import { APP_STORE_BADGE_SRC, GOOGLE_PLAY_BADGE_SRC, NURSE1_MOCKUP_SRC } from '../constants/brandAssets';
 
 /** Landing page copy, navigation, and section metadata */
 
-export const LANDING_PHONE = '(800) 954-3727';
-export const LANDING_PHONE_HREF = 'tel:+18009543727';
+export const LANDING_PHONE = '+233 535614493';
+export const LANDING_PHONE_HREF = 'tel:+233535614493';
 
 export const LANDING_NAV = [
   { id: 'home', label: 'Home', href: '#home' },
   { id: 'features', label: 'Features', href: '#features' },
-  { id: 'testimonials', label: 'Stories', href: '#testimonials' },
+  { id: 'pricing', label: 'Pricing', href: '#pricing' },
 ];
 
 export const LANDING_NAV_CTA = { label: 'Sign In', href: '/login' };
@@ -108,30 +108,156 @@ export const TESTIMONIALS_CONTENT = {
   ],
 };
 
+export const PRICING_CONTENT = {
+  heading: 'Simple pricing plans',
+  description:
+    'Choose the plan that fits your agency. Start free and scale as your team grows.',
+  plans: [
+    {
+      name: 'Starter',
+      monthlyPrice: 'GH₵0',
+      yearlyPrice: 'GH₵0',
+      period: {
+        monthly: 'Per month',
+        yearly: 'Per year',
+      },
+      description: {
+        monthly: 'Ideal for small agencies getting started. No credit card required.',
+        yearly: 'Ideal for small agencies getting started. No credit card required.',
+      },
+      buttonText: 'Start for free',
+      buttonUrl: '/login',
+      highlighted: false,
+      planCode: 'STARTER',
+      features: [
+        'Up to 25 active patients',
+        '5 nurse accounts',
+        'Visit scheduling & calendar',
+        'Basic visit reports',
+        'Email support',
+      ],
+    },
+    {
+      name: 'Standard',
+      monthlyPrice: 'GH₵299',
+      yearlyPrice: 'GH₵2,990',
+      period: {
+        monthly: 'Per month',
+        yearly: 'Per year',
+      },
+      description: {
+        monthly: 'For growing agencies that need more power and visibility.',
+        yearly: 'For growing agencies. Save about 17% compared to monthly billing.',
+      },
+      buttonText: 'Get started',
+      buttonUrl: '/login',
+      highlighted: true,
+      highlightedLabel: 'Most popular',
+      planCode: 'STANDARD',
+      features: [
+        'Unlimited patients',
+        'Unlimited nurse accounts',
+        'GPS clock-in & attendance',
+        'Billing-ready exports',
+        'Priority support',
+      ],
+    },
+    {
+      name: 'Premium',
+      monthlyPrice: 'GH₵799',
+      yearlyPrice: 'GH₵7,990',
+      period: {
+        monthly: 'Per month',
+        yearly: 'Per year',
+      },
+      description: {
+        monthly: 'For larger organizations with advanced coordination needs.',
+        yearly: 'For larger organizations. Save about 17% compared to monthly billing.',
+      },
+      buttonText: 'Contact sales',
+      buttonUrl: LANDING_PHONE_HREF,
+      highlighted: false,
+      planCode: 'PREMIUM',
+      features: [
+        'Multi-branch management',
+        'Custom roles & permissions',
+        'API & data integrations',
+        'Dedicated account manager',
+        'SLA-backed support',
+      ],
+    },
+  ],
+};
+
 export const CTA_CONTENT = {
-  eyebrow: 'Nurse mobile app',
-  title: 'Your nurses\' daily companion in the field',
-  text: 'Schedules, visit check-ins, and patient notes—synced to your agency dashboard in real time.',
-  features: [
-    'Today\'s visits & routes at a glance',
-    'Clock in and out with GPS verification',
-    'Notes and reports synced automatically',
-  ],
-  appScreen: NURSE1_MOCKUP_SRC,
-  chips: [
-    { label: 'Visits today', value: '12' },
-    { label: 'On-time rate', value: '98%' },
-  ],
+  eyebrow: 'Get Started',
+  title: 'Download our app and transform your homecare workflow today',
+  centerScreen: NURSE1_MOCKUP_SRC,
+  appStore: {
+    href: 'https://apps.apple.com',
+    badgeSrc: APP_STORE_BADGE_SRC,
+    label: 'Download on the App Store',
+  },
   playStore: {
     href: 'https://play.google.com/store',
-    badgeSrc: '/playstore.png',
+    badgeSrc: GOOGLE_PLAY_BADGE_SRC,
     label: 'Get it on Google Play',
   },
-  webCta: { label: 'Open web dashboard', href: '/login' },
+};
+
+export const FAQ_CONTENT = {
+  heading: 'Frequently asked questions',
+  items: [
+    {
+      id: 'faq-what-is-caresense',
+      question: 'What is CareSense?',
+      answer:
+        'CareSense is a homecare operations platform that brings patients, nurses, visits, scheduling, and billing-ready reports into one workspace for agencies and care teams.',
+    },
+    {
+      id: 'faq-who-is-it-for',
+      question: 'Who is CareSense for?',
+      answer:
+        'CareSense is built for homecare agencies, coordinators, nurses in the field, and back-office teams who need one place to manage visits, documentation, and reporting.',
+    },
+    {
+      id: 'faq-mobile-app',
+      question: 'Is there a mobile app for nurses?',
+      answer:
+        'Yes. Nurses can use the CareSense mobile app to view visits, clock in and out with GPS verification, and sync notes and reports to the agency dashboard in real time.',
+    },
+    {
+      id: 'faq-pricing',
+      question: 'How does pricing work?',
+      answer:
+        'We offer Starter, Standard, and Premium plans with monthly or yearly billing. You can start on the free Starter plan and upgrade as your agency grows. See the Pricing section for details.',
+    },
+    {
+      id: 'faq-get-started',
+      question: 'How do I get started?',
+      answer:
+        'Create a free account from the Sign In page, set up your agency profile, and invite your team. Our onboarding guides help you add patients, schedule visits, and configure billing.',
+    },
+    {
+      id: 'faq-data-security',
+      question: 'Is my data secure?',
+      answer:
+        'CareSense uses role-based access, audit-friendly records, and secure authentication to help agencies meet compliance needs. Contact us if you need details for your security review.',
+    },
+    {
+      id: 'faq-support',
+      question: 'What support do you offer?',
+      answer:
+        'Starter plans include email support. Standard and Premium plans include priority or dedicated support options. Reach us at +233 535614493 or through your account dashboard.',
+    },
+  ],
 };
 
 export const FOOTER_LINKS = [
   { label: 'Features', href: '#features' },
+  { label: 'Pricing', href: '#pricing' },
+  { label: 'Mobile app', href: '#mobile-app' },
+  { label: 'FAQ', href: '#faq' },
   { label: 'Privacy', href: '/privacy' },
   { label: 'Terms', href: '#' },
   { label: 'Sign In', href: '/login' },

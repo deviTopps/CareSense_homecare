@@ -4,6 +4,8 @@ import LandingHero from '../components/landing/LandingHero';
 import LandingStats from '../components/landing/LandingStats';
 import LandingReasons from '../components/landing/LandingReasons';
 import LandingTestimonials from '../components/landing/LandingTestimonials';
+import LandingPricing from '../components/landing/LandingPricing';
+import LandingFaq from '../components/landing/LandingFaq';
 import LandingCta from '../components/landing/LandingCta';
 import LandingFooter from '../components/landing/LandingFooter';
 import LandingCookieBanner, { COOKIE_CONSENT_KEY } from '../components/landing/LandingCookieBanner';
@@ -73,7 +75,9 @@ export default function LandingPage() {
 
       <main id="main-content" className="cs-page-main" tabIndex={-1}>
         <LandingReasons />
+        <LandingPricing />
         <LandingTestimonials />
+        <LandingFaq />
         <LandingCta />
       </main>
 

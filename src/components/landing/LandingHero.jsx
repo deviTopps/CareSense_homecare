@@ -1,72 +1,52 @@
+import { FiArrowRight } from '../../icons/hugeicons-feather';
 import { HERO_CONTENT } from '../../data/landingContent';
 
-function CheckIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden>
-      <circle cx="9" cy="9" r="9" fill="currentColor" opacity="0.15" />
-      <path
-        d="M5.5 9.2l2.2 2.2 4.8-5"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
 export default function LandingHero() {
-  const { badge, title, titleAccent, subtitle, primaryCta, secondaryCta, bullets, floatCard } =
-    HERO_CONTENT;
-
+  const { badge, title, titleAccent, subtitle, primaryCta } = HERO_CONTENT;
   const titleParts = title.split(titleAccent);
 
   return (
-    <section className="cs-hero" id="home" aria-labelledby="hero-title">
-      <div className="cs-hero__bg" aria-hidden />
-      <div className="cs-container cs-hero__inner">
-        <div className="cs-hero__copy">
-          <span className="cs-hero__badge">{badge}</span>
-          <h1 id="hero-title" className="cs-hero__title">
-            {titleParts[0]}
-            <span className="cs-hero__title-accent">{titleAccent}</span>
-            {titleParts[1]}
-          </h1>
-          <p className="cs-hero__subtitle">{subtitle}</p>
-          <div className="cs-hero__actions">
-            <a href={primaryCta.href} className="cs-btn cs-btn--primary">
-              {primaryCta.label}
-            </a>
-            <a href={secondaryCta.href} className="cs-btn cs-btn--ghost">
-              {secondaryCta.label}
-            </a>
-          </div>
-          <ul className="cs-hero__checks">
-            {bullets.map((text) => (
-              <li key={text}>
-                <CheckIcon />
-                <span>{text}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
+    <section className="cs-hero cs-hero115" id="home" aria-labelledby="hero-title">
+      <div className="cs-hero115__pattern" aria-hidden>
+        <span className="cs-hero115__pattern-grid" />
+        <span className="cs-hero115__pattern-dots" />
+        <span className="cs-hero115__pattern-glow" />
+      </div>
 
-        <div className="cs-hero__visual">
-          <div className="cs-hero__frame">
-            <img
-              src="/mockups/02.png"
-              alt="CareSense dashboard showing visits and patient overview"
-              className="cs-hero__img"
-              width={800}
-              height={600}
-              loading="eager"
-            />
+      <div className="cs-container cs-hero115__container">
+        <div className="cs-hero115__stack">
+          <div className="cs-hero115__copy">
+            <div className="cs-hero115__rings" aria-hidden>
+              <div className="cs-hero115__rings-inner">
+                <div className="cs-hero115__rings-core" />
+              </div>
+            </div>
+
+            <h1 id="hero-title" className="cs-hero115__title">
+              {titleParts[0]}
+              <span className="cs-hero115__title-accent">{titleAccent}</span>
+              {titleParts[1]}
+            </h1>
+
+            <p className="cs-hero115__description">{subtitle}</p>
+
+            <div className="cs-hero115__cta">
+              <a href={primaryCta.href} className="cs-btn cs-btn--primary cs-hero115__btn">
+                {primaryCta.label}
+                <FiArrowRight size={16} strokeWidth={2} aria-hidden />
+              </a>
+              {badge ? <p className="cs-hero115__byline">{badge}</p> : null}
+            </div>
           </div>
-          <aside className="cs-hero__float" aria-label="Weekly visits highlight">
-            <span className="cs-hero__float-label">{floatCard.label}</span>
-            <strong className="cs-hero__float-value">{floatCard.value}</strong>
-            <span className="cs-hero__float-trend">{floatCard.trend} vs last week</span>
-          </aside>
+
+          <img
+            src="/mockups/HomePage.png"
+            alt="CareSense dashboard showing visits and patient overview"
+            className="cs-hero115__img"
+            width={1200}
+            height={675}
+            loading="eager"
+          />
         </div>
       </div>
     </section>

@@ -64,6 +64,11 @@ export default function LandingHeader({ navOpen, setNavOpen, onNavClick }) {
               </li>
             ))}
             <li>
+              <a href={LANDING_PHONE_HREF} className="cs-header__drawer-phone" onClick={closeNav}>
+                {LANDING_PHONE}
+              </a>
+            </li>
+            <li>
               <a href={LANDING_NAV_CTA.href} className="cs-btn cs-btn--primary" onClick={closeNav}>
                 {LANDING_NAV_CTA.label}
               </a>

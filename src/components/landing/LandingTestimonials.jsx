@@ -1,7 +1,14 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { FiChevronLeft, FiChevronRight } from '../../icons/hugeicons-feather';
 import { TESTIMONIALS_CONTENT } from '../../data/landingContent';
 import LandingSection from './LandingSection';
+
+function getVisibleCount() {
+  if (typeof window === 'undefined') return 3;
+  if (window.matchMedia('(max-width: 767px)').matches) return 1;
+  if (window.matchMedia('(max-width: 1024px)').matches) return 2;
+  return 3;
+}
 
 function getInitials(name) {
   return name
@@ -15,9 +22,16 @@ function getInitials(name) {
 export default function LandingTestimonials() {
   const { eyebrow, title, items } = TESTIMONIALS_CONTENT;
   const [index, setIndex] = useState(0);
+  const [visibleCount, setVisibleCount] = useState(getVisibleCount);
+
+  useEffect(() => {
+    const onResize = () => setVisibleCount(getVisibleCount());
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   const visible = [];
-  for (let i = 0; i < 3; i += 1) {
+  for (let i = 0; i < visibleCount; i += 1) {
     visible.push(items[(index + i) % items.length]);
   }
 
