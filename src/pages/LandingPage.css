@@ -189,8 +189,8 @@ body.cs-lp-nav-open {
 }
 
 .cs-header__bar {
-  display: flex;
-  align-items: center;
+  display: flex; 
+  align-items: center; 
   gap: 20px;
   min-height: 72px;
 }
@@ -204,7 +204,7 @@ body.cs-lp-nav-open {
 /* Logo artwork is brand blue — invert on blue header so it stays visible */
 .cs-lp .cs-header__logo-img {
   display: block;
-  height: 48px;
+  height: 48px; 
   width: auto;
   min-width: 120px;
   max-width: 220px;
@@ -245,7 +245,7 @@ body.cs-lp-nav-open {
 
 .cs-header__actions {
   display: none;
-  align-items: center;
+  align-items: center; 
   gap: 16px;
   margin-left: auto;
 }
@@ -314,7 +314,7 @@ body.cs-lp-nav-open {
 
 @media (min-width: 900px) {
   .cs-header__nav {
-    display: flex;
+  display: flex;
   }
 
   .cs-header__actions {
@@ -1053,9 +1053,9 @@ body.cs-lp-nav-open {
 }
 
 .cs-testimonial-card__author {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+  display: flex; 
+  align-items: center; 
+  gap: 12px; 
   padding-top: 12px;
   border-top: 1px solid var(--cs-border);
 }
@@ -1084,7 +1084,7 @@ body.cs-lp-nav-open {
 
 .cs-testimonial-card__role {
   display: block;
-  font-size: 0.8125rem;
+  font-size: 0.8125rem; 
   color: var(--cs-text-muted);
 }
 
@@ -1545,8 +1545,8 @@ body.cs-lp-nav-open {
 
   .cs-header__bar {
     min-height: 64px;
-    gap: 12px;
-  }
+  gap: 12px;
+}
 
   .cs-lp .cs-header__logo-img {
     min-width: 0;
