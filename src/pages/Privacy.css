@@ -53,8 +53,64 @@
   font-size: clamp(1.85rem, 4vw, 2.35rem);
   font-weight: 800;
   letter-spacing: -0.03em;
-  margin: 0 0 8px;
+  margin: 0 0 16px;
   line-height: 1.2;
+}
+
+.legal-meta {
+  margin: 0 0 12px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.legal-intro {
+  font-size: 1rem;
+  color: #334155;
+}
+
+.legal-section {
+  margin-top: 8px;
+}
+
+.legal-page-main h3 {
+  font-family: var(--kh-font-family);
+  font-size: 0.98rem;
+  font-weight: 700;
+  margin: 20px 0 8px;
+  color: #0f172a;
+}
+
+.legal-page-main ul {
+  margin: 0 0 16px;
+  padding-left: 1.35rem;
+  color: #475569;
+  font-size: 0.95rem;
+}
+
+.legal-page-main li {
+  margin-bottom: 8px;
+}
+
+.legal-page-main li:last-child {
+  margin-bottom: 0;
+}
+
+.legal-contact-card {
+  margin-top: 12px;
+  padding: 20px 22px;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: #fff;
+  box-shadow: 0 4px 20px rgba(15, 23, 42, 0.04);
+}
+
+.legal-contact-card p {
+  margin: 0 0 8px;
+}
+
+.legal-contact-card p:last-child {
+  margin-bottom: 0;
 }
 
 .legal-lead-title {
@@ -110,7 +166,7 @@
   letter-spacing: 0.06em;
   color: #64748b;
   background: #f8fafc;
-  width: 32%;
+  width: 28%;
 }
 
 .legal-cookie-table td {

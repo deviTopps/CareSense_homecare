@@ -1,5 +1,5 @@
 import { useLocation, useParams, useNavigate } from 'react-router-dom';
-import { Fragment, useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { Fragment, useState, useRef, useEffect, useCallback, useMemo, useTransition, createContext, useContext } from 'react';
 import { motion } from 'motion/react';
 import {
   FiArrowLeft, FiPhone, FiMail, FiMapPin, FiCalendar,
@@ -2814,6 +2814,267 @@ function prunePatchPayload(value) {
   return value;
 }
 
+function applyCommunicationFormToNormalized(profile, form) {
+  if (!profile || !form?.communicationStyle) return profile;
+  const cs = form.communicationStyle;
+  const tri = (value) => (value === true || value === false ? value : null);
+
+  return {
+    ...profile,
+    communication: {
+      needs: tri(cs.anyCommunicationNeeds) ?? profile.communication?.needs ?? null,
+      hearing: tri(cs.anyHearingNeeds) ?? profile.communication?.hearing ?? null,
+      speech: tri(cs.anySpeechImpairment) ?? profile.communication?.speech ?? null,
+      visual: tri(cs.anyVisualImpairment) ?? profile.communication?.visual ?? null,
+      understanding: tri(cs.anyUnderstandingDifficulties) ?? profile.communication?.understanding ?? null,
+    },
+    sectionCommunicationStyle: {
+      ...(profile.sectionCommunicationStyle || {}),
+      communicationNotes: String(cs.communicationNotes ?? profile.sectionCommunicationStyle?.communicationNotes ?? ''),
+    },
+  };
+}
+
+function applyBreathingFormToNormalized(profile, form) {
+  if (!profile || !form?.breathPain) return profile;
+  const bp = form.breathPain;
+  const tri = (value) => (value === true || value === false ? value : null);
+
+  return {
+    ...profile,
+    breathing: {
+      difficulties: tri(bp.anyBreathingDifficulties) ?? profile.breathing?.difficulties ?? null,
+      oxygen: tri(bp.homeOxygenNeeded) ?? profile.breathing?.oxygen ?? null,
+      smoker: tri(bp.isSmoker) ?? profile.breathing?.smoker ?? null,
+      everSmoked: tri(bp.everSmoked) ?? profile.breathing?.everSmoked ?? null,
+    },
+  };
+}
+
+function applyNutritionFormToNormalized(profile, form) {
+  if (!profile || !form?.sleepNutrition?.nutrition) return profile;
+  const n = form.sleepNutrition.nutrition;
+  const tri = (value) => (value === true || value === false ? value : null);
+
+  return {
+    ...profile,
+    nutrition: {
+      allergies: tri(n.allergy) ?? profile.nutrition?.allergies ?? null,
+      specialDiet: tri(n.specialDiet) ?? profile.nutrition?.specialDiet ?? null,
+      helpEating: tri(n.needHelpInEating) ?? profile.nutrition?.helpEating ?? null,
+      swallowing: tri(n.swallowingDifficulties) ?? profile.nutrition?.swallowing ?? null,
+      dietType: String(n.dietType ?? profile.nutrition?.dietType ?? ''),
+      ngTube: tri(n.ngTube) ?? profile.nutrition?.ngTube ?? null,
+    },
+  };
+}
+
+function applySkinMobilityFormToNormalized(profile, form) {
+  if (!profile || !form?.skinMobility) return profile;
+  const si = form.skinMobility.skinIntegrity || {};
+  const ha = form.skinMobility.handlingAssessment || {};
+  const tri = (value) => (value === true || value === false ? value : null);
+
+  return {
+    ...profile,
+    skin: {
+      openWounds: tri(si.openWounds) ?? profile.skin?.openWounds ?? null,
+      pressureUlcer: tri(si.pressureUlcer) ?? profile.skin?.pressureUlcer ?? null,
+    },
+    mobility: {
+      independent: tri(ha.isPatientMobile) ?? profile.mobility?.independent ?? null,
+      bedMove: tri(ha.moveInBed) ?? profile.mobility?.bedMove ?? null,
+      bedToChair: tri(ha.mobilityFromBedToChair) ?? profile.mobility?.bedToChair ?? null,
+      toilet: tri(ha.mobilityToWashroom) ?? profile.mobility?.toilet ?? null,
+    },
+  };
+}
+
+function applyNextOfKinFormToNormalized(profile, form) {
+  if (!profile || !form?.nextOfKin) return profile;
+  const nk = form.nextOfKin;
+
+  return {
+    ...profile,
+    doctor: {
+      name: String(nk.personalDoctor ?? profile.doctor?.name ?? ''),
+      facility: String(nk.personalDoctorFacility ?? profile.doctor?.facility ?? ''),
+      phone: String(nk.personalDoctorContact ?? profile.doctor?.phone ?? ''),
+    },
+    emergency: {
+      name: String(nk.fullName ?? profile.emergency?.name ?? ''),
+      relationship: String(nk.relationship ?? profile.emergency?.relationship ?? ''),
+      phone: String(nk.contactOne ?? profile.emergency?.phone ?? ''),
+    },
+    cultural: String(nk.spiritualNeed ?? profile.cultural ?? ''),
+  };
+}
+
+function applyPersonalInfoFormToNormalized(profile, form) {
+  if (!profile || !form?.personalInfo) return profile;
+  const pi = form.personalInfo;
+  const firstName = String(pi.firstName ?? '').trim();
+  const lastName = String(pi.lastName ?? '').trim();
+
+  return {
+    ...profile,
+    name: [firstName, lastName].filter(Boolean).join(' ').trim() || profile.name,
+    regNo: pi.registrationNumber ?? profile.regNo,
+    phone: pi.contactNumber ?? profile.phone,
+    dob: pi.dateOfBirth ?? profile.dob,
+    age: pi.age !== '' && pi.age !== undefined && pi.age !== null ? Number(pi.age) || profile.age : profile.age,
+    gender: pi.gender ?? profile.gender,
+    address: pi.residentialAddress ?? profile.address,
+    gps: pi.gpsCode ?? profile.gps,
+    email: pi.email ?? profile.email,
+    preferredName: pi.preferredName ?? profile.preferredName,
+    enrolled: pi.dateOfAdmission ?? profile.enrolled,
+    dateOfAssessment: pi.dateOfAssessment ?? profile.dateOfAssessment,
+    medicalHistory: form.medicalHistory?.medicalHistoryDescription ?? profile.medicalHistory,
+  };
+}
+
+function applyCardEditFormToProfile(profile, form, cardId) {
+  if (!profile || !form || !cardId) return profile;
+
+  switch (cardId) {
+    case 'clinical:communication':
+      return applyCommunicationFormToNormalized(profile, form);
+    case 'clinical:infection':
+    case 'clinical:diabetes':
+      return applyInfectionControlFormToNormalized(profile, form);
+    case 'clinical:breathing':
+      return applyBreathingFormToNormalized(profile, form);
+    case 'clinical:pain':
+      return applyPainFormToNormalized(profile, form);
+    case 'clinical:psychological':
+      return applyPsychologicalFormToNormalized(profile, form);
+    case 'clinical:skin':
+    case 'clinical:mobility':
+      return applySkinMobilityFormToNormalized(profile, form);
+    case 'care:sleep':
+      return applySleepFormToNormalized(profile, form);
+    case 'care:nutrition':
+      return applyNutritionFormToNormalized(profile, form);
+    case 'care:hygiene':
+      return applyPersonalHygieneFormToNormalized(profile, form);
+    case 'care:bladder':
+      return applyBladderBowelFormToNormalized(profile, form);
+    case 'care:physician':
+    case 'care:emergency':
+      return applyNextOfKinFormToNormalized(profile, form);
+    default:
+      return profile;
+  }
+}
+
+function applyPatientUpdateFormToProfile(profile, form) {
+  if (!profile || !form) return profile;
+
+  let next = applyPersonalInfoFormToNormalized(profile, form);
+  next = applyNextOfKinFormToNormalized(next, form);
+  next = applyCommunicationFormToNormalized(next, form);
+  next = applyInfectionControlFormToNormalized(next, form);
+  next = applyBreathingFormToNormalized(next, form);
+  next = applyPainFormToNormalized(next, form);
+  next = applySleepFormToNormalized(next, form);
+  next = applyNutritionFormToNormalized(next, form);
+  next = applyPersonalHygieneFormToNormalized(next, form);
+  next = applyBladderBowelFormToNormalized(next, form);
+  next = applyPsychologicalFormToNormalized(next, form);
+  next = applySkinMobilityFormToNormalized(next, form);
+  return next;
+}
+
+const ProfileCardEditContext = createContext(null);
+
+function ProfileCardEditForm({ cardId, initialForm, onFormChange, children }) {
+  const [form, setForm] = useState(() => initialForm);
+
+  useEffect(() => {
+    setForm(initialForm);
+  }, [cardId, initialForm]);
+
+  useEffect(() => {
+    onFormChange?.(form);
+  }, [form, onFormChange]);
+
+  const editApi = useMemo(() => ({
+    getValue: (path) => getNestedFormValue(form, path),
+    setField: (path, value) => {
+      setForm((prev) => applyNestedFormUpdate(prev, path, value));
+    },
+  }), [form]);
+
+  return (
+    <ProfileCardEditContext.Provider value={editApi}>
+      {children}
+    </ProfileCardEditContext.Provider>
+  );
+}
+
+function ProfileCardEditRow({ label, path, kind = 'tristate' }) {
+  const edit = useContext(ProfileCardEditContext);
+  if (!edit) return null;
+  return renderCardEditRowField(edit, label, path, kind);
+}
+
+function renderCardTriStateField(edit, path) {
+  const val = edit.getValue(path);
+  return (
+    <select
+      className="form-select form-control-kh patient-profile-card-edit-field"
+      value={val === true ? 'true' : val === false ? 'false' : 'unset'}
+      onChange={(event) => {
+        const next = event.target.value;
+        edit.setField(path, next === 'unset' ? null : next === 'true');
+      }}
+    >
+      <option value="unset">No data</option>
+      <option value="true">Yes</option>
+      <option value="false">No</option>
+    </select>
+  );
+}
+
+function renderCardBoolField(edit, path) {
+  const val = edit.getValue(path);
+  return (
+    <select
+      className="form-select form-control-kh patient-profile-card-edit-field"
+      value={val === true ? 'true' : val === false ? 'false' : 'false'}
+      onChange={(event) => edit.setField(path, event.target.value === 'true')}
+    >
+      <option value="true">Yes</option>
+      <option value="false">No</option>
+    </select>
+  );
+}
+
+function renderCardTextField(edit, path, type = 'text') {
+  return (
+    <input
+      type={type}
+      className="form-control form-control-kh patient-profile-card-edit-field"
+      value={edit.getValue(path) ?? ''}
+      onChange={(event) => edit.setField(path, event.target.value)}
+    />
+  );
+}
+
+function renderCardEditRowField(edit, label, path, kind = 'tristate') {
+  return (
+    <div className="patient-profile-card-edit-row">
+      <span>{label}</span>
+      {kind === 'text'
+        ? renderCardTextField(edit, path)
+        : kind === 'bool'
+          ? renderCardBoolField(edit, path)
+          : renderCardTriStateField(edit, path)}
+    </div>
+  );
+}
+
 async function persistProfileSection(sectionId, form, patientIdForPatch, persistOptions = {}) {
   const { rawPatient = null, routeFallback = '' } = persistOptions;
   const toBooleanString = (value) => (value ? 'true' : 'false');
@@ -4390,9 +4651,11 @@ export default function PatientProfile() {
   const [latestVitalLoading, setLatestVitalLoading] = useState(false);
   const [profileUpdateForm, setProfileUpdateForm] = useState(() => createPatientUpdateForm(null, effectivePatientId));
   const [editingProfileCard, setEditingProfileCard] = useState(null);
-  const [cardEditForm, setCardEditForm] = useState(null);
   const [cardSectionError, setCardSectionError] = useState('');
   const [savingProfileCard, setSavingProfileCard] = useState(false);
+  const cardEditSeedRef = useRef(null);
+  const activeCardFormRef = useRef(null);
+  const [, startProfileFormTransition] = useTransition();
   const currentUser = getUser();
   const tokenPayload = useMemo(() => parseJwtPayload(getToken()), []);
   const currentUserName = resolveSessionDisplayName(currentUser, tokenPayload);
@@ -4405,20 +4668,22 @@ export default function PatientProfile() {
     const keys = String(path || '').split('.').filter(Boolean);
     if (!keys.length) return;
 
-    setProfileUpdateForm(prev => {
-      const next = { ...prev };
-      let cursor = next;
-      let source = prev;
+    startProfileFormTransition(() => {
+      setProfileUpdateForm(prev => {
+        const next = { ...prev };
+        let cursor = next;
+        let source = prev;
 
-      for (let index = 0; index < keys.length - 1; index += 1) {
-        const key = keys[index];
-        cursor[key] = { ...(source?.[key] || {}) };
-        cursor = cursor[key];
-        source = source?.[key] || {};
-      }
+        for (let index = 0; index < keys.length - 1; index += 1) {
+          const key = keys[index];
+          cursor[key] = { ...(source?.[key] || {}) };
+          cursor = cursor[key];
+          source = source?.[key] || {};
+        }
 
-      cursor[keys[keys.length - 1]] = value;
-      return next;
+        cursor[keys[keys.length - 1]] = value;
+        return next;
+      });
     });
   };
 
@@ -7183,17 +7448,7 @@ export default function PatientProfile() {
         });
       }
 
-      const latestResponse = await apiFetch(`/patients/${patientIdForPatch}`, { method: 'GET', quiet: true });
-      const latestPayload = await latestResponse.json().catch(() => ({}));
-      if (latestResponse.ok) {
-        let latestRawPatient = latestPayload?.patient || latestPayload?.data || latestPayload;
-        if (latestRawPatient && typeof latestRawPatient === 'object') {
-          latestRawPatient = await enrichRawPatientRecord(latestRawPatient, effectivePatientId);
-        }
-        rawPatientApiRef.current = latestRawPatient && typeof latestRawPatient === 'object' ? latestRawPatient : null;
-        const hydratedProfile = await hydratePatientProfile(latestRawPatient, patientIdForPatch);
-        setRemotePatient(hydratedProfile);
-      }
+      setRemotePatient((prev) => applyPatientUpdateFormToProfile(prev, profileUpdateForm));
 
       setShowUpdateModal(false);
       setProfileUpdateSuccess('Patient profile details updated successfully.');
@@ -7572,7 +7827,8 @@ export default function PatientProfile() {
   useEffect(() => {
     if ((tab === 'clinical' || tab === 'care') || !editingProfileCard) return;
     setEditingProfileCard(null);
-    setCardEditForm(null);
+    activeCardFormRef.current = null;
+    cardEditSeedRef.current = null;
     setCardSectionError('');
   }, [tab, editingProfileCard]);
 
@@ -7947,26 +8203,28 @@ export default function PatientProfile() {
     </div>
   );
 
+  const handleCardFormChange = useCallback((form) => {
+    activeCardFormRef.current = form;
+  }, []);
+
   const startProfileCardEdit = (cardId) => {
     if (!p) return;
+    const seedForm = createPatientUpdateForm(p, effectivePatientId);
+    cardEditSeedRef.current = seedForm;
+    activeCardFormRef.current = seedForm;
     setEditingProfileCard(cardId);
-    setCardEditForm(createPatientUpdateForm(p, effectivePatientId));
     setCardSectionError('');
   };
 
   const cancelProfileCardEdit = () => {
     setEditingProfileCard(null);
-    setCardEditForm(null);
+    activeCardFormRef.current = null;
+    cardEditSeedRef.current = null;
     setCardSectionError('');
   };
 
-  const setCardEditField = (path, value) => {
-    setCardEditForm((prev) => applyNestedFormUpdate(prev, path, value));
-  };
-
-  const getCardEditValue = (path) => getNestedFormValue(cardEditForm, path);
-
   const saveProfileCard = async () => {
+    const cardEditForm = activeCardFormRef.current;
     if (!editingProfileCard || !cardEditForm) return;
 
     setSavingProfileCard(true);
@@ -8007,67 +8265,21 @@ export default function PatientProfile() {
       }
 
       const lifestyleCardHandlers = {
-        'care:hygiene': {
-          applyToProfile: applyPersonalHygieneFormToNormalized,
-          mergeIntoRaw: mergePersonalHygieneFormIntoRawPatient,
-        },
-        'care:bladder': {
-          applyToProfile: applyBladderBowelFormToNormalized,
-          mergeIntoRaw: mergeBladderBowelFormIntoRawPatient,
-        },
-        'clinical:psychological': {
-          applyToProfile: applyPsychologicalFormToNormalized,
-          mergeIntoRaw: mergePsychologicalFormIntoRawPatient,
-        },
-        'clinical:pain': {
-          applyToProfile: applyPainFormToNormalized,
-          mergeIntoRaw: mergePainFormIntoRawPatient,
-        },
-        'clinical:breathing': {
-          applyToProfile: applyPainFormToNormalized,
-          mergeIntoRaw: mergePainFormIntoRawPatient,
-        },
-        'clinical:infection': {
-          applyToProfile: applyInfectionControlFormToNormalized,
-          mergeIntoRaw: mergeInfectionControlFormIntoRawPatient,
-        },
-        'clinical:diabetes': {
-          applyToProfile: applyInfectionControlFormToNormalized,
-          mergeIntoRaw: mergeInfectionControlFormIntoRawPatient,
-        },
-        'care:sleep': {
-          applyToProfile: applySleepFormToNormalized,
-          mergeIntoRaw: mergeSleepFormIntoRawPatient,
-        },
+        'care:hygiene': mergePersonalHygieneFormIntoRawPatient,
+        'care:bladder': mergeBladderBowelFormIntoRawPatient,
+        'clinical:psychological': mergePsychologicalFormIntoRawPatient,
+        'clinical:pain': mergePainFormIntoRawPatient,
+        'clinical:breathing': mergePainFormIntoRawPatient,
+        'clinical:infection': mergeInfectionControlFormIntoRawPatient,
+        'clinical:diabetes': mergeInfectionControlFormIntoRawPatient,
+        'care:sleep': mergeSleepFormIntoRawPatient,
       };
-      const lifestyleHandler = lifestyleCardHandlers[editingProfileCard];
-
-      if (lifestyleHandler) {
-        setRemotePatient((prev) => lifestyleHandler.applyToProfile(prev, cardEditForm));
-        if (rawPatientApiRef.current && typeof rawPatientApiRef.current === 'object') {
-          rawPatientApiRef.current = lifestyleHandler.mergeIntoRaw(rawPatientApiRef.current, cardEditForm);
-        }
+      const mergeIntoRaw = lifestyleCardHandlers[editingProfileCard];
+      if (mergeIntoRaw && rawPatientApiRef.current && typeof rawPatientApiRef.current === 'object') {
+        rawPatientApiRef.current = mergeIntoRaw(rawPatientApiRef.current, cardEditForm);
       }
 
-      const latestResponse = await apiFetch(`/patients/${patientIdForPatch}`, { method: 'GET', quiet: true });
-      const latestPayload = await latestResponse.json().catch(() => ({}));
-      if (latestResponse.ok) {
-        let latestRawPatient = latestPayload?.patient || latestPayload?.data || latestPayload;
-        if (latestRawPatient && typeof latestRawPatient === 'object') {
-          latestRawPatient = await enrichRawPatientRecord(latestRawPatient, patientIdForPatch);
-          if (lifestyleHandler) {
-            latestRawPatient = lifestyleHandler.mergeIntoRaw(latestRawPatient, cardEditForm);
-          }
-        }
-        rawPatientApiRef.current = latestRawPatient && typeof latestRawPatient === 'object' ? latestRawPatient : null;
-        let hydratedProfile = await hydratePatientProfile(latestRawPatient, patientIdForPatch);
-        if (lifestyleHandler) {
-          hydratedProfile = lifestyleHandler.applyToProfile(hydratedProfile, cardEditForm);
-        }
-        setRemotePatient(hydratedProfile);
-      } else if (lifestyleHandler) {
-        setRemotePatient((prev) => lifestyleHandler.applyToProfile(prev, cardEditForm));
-      }
+      setRemotePatient((prev) => applyCardEditFormToProfile(prev, cardEditForm, editingProfileCard));
 
       cancelProfileCardEdit();
       setProfileUpdateSuccess(successMessage);
@@ -8116,54 +8328,6 @@ export default function PatientProfile() {
     isCardEditing(cardId) && cardSectionError ? (
       <div className="patient-profile-card-edit-error">{cardSectionError}</div>
     ) : null
-  );
-
-  const renderCardTriState = (path) => {
-    const val = getCardEditValue(path);
-    return (
-      <select
-        className="form-select form-control-kh patient-profile-card-edit-field"
-        value={val === true ? 'true' : val === false ? 'false' : 'unset'}
-        onChange={(event) => {
-          const next = event.target.value;
-          setCardEditField(path, next === 'unset' ? null : next === 'true');
-        }}
-      >
-        <option value="unset">No data</option>
-        <option value="true">Yes</option>
-        <option value="false">No</option>
-      </select>
-    );
-  };
-
-  const renderCardBool = (path) => {
-    const val = getCardEditValue(path);
-    return (
-      <select
-        className="form-select form-control-kh patient-profile-card-edit-field"
-        value={val === true ? 'true' : val === false ? 'false' : 'false'}
-        onChange={(event) => setCardEditField(path, event.target.value === 'true')}
-      >
-        <option value="true">Yes</option>
-        <option value="false">No</option>
-      </select>
-    );
-  };
-
-  const renderCardText = (path, type = 'text') => (
-    <input
-      type={type}
-      className="form-control form-control-kh patient-profile-card-edit-field"
-      value={getCardEditValue(path) ?? ''}
-      onChange={(event) => setCardEditField(path, event.target.value)}
-    />
-  );
-
-  const renderCardEditRow = (label, path, kind = 'tristate') => (
-    <div className="patient-profile-card-edit-row">
-      <span>{label}</span>
-      {kind === 'text' ? renderCardText(path) : kind === 'bool' ? renderCardBool(path) : renderCardTriState(path)}
-    </div>
   );
 
   return (
@@ -8821,14 +8985,20 @@ export default function PatientProfile() {
             <Panel title="Communication" icon={<FiUser size={14} />} action={renderProfileCardActions('clinical:communication')}>
               {renderCardSectionError('clinical:communication')}
               {isCardEditing('clinical:communication') ? (
+                <ProfileCardEditForm
+                  cardId="clinical:communication"
+                  initialForm={cardEditSeedRef.current || createPatientUpdateForm(p, effectivePatientId)}
+                  onFormChange={handleCardFormChange}
+                >
                 <div className="patient-profile-card-edit-form">
-                  {renderCardEditRow('Communication Needs', 'communicationStyle.anyCommunicationNeeds', 'bool')}
-                  {renderCardEditRow('Hearing Impairment', 'communicationStyle.anyHearingNeeds', 'bool')}
-                  {renderCardEditRow('Speech Impairment', 'communicationStyle.anySpeechImpairment', 'bool')}
-                  {renderCardEditRow('Visual Impairment', 'communicationStyle.anyVisualImpairment', 'bool')}
-                  {renderCardEditRow('Understanding Issues', 'communicationStyle.anyUnderstandingDifficulties', 'bool')}
-                  {renderCardEditRow('Notes', 'communicationStyle.communicationNotes', 'text')}
+                  <ProfileCardEditRow label="Communication Needs" path="communicationStyle.anyCommunicationNeeds" kind="bool" />
+                  <ProfileCardEditRow label="Hearing Impairment" path="communicationStyle.anyHearingNeeds" kind="bool" />
+                  <ProfileCardEditRow label="Speech Impairment" path="communicationStyle.anySpeechImpairment" kind="bool" />
+                  <ProfileCardEditRow label="Visual Impairment" path="communicationStyle.anyVisualImpairment" kind="bool" />
+                  <ProfileCardEditRow label="Understanding Issues" path="communicationStyle.anyUnderstandingDifficulties" kind="bool" />
+                  <ProfileCardEditRow label="Notes" path="communicationStyle.communicationNotes" kind="text" />
                 </div>
+                </ProfileCardEditForm>
               ) : hasCommunicationData ? (
                 <>
                   <DataRow label="Communication Needs"><YN val={p.communication.needs} /></DataRow>
@@ -8844,9 +9014,15 @@ export default function PatientProfile() {
             <Panel title="Infection Control" icon={<FiShield size={14} />} action={renderProfileCardActions('clinical:infection')}>
               {renderCardSectionError('clinical:infection')}
               {isCardEditing('clinical:infection') ? (
+                <ProfileCardEditForm
+                  cardId="clinical:infection"
+                  initialForm={cardEditSeedRef.current || createPatientUpdateForm(p, effectivePatientId)}
+                  onFormChange={handleCardFormChange}
+                >
                 <div className="patient-profile-card-edit-form">
-                  {renderCardEditRow('Risk Assessment Plan', 'infectionControl.InfectionCarePlanCompletion', 'bool')}
+                  <ProfileCardEditRow label="Risk Assessment Plan" path="infectionControl.InfectionCarePlanCompletion" kind="bool" />
                 </div>
+                </ProfileCardEditForm>
               ) : hasInfectionControlData ? (
                 <>
                   <DataRow label="Risk Assessment Plan"><YN val={p.infection.riskPlan} /></DataRow>
@@ -8857,11 +9033,17 @@ export default function PatientProfile() {
             <Panel title="Diabetes Management" icon={<FiActivity size={14} />} accent={p.diabetes.has ? '#d97706' : undefined} action={renderProfileCardActions('clinical:diabetes')}>
               {renderCardSectionError('clinical:diabetes')}
               {isCardEditing('clinical:diabetes') ? (
+                <ProfileCardEditForm
+                  cardId="clinical:diabetes"
+                  initialForm={cardEditSeedRef.current || createPatientUpdateForm(p, effectivePatientId)}
+                  onFormChange={handleCardFormChange}
+                >
                 <div className="patient-profile-card-edit-form">
-                  {renderCardEditRow('Diabetes Present', 'infectionControl.anyDiabetes', 'bool')}
-                  {renderCardEditRow('Care Plan Active', 'infectionControl.DiabetesCarePlanCompletion', 'bool')}
-                  {renderCardEditRow('Patient Bed Bound', 'infectionControl.isThePatientBedBound', 'bool')}
+                  <ProfileCardEditRow label="Diabetes Present" path="infectionControl.anyDiabetes" kind="bool" />
+                  <ProfileCardEditRow label="Care Plan Active" path="infectionControl.DiabetesCarePlanCompletion" kind="bool" />
+                  <ProfileCardEditRow label="Patient Bed Bound" path="infectionControl.isThePatientBedBound" kind="bool" />
                 </div>
+                </ProfileCardEditForm>
               ) : (hasInfectionControlData || p.diabetes.has !== null) ? (
                 <>
                   <DataRow label="Diabetes Present"><YN val={p.diabetes.has} /></DataRow>
@@ -8874,12 +9056,18 @@ export default function PatientProfile() {
             <Panel title="Breathing" icon={<FiActivity size={14} />} action={renderProfileCardActions('clinical:breathing')}>
               {renderCardSectionError('clinical:breathing')}
               {isCardEditing('clinical:breathing') ? (
+                <ProfileCardEditForm
+                  cardId="clinical:breathing"
+                  initialForm={cardEditSeedRef.current || createPatientUpdateForm(p, effectivePatientId)}
+                  onFormChange={handleCardFormChange}
+                >
                 <div className="patient-profile-card-edit-form">
-                  {renderCardEditRow('Breathing Difficulties', 'breathPain.anyBreathingDifficulties', 'bool')}
-                  {renderCardEditRow('Home O₂ / CPAP', 'breathPain.homeOxygenNeeded', 'bool')}
-                  {renderCardEditRow('Current Smoker', 'breathPain.isSmoker', 'bool')}
-                  {renderCardEditRow('Smoking History', 'breathPain.everSmoked', 'bool')}
+                  <ProfileCardEditRow label="Breathing Difficulties" path="breathPain.anyBreathingDifficulties" kind="bool" />
+                  <ProfileCardEditRow label="Home O₂ / CPAP" path="breathPain.homeOxygenNeeded" kind="bool" />
+                  <ProfileCardEditRow label="Current Smoker" path="breathPain.isSmoker" kind="bool" />
+                  <ProfileCardEditRow label="Smoking History" path="breathPain.everSmoked" kind="bool" />
                 </div>
+                </ProfileCardEditForm>
               ) : hasBreathPainData ? (
                 <>
                   <DataRow label="Breathing Difficulties"><YN val={p.breathing.difficulties} /></DataRow>
@@ -8894,12 +9082,18 @@ export default function PatientProfile() {
             <Panel title="Pain Assessment" icon={<FiAlertTriangle size={14} />} accent={p.pain.present ? painColors[p.pain.score] : undefined} action={renderProfileCardActions('clinical:pain')}>
               {renderCardSectionError('clinical:pain')}
               {isCardEditing('clinical:pain') ? (
+                <ProfileCardEditForm
+                  cardId="clinical:pain"
+                  initialForm={cardEditSeedRef.current || createPatientUpdateForm(p, effectivePatientId)}
+                  onFormChange={handleCardFormChange}
+                >
                 <div className="patient-profile-card-edit-form">
-                  {renderCardEditRow('Pain Present', 'breathPain.painPresent', 'bool')}
-                  {renderCardEditRow('Pain Score (0–3)', 'breathPain.painScore', 'text')}
-                  {renderCardEditRow('Location', 'breathPain.locationOfPain', 'text')}
-                  {renderCardEditRow('Analgesia Prescribed', 'breathPain.anagelsiaPrescribed', 'bool')}
+                  <ProfileCardEditRow label="Pain Present" path="breathPain.painPresent" kind="bool" />
+                  <ProfileCardEditRow label="Pain Score (0–3)" path="breathPain.painScore" kind="text" />
+                  <ProfileCardEditRow label="Location" path="breathPain.locationOfPain" kind="text" />
+                  <ProfileCardEditRow label="Analgesia Prescribed" path="breathPain.anagelsiaPrescribed" kind="bool" />
                 </div>
+                </ProfileCardEditForm>
               ) : hasPainAssessmentData ? (
                 <>
                   <DataRow label="Pain Present"><YN val={p.pain.present} /></DataRow>
@@ -8929,13 +9123,19 @@ export default function PatientProfile() {
             <Panel title="Psychological" icon={<FiShield size={14} />} accent={p.psych.concerns || p.psych.depression || p.psych.anxiety ? '#d97706' : undefined} action={renderProfileCardActions('clinical:psychological')}>
               {renderCardSectionError('clinical:psychological')}
               {isCardEditing('clinical:psychological') ? (
+                <ProfileCardEditForm
+                  cardId="clinical:psychological"
+                  initialForm={cardEditSeedRef.current || createPatientUpdateForm(p, effectivePatientId)}
+                  onFormChange={handleCardFormChange}
+                >
                 <div className="patient-profile-card-edit-form">
-                  {renderCardEditRow('Concerns Flagged', 'hygienePsych.psychologicalNeeds.psychologicalNeeds', 'tristate')}
-                  {renderCardEditRow('Depression', 'hygienePsych.psychologicalNeeds.depressionHistory', 'tristate')}
-                  {renderCardEditRow('Anxiety', 'hygienePsych.psychologicalNeeds.anxietyhistory', 'tristate')}
-                  {renderCardEditRow('Dementia / Delirium', 'hygienePsych.psychologicalNeeds.signDementia', 'tristate')}
-                  {renderCardEditRow('Notes', 'hygienePsych.psychologicalNeeds.psychologicalNotes', 'text')}
+                  <ProfileCardEditRow label="Concerns Flagged" path="hygienePsych.psychologicalNeeds.psychologicalNeeds" kind="tristate" />
+                  <ProfileCardEditRow label="Depression" path="hygienePsych.psychologicalNeeds.depressionHistory" kind="tristate" />
+                  <ProfileCardEditRow label="Anxiety" path="hygienePsych.psychologicalNeeds.anxietyhistory" kind="tristate" />
+                  <ProfileCardEditRow label="Dementia / Delirium" path="hygienePsych.psychologicalNeeds.signDementia" kind="tristate" />
+                  <ProfileCardEditRow label="Notes" path="hygienePsych.psychologicalNeeds.psychologicalNotes" kind="text" />
                 </div>
+                </ProfileCardEditForm>
               ) : hasPsychologicalAssessmentData || hasHygienePsychData ? (
                 <>
                   <DataRow label="Concerns Flagged"><YN val={p.psych.concerns} /></DataRow>
@@ -8952,10 +9152,16 @@ export default function PatientProfile() {
             <Panel title="Skin Integrity" icon={<FiAlertTriangle size={14} />} accent={p.skin.openWounds || p.skin.pressureUlcer ? '#ef4444' : undefined} action={renderProfileCardActions('clinical:skin')}>
               {renderCardSectionError('clinical:skin')}
               {isCardEditing('clinical:skin') ? (
+                <ProfileCardEditForm
+                  cardId="clinical:skin"
+                  initialForm={cardEditSeedRef.current || createPatientUpdateForm(p, effectivePatientId)}
+                  onFormChange={handleCardFormChange}
+                >
                 <div className="patient-profile-card-edit-form">
-                  {renderCardEditRow('Open Wounds', 'skinMobility.skinIntegrity.openWounds', 'bool')}
-                  {renderCardEditRow('Pressure Ulcer', 'skinMobility.skinIntegrity.pressureUlcer', 'bool')}
+                  <ProfileCardEditRow label="Open Wounds" path="skinMobility.skinIntegrity.openWounds" kind="bool" />
+                  <ProfileCardEditRow label="Pressure Ulcer" path="skinMobility.skinIntegrity.pressureUlcer" kind="bool" />
                 </div>
+                </ProfileCardEditForm>
               ) : hasSkinMobilityData ? (
                 <>
                   <DataRow label="Open Wounds"><YN val={p.skin.openWounds} /></DataRow>
@@ -8967,12 +9173,18 @@ export default function PatientProfile() {
             <Panel title="Mobility" icon={<FiUser size={14} />} action={renderProfileCardActions('clinical:mobility')}>
               {renderCardSectionError('clinical:mobility')}
               {isCardEditing('clinical:mobility') ? (
+                <ProfileCardEditForm
+                  cardId="clinical:mobility"
+                  initialForm={cardEditSeedRef.current || createPatientUpdateForm(p, effectivePatientId)}
+                  onFormChange={handleCardFormChange}
+                >
                 <div className="patient-profile-card-edit-form">
-                  {renderCardEditRow('Independently Mobile', 'skinMobility.handlingAssessment.isPatientMobile', 'bool')}
-                  {renderCardEditRow('Move in Bed', 'skinMobility.handlingAssessment.moveInBed', 'bool')}
-                  {renderCardEditRow('Bed to Chair', 'skinMobility.handlingAssessment.mobilityFromBedToChair', 'bool')}
-                  {renderCardEditRow('Transfer to Toilet', 'skinMobility.handlingAssessment.mobilityToWashroom', 'bool')}
+                  <ProfileCardEditRow label="Independently Mobile" path="skinMobility.handlingAssessment.isPatientMobile" kind="bool" />
+                  <ProfileCardEditRow label="Move in Bed" path="skinMobility.handlingAssessment.moveInBed" kind="bool" />
+                  <ProfileCardEditRow label="Bed to Chair" path="skinMobility.handlingAssessment.mobilityFromBedToChair" kind="bool" />
+                  <ProfileCardEditRow label="Transfer to Toilet" path="skinMobility.handlingAssessment.mobilityToWashroom" kind="bool" />
                 </div>
+                </ProfileCardEditForm>
               ) : hasSkinMobilityData ? (
                 <>
                   <DataRow label="Independently Mobile"><YN val={p.mobility.independent} /></DataRow>
@@ -10488,13 +10700,19 @@ export default function PatientProfile() {
             <Panel title="Sleep" icon={<FiClock size={14} />} action={renderProfileCardActions('care:sleep')}>
               {renderCardSectionError('care:sleep')}
               {isCardEditing('care:sleep') ? (
+                <ProfileCardEditForm
+                  cardId="care:sleep"
+                  initialForm={cardEditSeedRef.current || createPatientUpdateForm(p, effectivePatientId)}
+                  onFormChange={handleCardFormChange}
+                >
                 <div className="patient-profile-card-edit-form">
-                  {renderCardEditRow('Gets Up at Night', 'sleepNutrition.sleep.wakeUpAtNight')}
-                  {renderCardEditRow('Night Sedation', 'sleepNutrition.sleep.UseOfNightSedation')}
-                  {renderCardEditRow('Sleeps Well', 'sleepNutrition.sleep.userSleepWell')}
-                  {renderCardEditRow('Wake Time', 'sleepNutrition.sleep.usualTimeToWakeUp', 'text')}
-                  {renderCardEditRow('Best Position', 'sleepNutrition.sleep.bestSleepingPosition', 'text')}
+                  <ProfileCardEditRow label="Gets Up at Night" path="sleepNutrition.sleep.wakeUpAtNight" />
+                  <ProfileCardEditRow label="Night Sedation" path="sleepNutrition.sleep.UseOfNightSedation" />
+                  <ProfileCardEditRow label="Sleeps Well" path="sleepNutrition.sleep.userSleepWell" />
+                  <ProfileCardEditRow label="Wake Time" path="sleepNutrition.sleep.usualTimeToWakeUp" kind="text" />
+                  <ProfileCardEditRow label="Best Position" path="sleepNutrition.sleep.bestSleepingPosition" kind="text" />
                 </div>
+                </ProfileCardEditForm>
               ) : (
                 <>
                   <DataRow label="Gets Up at Night"><YN val={p.sleep.nightWake} /></DataRow>
@@ -10509,14 +10727,20 @@ export default function PatientProfile() {
             <Panel title="Nutrition" icon={<FiHeart size={14} />} action={renderProfileCardActions('care:nutrition')}>
               {renderCardSectionError('care:nutrition')}
               {isCardEditing('care:nutrition') ? (
+                <ProfileCardEditForm
+                  cardId="care:nutrition"
+                  initialForm={cardEditSeedRef.current || createPatientUpdateForm(p, effectivePatientId)}
+                  onFormChange={handleCardFormChange}
+                >
                 <div className="patient-profile-card-edit-form">
-                  {renderCardEditRow('Food Allergies', 'sleepNutrition.nutrition.allergy')}
-                  {renderCardEditRow('Special Diet', 'sleepNutrition.nutrition.specialDiet')}
-                  {renderCardEditRow('Diet Type', 'sleepNutrition.nutrition.dietType', 'text')}
-                  {renderCardEditRow('Eating Assistance', 'sleepNutrition.nutrition.needHelpInEating')}
-                  {renderCardEditRow('Swallowing Issues', 'sleepNutrition.nutrition.swallowingDifficulties')}
-                  {renderCardEditRow('NG Tube', 'sleepNutrition.nutrition.ngTube')}
+                  <ProfileCardEditRow label="Food Allergies" path="sleepNutrition.nutrition.allergy" />
+                  <ProfileCardEditRow label="Special Diet" path="sleepNutrition.nutrition.specialDiet" />
+                  <ProfileCardEditRow label="Diet Type" path="sleepNutrition.nutrition.dietType" kind="text" />
+                  <ProfileCardEditRow label="Eating Assistance" path="sleepNutrition.nutrition.needHelpInEating" />
+                  <ProfileCardEditRow label="Swallowing Issues" path="sleepNutrition.nutrition.swallowingDifficulties" />
+                  <ProfileCardEditRow label="NG Tube" path="sleepNutrition.nutrition.ngTube" />
                 </div>
+                </ProfileCardEditForm>
               ) : (
                 <>
                   <DataRow label="Food Allergies"><YN val={p.nutrition.allergies} /></DataRow>
@@ -10534,11 +10758,17 @@ export default function PatientProfile() {
             <Panel title="Personal Hygiene" icon={<FiCheckCircle size={14} />} action={renderProfileCardActions('care:hygiene')}>
               {renderCardSectionError('care:hygiene')}
               {isCardEditing('care:hygiene') ? (
+                <ProfileCardEditForm
+                  cardId="care:hygiene"
+                  initialForm={cardEditSeedRef.current || createPatientUpdateForm(p, effectivePatientId)}
+                  onFormChange={handleCardFormChange}
+                >
                 <div className="patient-profile-card-edit-form">
-                  {renderCardEditRow('Independent with hygiene needs', 'hygienePsych.personal.hygieneNeeds', 'bool')}
-                  {renderCardEditRow('Mouth-Care Plan', 'hygienePsych.personal.mouthCarePlan', 'bool')}
-                  {renderCardEditRow('Diabetes (Foot Care)', 'hygienePsych.personal.diabeteFoot', 'bool')}
+                  <ProfileCardEditRow label="Independent with hygiene needs" path="hygienePsych.personal.hygieneNeeds" kind="bool" />
+                  <ProfileCardEditRow label="Mouth-Care Plan" path="hygienePsych.personal.mouthCarePlan" kind="bool" />
+                  <ProfileCardEditRow label="Diabetes (Foot Care)" path="hygienePsych.personal.diabeteFoot" kind="bool" />
                 </div>
+                </ProfileCardEditForm>
               ) : (
                 <>
                   <DataRow label="Independent with hygiene needs"><YN val={p.hygiene.independent} /></DataRow>
@@ -10551,12 +10781,18 @@ export default function PatientProfile() {
             <Panel title="Bladder & Bowel" icon={<FiActivity size={14} />} action={renderProfileCardActions('care:bladder')}>
               {renderCardSectionError('care:bladder')}
               {isCardEditing('care:bladder') ? (
+                <ProfileCardEditForm
+                  cardId="care:bladder"
+                  initialForm={cardEditSeedRef.current || createPatientUpdateForm(p, effectivePatientId)}
+                  onFormChange={handleCardFormChange}
+                >
                 <div className="patient-profile-card-edit-form">
-                  {renderCardEditRow('Dysfunction', 'hygienePsych.bladderBowel.bladderDysfunction', 'bool')}
-                  {renderCardEditRow('Catheter care plan', 'hygienePsych.bladderBowel.catheterPlan', 'bool')}
-                  {renderCardEditRow('Catheter details', 'hygienePsych.bladderBowel.catheterDescription', 'text')}
-                  {renderCardEditRow('Incontinent pads', 'hygienePsych.bladderBowel.incontinentPads', 'bool')}
+                  <ProfileCardEditRow label="Dysfunction" path="hygienePsych.bladderBowel.bladderDysfunction" kind="bool" />
+                  <ProfileCardEditRow label="Catheter care plan" path="hygienePsych.bladderBowel.catheterPlan" kind="bool" />
+                  <ProfileCardEditRow label="Catheter details" path="hygienePsych.bladderBowel.catheterDescription" kind="text" />
+                  <ProfileCardEditRow label="Incontinent pads" path="hygienePsych.bladderBowel.incontinentPads" kind="bool" />
                 </div>
+                </ProfileCardEditForm>
               ) : (
                 <>
                   <DataRow label="Dysfunction"><YN val={p.bladder.dysfunction} /></DataRow>
@@ -10572,11 +10808,17 @@ export default function PatientProfile() {
             <Panel title="Physician Contact" icon={<FiPhone size={14} />} action={renderProfileCardActions('care:physician')}>
               {renderCardSectionError('care:physician')}
               {isCardEditing('care:physician') ? (
+                <ProfileCardEditForm
+                  cardId="care:physician"
+                  initialForm={cardEditSeedRef.current || createPatientUpdateForm(p, effectivePatientId)}
+                  onFormChange={handleCardFormChange}
+                >
                 <div className="patient-profile-card-edit-form">
-                  {renderCardEditRow('Doctor', 'nextOfKin.personalDoctor', 'text')}
-                  {renderCardEditRow('Facility', 'nextOfKin.personalDoctorFacility', 'text')}
-                  {renderCardEditRow('Phone', 'nextOfKin.personalDoctorContact', 'text')}
+                  <ProfileCardEditRow label="Doctor" path="nextOfKin.personalDoctor" kind="text" />
+                  <ProfileCardEditRow label="Facility" path="nextOfKin.personalDoctorFacility" kind="text" />
+                  <ProfileCardEditRow label="Phone" path="nextOfKin.personalDoctorContact" kind="text" />
                 </div>
+                </ProfileCardEditForm>
               ) : (
                 <>
                   <DataRow label="Doctor">{p.doctor.name}</DataRow>
@@ -10618,11 +10860,17 @@ export default function PatientProfile() {
             <Panel title="Emergency Contact" icon={<FiAlertTriangle size={14} />} accent="#d97706" action={renderProfileCardActions('care:emergency')}>
               {renderCardSectionError('care:emergency')}
               {isCardEditing('care:emergency') ? (
+                <ProfileCardEditForm
+                  cardId="care:emergency"
+                  initialForm={cardEditSeedRef.current || createPatientUpdateForm(p, effectivePatientId)}
+                  onFormChange={handleCardFormChange}
+                >
                 <div className="patient-profile-card-edit-form">
-                  {renderCardEditRow('Name', 'nextOfKin.fullName', 'text')}
-                  {renderCardEditRow('Relationship', 'nextOfKin.relationship', 'text')}
-                  {renderCardEditRow('Phone', 'nextOfKin.contactOne', 'text')}
+                  <ProfileCardEditRow label="Name" path="nextOfKin.fullName" kind="text" />
+                  <ProfileCardEditRow label="Relationship" path="nextOfKin.relationship" kind="text" />
+                  <ProfileCardEditRow label="Phone" path="nextOfKin.contactOne" kind="text" />
                 </div>
+                </ProfileCardEditForm>
               ) : (
                 <>
                   <DataRow label="Name">{p.emergency.name}</DataRow>

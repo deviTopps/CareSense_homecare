@@ -130,7 +130,7 @@ export default function Billing() {
       const { wallet: apiWallet } = await fetchWallet();
       applyWallet(apiWallet);
       return apiWallet;
-    } catch {
+  } catch {
       if (!silent) {
         applyWallet(readWallet(user));
       }
@@ -293,10 +293,10 @@ export default function Billing() {
                 <p className="billing-order-empty__title">No orders yet</p>
                 <p className="billing-order-empty__text">
                   When you subscribe or make a payment, your invoices will appear here.
-                </p>
-              </div>
-            ) : (
-              <>
+              </p>
+            </div>
+          ) : (
+            <>
                 <div className="billing-order-list" role="table" aria-label="Order history">
                   <div className="billing-order-list__header" role="row">
                     <span role="columnheader">Date</span>
@@ -348,13 +348,13 @@ export default function Billing() {
                 <h2 id="billing-wallet" className="billing-panel__title">Wallet</h2>
                 <p className="billing-panel__desc">Load funds to your wallet to pay for services.</p>
               </div>
-            </div>
+              </div>
 
             <div className="billing-wallet-card">
               <div className="billing-wallet-card__left">
                 <div className="billing-wallet-card__icon" aria-hidden>
                   <FiCreditCard size={20} />
-                </div>
+              </div>
                 <div className="billing-wallet-card__meta">
                   <p className="billing-wallet-card__label">Available balance</p>
                   <p className="billing-wallet-card__balance">
@@ -366,9 +366,9 @@ export default function Billing() {
                 <button type="button" className="billing-btn billing-btn--primary" onClick={openTopUp}>
                   <FiPlus size={14} aria-hidden />
                   Load wallet
-                </button>
-              </div>
-            </div>
+            </button>
+          </div>
+        </div>
 
             <div className="billing-wallet-ledger">
               <div className="billing-wallet-ledger__head">
@@ -379,7 +379,7 @@ export default function Billing() {
                 <ul className="billing-wallet-ledger__list">
                   {wallet.transactions.map((tx) => (
                     <li key={tx.id} className="billing-wallet-ledger__row">
-                      <div>
+                        <div>
                         <div className="billing-wallet-ledger__title">{tx.label || 'Wallet activity'}</div>
                         <div className="billing-wallet-ledger__meta">
                           {new Date(tx.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}{' '}
@@ -396,7 +396,7 @@ export default function Billing() {
                 <div className="billing-wallet-empty">
                   <p className="billing-wallet-empty__title">No wallet activity yet</p>
                   <p className="billing-wallet-empty__text">Load your wallet to start making payments.</p>
-                </div>
+          </div>
               )}
             </div>
           </section>
@@ -497,8 +497,8 @@ export default function Billing() {
                       setTopUpAmount(e.target.value);
                     }}
                     className="billing-modal__input"
-                  />
-                </div>
+          />
+        </div>
                 {topUpError ? <div className="billing-modal__error" role="alert">{topUpError}</div> : null}
                 <div className="billing-modal__helper">
                   {topUpPaymentType === 'paystack'

@@ -491,7 +491,7 @@ export default function Auth({ onLogin }) {
               </button>
 
               <p className="auth-success-page__footnote">
-                Need help getting started? Contact <a href="mailto:support@caresense.io">support@caresense.io</a>
+                Need help getting started? Contact <a href="mailto:service.caresense@gmail.com">service.caresense@gmail.com</a>
               </p>
             </div>
           )}

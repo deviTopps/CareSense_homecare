@@ -43,13 +43,13 @@ export default function LandingPage() {
     localStorage.setItem(
       COOKIE_CONSENT_KEY,
       JSON.stringify({
-        consent,
-        preferences: {
-          analytics: Boolean(preferences?.analytics),
-          marketing: Boolean(preferences?.marketing),
-          necessary: true,
-        },
-        savedAt: new Date().toISOString(),
+      consent,
+      preferences: {
+        analytics: Boolean(preferences?.analytics),
+        marketing: Boolean(preferences?.marketing),
+        necessary: true,
+      },
+      savedAt: new Date().toISOString(),
       }),
     );
     setCookiePrefs({
