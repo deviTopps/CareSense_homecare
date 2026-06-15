@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { FiArrowRight } from '../../icons/hugeicons-feather';
 import { HERO_CONTENT } from '../../data/landingContent';
 
@@ -32,9 +33,9 @@ export default function LandingHero() {
                 <FiArrowRight size={16} strokeWidth={2} aria-hidden />
               </a>
               {secondaryCta ? (
-                <a href={secondaryCta.href} className="cs-btn cs-btn--outline-light cs-hero115__btn">
+                <Link to={secondaryCta.href} className="cs-btn cs-btn--ghost cs-hero115__btn">
                   {secondaryCta.label}
-                </a>
+                </Link>
               ) : null}
             </div>
 

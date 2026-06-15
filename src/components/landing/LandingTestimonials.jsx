@@ -30,6 +30,14 @@ export default function LandingTestimonials() {
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setIndex((i) => (i + 1) % items.length);
+    }, 3000);
+
+    return () => window.clearInterval(timer);
+  }, [items.length]);
+
   const visible = [];
   for (let i = 0; i < visibleCount; i += 1) {
     visible.push(items[(index + i) % items.length]);
@@ -66,6 +74,7 @@ export default function LandingTestimonials() {
       headerAside={nav}
     >
       <div
+        key={index}
         className="cs-testimonials__grid"
         role="region"
         aria-label="Client testimonials"

@@ -18,15 +18,15 @@ export const HERO_CONTENT = {
   title: 'Run your agency with clarity, not chaos',
   titleAccent: 'clarity',
   subtitle:
-    'CareSense unifies patients, nurses, visits, and billing-ready reports into one calm workspace — so your team spends less time on admin and more time on care.',
+    'CareSense unifies patients, nurses, visits, and billing-ready reports into one calm workspace so your team spends less time on admin and more time on care.',
   primaryCta: { label: 'Get started free', href: '/login' },
-  secondaryCta: { label: 'Book a demo', href: LANDING_PHONE_HREF },
+  secondaryCta: { label: 'Book a demo', href: '/book-demo' },
   trustLine: 'No credit card required. Free plan available.',
 };
 
 export const STATS_CONTENT = [
-  { value: '100%', label: 'Workforce control' },
-  { value: '98%', label: 'On-time visit completion' },
+  { value: '81', label: 'Patients managed' },
+  { value: '150', label: 'Nurses onboarded' },
   { value: '40%', label: 'Less admin time' },
   { value: '24/7', label: 'Always-on support' },
 ];
@@ -55,7 +55,7 @@ export const PROBLEM_SOLUTION_CONTENT = {
       'CareSense brings your entire operation into a single, intuitive dashboard. We handle the backend complexity so you can focus on what matters most: delivering exceptional care.',
     cta: { label: 'Get started free', href: '/login' },
     image: {
-      src: '/mockups/HomePage.png',
+      src: '/mockups/02.png',
       alt: 'CareSense dashboard unifying patients, nurses, and visits',
     },
   },
@@ -101,23 +101,23 @@ export const FEATURES_CONTENT = {
     },
     {
       icon: 'schedule',
-      title: 'Smart scheduling',
-      body: 'Assign visits with confidence — see conflicts and coverage at a glance.',
-    },
-    {
-      icon: 'visits',
-      title: 'Visit documentation',
-      body: 'Capture notes and outcomes in the field so back-office work stays light.',
-    },
-    {
-      icon: 'reports',
-      title: 'Billing-ready reports',
-      body: 'Export summaries your billing team can trust, without manual rework.',
+      title: 'Smart & fast scheduling',
+      body: 'Match the right caregiver with the right patient instantly. View real-time availability, manage shift swaps, and reduce travel time with geographic routing.',
     },
     {
       icon: 'security',
-      title: 'Secure & compliant',
-      body: 'Role-based access and audit-friendly records built for regulated care environments.',
+      title: 'Bulletproof compliance & EVV',
+      body: 'Stay audit-ready 24/7. Our built-in Electronic Visit Verification (EVV) tracks locations, timestamps, and care notes securely and effortlessly.',
+    },
+    {
+      icon: 'visits',
+      title: 'Caregiver & client portals',
+      body: 'Keep everyone in the loop. Caregivers can access schedules and log notes on the go, while families get peace of mind through real-time updates.',
+    },
+    {
+      icon: 'reports',
+      title: 'Automated billing & payroll',
+      body: 'Say goodbye to manual tracking. CareSense automatically matches clock-ins to billing codes and payroll hours, cutting your admin time in half.',
     },
   ],
 };
@@ -157,74 +157,94 @@ export const TESTIMONIALS_CONTENT = {
 
 export const PRICING_CONTENT = {
   heading: 'Simple, transparent pricing',
-  description:
-    'Start free and scale as your agency grows. No hidden fees.',
-  plans: [
+  description: 'One plan. No tiers. No hidden fees. Just pay per patient.',
+  perPatient: {
+    price: 'GH₵50',
+    unit: 'per patient / month',
+    description: 'Full platform access for every patient on your roster. Scale up or down as your census changes.',
+    buttonText: 'Get started',
+    buttonUrl: '/login',
+    features: [
+      'Unlimited nurse & staff accounts',
+      'Smart scheduling & geographic routing',
+      'GPS clock-in & Electronic Visit Verification',
+      'Caregiver & family portals',
+      'Visit documentation & care plans',
+      'Automated billing & payroll reports',
+      'Compliance-ready audit trails',
+      'Priority support',
+    ],
+  },
+  setup: {
+    price: 'GH₵5,000',
+    label: 'One-time setup & training',
+    description: 'We configure your agency, import your data, and train your team — so you launch with confidence.',
+    includes: [
+      'Full platform configuration',
+      'Patient & staff data migration',
+      'On-site or virtual team training',
+      'Dedicated onboarding manager',
+    ],
+  },
+  example: {
+    label: 'Example',
+    text: '20 patients = GH₵1,000/month + GH₵5,000 one-time setup',
+  },
+};
+
+export const COMPARISON_CONTENT = {
+  eyebrow: 'The difference',
+  title: 'Why Choose CareSense?',
+  columns: ['Feature', 'The Old Way', 'With CareSense'],
+  rows: [
     {
-      name: 'Starter',
-      monthlyPrice: 'GH₵0',
-      yearlyPrice: 'GH₵0',
-      period: { monthly: 'Per month', yearly: 'Per year' },
-      description: {
-        monthly: 'For small agencies getting started. No credit card required.',
-        yearly: 'For small agencies getting started. No credit card required.',
-      },
-      buttonText: 'Start for free',
-      buttonUrl: '/login',
-      highlighted: false,
-      planCode: 'STARTER',
-      features: [
-        'Up to 25 active patients',
-        '5 nurse accounts',
-        'Visit scheduling & calendar',
-        'Basic visit reports',
-        'Email support',
-      ],
+      feature: 'Scheduling',
+      oldWay: 'Hours of phone tags and spreadsheets',
+      newWay: 'Drag-and-drop matching in seconds',
     },
     {
-      name: 'Standard',
-      monthlyPrice: 'GH₵299',
-      yearlyPrice: 'GH₵2,990',
-      period: { monthly: 'Per month', yearly: 'Per year' },
-      description: {
-        monthly: 'For growing agencies that need more power and visibility.',
-        yearly: 'For growing agencies. Save ~17% with annual billing.',
-      },
-      buttonText: 'Get started',
-      buttonUrl: '/login',
-      highlighted: true,
-      highlightedLabel: 'Most popular',
-      planCode: 'STANDARD',
-      features: [
-        'Unlimited patients',
-        'Unlimited nurse accounts',
-        'GPS clock-in & attendance',
-        'Billing-ready exports',
-        'Priority support',
-      ],
+      feature: 'Field Documentation',
+      oldWay: 'Lost paper charts and delayed notes',
+      newWay: 'Instant, secure updates via the Mobile App',
     },
     {
-      name: 'Premium',
-      monthlyPrice: 'GH₵799',
-      yearlyPrice: 'GH₵7,990',
-      period: { monthly: 'Per month', yearly: 'Per year' },
-      description: {
-        monthly: 'For larger organisations with advanced coordination needs.',
-        yearly: 'For larger organisations. Save ~17% with annual billing.',
-      },
-      buttonText: 'Contact sales',
-      buttonUrl: LANDING_PHONE_HREF,
-      highlighted: false,
-      planCode: 'PREMIUM',
-      features: [
-        'Multi-branch management',
-        'Custom roles & permissions',
-        'API & data integrations',
-        'Dedicated account manager',
-        'SLA-backed support',
-      ],
+      feature: 'Compliance & EVV',
+      oldWay: 'Missing paperwork and audit anxiety',
+      newWay: 'Secure, real-time digital logging',
     },
   ],
+};
+
+export const MOBILE_APP_CONTENT = {
+  eyebrow: 'For Nurses & Caregivers',
+  title: 'The CareSense Nurse & Caregiver App',
+  subtitle: 'Point-of-Care Power, Right in Their Pocket.',
+  description:
+    'Give your field staff the ultimate tool to succeed. Our lightweight, HIPAA-compliant mobile app is custom-built for nurses and caregivers, ensuring they have everything they need to provide top-tier care without the paperwork burden.',
+  features: [
+    {
+      title: 'Offline Care Logging',
+      text: 'Nurses can document care plans, fill out clinical assessments, and capture signatures even in areas with zero cell service. The app syncs automatically once connection is restored.',
+    },
+    {
+      title: 'Instant Schedule & Route Updates',
+      text: 'No more text threads or missed shifts. Caregivers view their daily schedule, receive real-time updates, and get turn-by-turn GPS routing to their next patient.',
+    },
+    {
+      title: 'One-Tap EVV Compliance',
+      text: 'Clocking in and out automatically logs geographic verification and timestamps, completely automating your Electronic Visit Verification mandate.',
+    },
+    {
+      title: 'Secure Shift Notes & Chat',
+      text: 'Nurses can safely log patient vitals, upload secure photo documentation, and chat instantly with the agency office or the care coordination team.',
+    },
+  ],
+  playStore: {
+    href: 'https://play.google.com/store',
+    badgeSrc: GOOGLE_PLAY_BADGE_SRC,
+    label: 'Get it on Google Play',
+  },
+  mockupSrc: NURSE1_MOCKUP_SRC,
 };
 
 export const FINAL_CTA_CONTENT = {

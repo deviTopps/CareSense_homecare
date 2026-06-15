@@ -23,6 +23,7 @@ import WalletSuccess from './pages/WalletSuccess';
 import Auth from './pages/Auth';
 import LandingPage from './pages/LandingPage';
 import Privacy from './pages/Privacy';
+import BookDemo from './pages/BookDemo';
 import { TargetedGuideProvider } from './context/TargetedGuideContext';
 import TargetedGuide from './components/TargetedGuide';
 
@@ -183,6 +184,8 @@ function App() {
       <Route path="/" element={<motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25 }}><LandingPage /></motion.div>} />
 
       <Route path="/privacy" element={<motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25 }}><Privacy /></motion.div>} />
+
+      <Route path="/book-demo" element={<motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25 }}><BookDemo /></motion.div>} />
 
       {/* Protected routes */}
       <Route path="/dashboard" element={

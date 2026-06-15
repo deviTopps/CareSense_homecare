@@ -1,0 +1,259 @@
+.cs-demo {
+  min-height: 100vh;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+}
+
+.cs-demo__header {
+  padding: 20px 32px;
+  border-bottom: 1px solid #eef0f4;
+}
+
+.cs-demo__logo-link {
+  display: inline-block;
+}
+
+.cs-demo__logo {
+  height: 32px;
+  width: auto;
+}
+
+.cs-demo__main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+}
+
+.cs-demo__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: clamp(40px, 6vw, 80px);
+  max-width: 1040px;
+  width: 100%;
+  align-items: center;
+}
+
+.cs-demo__title {
+  margin: 0 0 16px;
+  font-size: clamp(1.75rem, 3.5vw, 2.5rem);
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+  color: #0c1f33;
+}
+
+.cs-demo__subtitle {
+  margin: 0 0 40px;
+  font-size: 1rem;
+  line-height: 1.7;
+  color: #5a6a7a;
+  max-width: 44ch;
+}
+
+.cs-demo__benefits {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.cs-demo__benefit {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.cs-demo__benefit-icon {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: #eef6ff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+}
+
+.cs-demo__benefit strong {
+  display: block;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: #0c1f33;
+  margin-bottom: 2px;
+}
+
+.cs-demo__benefit p {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: #5a6a7a;
+}
+
+.cs-demo__form-wrap {
+  background: #ffffff;
+  border: 1px solid #eef0f4;
+  border-radius: 16px;
+  padding: 36px 32px;
+  box-shadow: 0 8px 32px rgba(12, 31, 51, 0.06);
+}
+
+.cs-demo__form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.cs-demo__form-title {
+  margin: 0 0 4px;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #0c1f33;
+}
+
+.cs-demo__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cs-demo__field label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #0c1f33;
+}
+
+.cs-demo__field input,
+.cs-demo__field select,
+.cs-demo__field textarea {
+  padding: 10px 14px;
+  border: 1px solid #dde2e8;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 0.9375rem;
+  color: #0c1f33;
+  background: #fafbfc;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  outline: none;
+}
+
+.cs-demo__field input:focus,
+.cs-demo__field select:focus,
+.cs-demo__field textarea:focus {
+  border-color: #45b6fe;
+  box-shadow: 0 0 0 3px rgba(69, 182, 254, 0.15);
+  background: #ffffff;
+}
+
+.cs-demo__field input::placeholder,
+.cs-demo__field textarea::placeholder {
+  color: #a0aab4;
+}
+
+.cs-demo__field select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5l3 3 3-3' fill='none' stroke='%235a6a7a' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  padding-right: 36px;
+}
+
+.cs-demo__field textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.cs-demo__submit {
+  width: 100%;
+  padding: 12px 20px;
+  font-size: 1rem;
+  font-weight: 600;
+  margin-top: 4px;
+}
+
+.cs-demo__submit:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.cs-demo__privacy {
+  margin: 0;
+  font-size: 0.75rem;
+  color: #8a96a3;
+  text-align: center;
+}
+
+.cs-demo__privacy a {
+  color: #45b6fe;
+  text-decoration: none;
+}
+
+.cs-demo__privacy a:hover {
+  text-decoration: underline;
+}
+
+/* Success state */
+.cs-demo__success {
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.cs-demo__success-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: #e8f7ee;
+  color: #22c55e;
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-bottom: 20px;
+}
+
+.cs-demo__success h2 {
+  margin: 0 0 12px;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #0c1f33;
+}
+
+.cs-demo__success p {
+  margin: 0 0 28px;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: #5a6a7a;
+  max-width: 36ch;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+@media (max-width: 768px) {
+  .cs-demo__grid {
+    grid-template-columns: 1fr;
+    gap: 32px;
+  }
+
+  .cs-demo__info {
+    text-align: center;
+  }
+
+  .cs-demo__subtitle {
+    max-width: 100%;
+  }
+
+  .cs-demo__benefit {
+    text-align: left;
+  }
+
+  .cs-demo__form-wrap {
+    padding: 28px 20px;
+  }
+
+  .cs-demo__header {
+    padding: 16px 20px;
+  }
+}

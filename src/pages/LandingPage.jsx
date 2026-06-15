@@ -8,7 +8,9 @@ import LandingReasons from '../components/landing/LandingReasons';
 import LandingTestimonials from '../components/landing/LandingTestimonials';
 import LandingPricing from '../components/landing/LandingPricing';
 import LandingFaq from '../components/landing/LandingFaq';
+import LandingComparison from '../components/landing/LandingComparison';
 import LandingCta from '../components/landing/LandingCta';
+import LandingMobileApp from '../components/landing/LandingMobileApp';
 import LandingFinalCta from '../components/landing/LandingFinalCta';
 import LandingFooter from '../components/landing/LandingFooter';
 import LandingCookieBanner, { COOKIE_CONSENT_KEY } from '../components/landing/LandingCookieBanner';
@@ -80,10 +82,11 @@ export default function LandingPage() {
         <LandingProblemSolution />
         <LandingHowItWorks />
         <LandingReasons />
+        <LandingComparison />
         <LandingTestimonials />
         <LandingPricing />
+        <LandingMobileApp />
         <LandingFaq />
-        <LandingCta />
         <LandingFinalCta />
       </main>
 
