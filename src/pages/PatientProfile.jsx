@@ -1495,10 +1495,12 @@ function unwrapSleepNutritionPayload(payload) {
     payload.record,
     payload.result,
     payload.patient?.sleepNutrition,
+    payload.patient,
   ];
 
   for (const node of candidates) {
     if (!node || typeof node !== 'object') continue;
+    if (node.sleepNutrition && typeof node.sleepNutrition === 'object') return node.sleepNutrition;
     if (
       node.sleep
       || node.nutrition
@@ -1562,11 +1564,19 @@ function unwrapHygienePsychologicalPayload(payload) {
     payload.record,
     payload.result,
     payload.patient?.hygienePsychological,
+    payload.patient,
   ];
 
   for (const node of candidates) {
     if (!node || typeof node !== 'object') continue;
     if (node.personal || node.bladderBowel || node.psychologicalNeeds) return node;
+    if (node.hygienePsychological && typeof node.hygienePsychological === 'object') return node.hygienePsychological;
+  }
+
+  const keys = Object.keys(payload);
+  if (keys.length === 1 && typeof payload[keys[0]] === 'object') {
+    const inner = payload[keys[0]];
+    if (inner?.personal || inner?.bladderBowel || inner?.psychologicalNeeds) return inner;
   }
 
   return null;
@@ -1608,8 +1618,6 @@ async function fetchPatientHygienePsychologicalRecord(patientId) {
 
   const paths = [
     `${PATIENT_HYGIENE_PSYCHOLOGICAL_PATH}?patientId=${pid}`,
-    `${PATIENT_HYGIENE_PSYCHOLOGICAL_PATH}/${pid}`,
-    `/patients/${pid}/hygiene-psychological`,
   ];
 
   for (const path of paths) {
@@ -1617,8 +1625,13 @@ async function fetchPatientHygienePsychologicalRecord(patientId) {
       const response = await apiFetch(path, { method: 'GET', quiet: true });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) continue;
+      console.log('[hygienePsych] raw response from', path, JSON.stringify(payload).slice(0, 500));
       const unwrapped = unwrapHygienePsychologicalPayload(payload);
       if (unwrapped) return unwrapped;
+      if (payload && typeof payload === 'object' && Object.keys(payload).length > 0) {
+        console.warn('[hygienePsych] payload received but could not unwrap:', Object.keys(payload));
+        return payload;
+      }
     } catch {
       // try next path
     }
@@ -1849,8 +1862,6 @@ async function fetchPatientInfectionControlRecord(patientId) {
 
   const paths = [
     `${PATIENT_INFECTION_CONTROL_PATH}?patientId=${pid}`,
-    `${PATIENT_INFECTION_CONTROL_PATH}/${pid}`,
-    `/patients/${pid}/infection-control`,
   ];
 
   for (const path of paths) {
@@ -1858,8 +1869,13 @@ async function fetchPatientInfectionControlRecord(patientId) {
       const response = await apiFetch(path, { method: 'GET', quiet: true });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) continue;
+      console.log('[infectionControl] raw response from', path, JSON.stringify(payload).slice(0, 500));
       const unwrapped = unwrapInfectionControlPayload(payload);
       if (unwrapped) return unwrapped;
+      if (payload && typeof payload === 'object' && Object.keys(payload).length > 0) {
+        console.warn('[infectionControl] payload received but could not unwrap:', Object.keys(payload));
+        return payload;
+      }
     } catch {
       // try next path
     }
@@ -2027,8 +2043,6 @@ async function fetchPatientBreathPainRecord(patientId) {
 
   const paths = [
     `${PATIENT_BREATH_PAIN_PATH}?patientId=${pid}`,
-    `${PATIENT_BREATH_PAIN_PATH}/${pid}`,
-    `/patients/${pid}/breath-pain`,
   ];
 
   for (const path of paths) {
@@ -2036,8 +2050,13 @@ async function fetchPatientBreathPainRecord(patientId) {
       const response = await apiFetch(path, { method: 'GET', quiet: true });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) continue;
+      console.log('[breathPain] raw response from', path, JSON.stringify(payload).slice(0, 500));
       const unwrapped = unwrapBreathPainPayload(payload);
       if (unwrapped) return unwrapped;
+      if (payload && typeof payload === 'object' && Object.keys(payload).length > 0) {
+        console.warn('[breathPain] payload received but could not unwrap:', Object.keys(payload));
+        return payload;
+      }
     } catch {
       // try next path
     }
@@ -2428,8 +2447,6 @@ async function fetchPatientSleepNutritionRecord(patientId) {
 
   const paths = [
     `/patients/sleep-nutrition?patientId=${pid}`,
-    `/patients/sleep-nutrition/${pid}`,
-    `/patients/${pid}/sleep-nutrition`,
   ];
 
   for (const path of paths) {
@@ -2437,8 +2454,13 @@ async function fetchPatientSleepNutritionRecord(patientId) {
       const response = await apiFetch(path, { method: 'GET', quiet: true });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) continue;
+      console.log('[sleepNutrition] raw response from', path, JSON.stringify(payload).slice(0, 500));
       const unwrapped = unwrapSleepNutritionPayload(payload);
       if (unwrapped) return unwrapped;
+      if (payload && typeof payload === 'object' && Object.keys(payload).length > 0) {
+        console.warn('[sleepNutrition] payload received but could not unwrap:', Object.keys(payload));
+        return payload;
+      }
     } catch {
       // try next path
     }
@@ -2478,8 +2500,6 @@ async function fetchPatientInitialVitalsRecord(patientId) {
 
   const paths = [
     `/patients/initial-vitals?patientId=${pid}`,
-    `/patients/initial-vitals/${pid}`,
-    `/patients/${pid}/initial-vitals`,
   ];
 
   for (const path of paths) {
@@ -2487,8 +2507,13 @@ async function fetchPatientInitialVitalsRecord(patientId) {
       const response = await apiFetch(path, { method: 'GET', quiet: true });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) continue;
+      console.log('[initialVitals] raw response from', path, JSON.stringify(payload).slice(0, 500));
       const unwrapped = unwrapInitialVitalsPayload(payload);
       if (unwrapped) return unwrapped;
+      if (payload && typeof payload === 'object' && Object.keys(payload).length > 0) {
+        console.warn('[initialVitals] payload received but could not unwrap:', Object.keys(payload));
+        return payload;
+      }
     } catch {
       // try next path
     }
@@ -2536,11 +2561,27 @@ function collectAdmissionMedicationTextSources(rawPatient, patientIdValue) {
   return unique;
 }
 
+function sectionAlreadyLoaded(rawPatient, key, requiredFields) {
+  const section = rawPatient?.[key];
+  if (!section || typeof section !== 'object') return false;
+  return requiredFields.some((f) => section[f] != null);
+}
+
 async function enrichRawPatientRecord(rawPatient, patientId) {
   if (!rawPatient || typeof rawPatient !== 'object') return rawPatient;
 
   let merged = rawPatient;
   const idCandidates = collectSleepNutritionLookupIds(rawPatient, patientId);
+
+  const hasHygiene = sectionAlreadyLoaded(rawPatient, 'hygienePsychological', ['personal', 'bladderBowel', 'psychologicalNeeds']);
+  const hasSleep = sectionAlreadyLoaded(rawPatient, 'sleepNutrition', ['sleep', 'nutrition']);
+  const hasBreath = sectionAlreadyLoaded(rawPatient, 'breathPain', ['breathing', 'pain', 'breathingAssessment']);
+  const hasInfection = sectionAlreadyLoaded(rawPatient, 'infectionControl', ['mrsa', 'infectionRisk', 'hepatitis']);
+  const hasVitals = sectionAlreadyLoaded(rawPatient, 'initialVitals', ['bloodPressure', 'bloodSugar', 'currentMedications']);
+
+  if (hasHygiene && hasSleep && hasBreath && hasInfection && hasVitals) {
+    return rawPatient;
+  }
 
   for (const pid of idCandidates) {
     const [
@@ -2550,11 +2591,11 @@ async function enrichRawPatientRecord(rawPatient, patientId) {
       infectionControl,
       initialVitals,
     ] = await Promise.all([
-      fetchPatientHygienePsychologicalRecord(pid),
-      fetchPatientSleepNutritionRecord(pid),
-      fetchPatientBreathPainRecord(pid),
-      fetchPatientInfectionControlRecord(pid),
-      fetchPatientInitialVitalsRecord(pid),
+      hasHygiene ? null : fetchPatientHygienePsychologicalRecord(pid).catch(() => null),
+      hasSleep ? null : fetchPatientSleepNutritionRecord(pid).catch(() => null),
+      null,
+      null,
+      null,
     ]);
 
     let candidate = merged;
@@ -7945,6 +7986,10 @@ export default function PatientProfile() {
     setAvatarImageError(false);
   }, [avatarSrc]);
 
+  const handleCardFormChange = useCallback((form) => {
+    activeCardFormRef.current = form;
+  }, []);
+
   if (profileLoading && !p) {
     return (
       <div className="page-wrapper patient-profile-page patient-profile-page--loading">
@@ -8202,10 +8247,6 @@ export default function PatientProfile() {
       </select>
     </div>
   );
-
-  const handleCardFormChange = useCallback((form) => {
-    activeCardFormRef.current = form;
-  }, []);
 
   const startProfileCardEdit = (cardId) => {
     if (!p) return;

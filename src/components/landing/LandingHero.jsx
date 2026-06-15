@@ -2,7 +2,7 @@ import { FiArrowRight } from '../../icons/hugeicons-feather';
 import { HERO_CONTENT } from '../../data/landingContent';
 
 export default function LandingHero() {
-  const { badge, title, titleAccent, subtitle, primaryCta } = HERO_CONTENT;
+  const { badge, title, titleAccent, subtitle, primaryCta, secondaryCta, trustLine } = HERO_CONTENT;
   const titleParts = title.split(titleAccent);
 
   return (
@@ -16,16 +16,12 @@ export default function LandingHero() {
       <div className="cs-container cs-hero115__container">
         <div className="cs-hero115__stack">
           <div className="cs-hero115__copy">
-            <div className="cs-hero115__rings" aria-hidden>
-              <div className="cs-hero115__rings-inner">
-                <div className="cs-hero115__rings-core" />
-              </div>
-            </div>
+            {badge ? <span className="cs-hero115__badge">{badge}</span> : null}
 
             <h1 id="hero-title" className="cs-hero115__title">
               {titleParts[0]}
               <span className="cs-hero115__title-accent">{titleAccent}</span>
-              {titleParts[1]}
+              {titleParts[1] || ''}
             </h1>
 
             <p className="cs-hero115__description">{subtitle}</p>
@@ -35,8 +31,14 @@ export default function LandingHero() {
                 {primaryCta.label}
                 <FiArrowRight size={16} strokeWidth={2} aria-hidden />
               </a>
-              {badge ? <p className="cs-hero115__byline">{badge}</p> : null}
+              {secondaryCta ? (
+                <a href={secondaryCta.href} className="cs-btn cs-btn--outline-light cs-hero115__btn">
+                  {secondaryCta.label}
+                </a>
+              ) : null}
             </div>
+
+            {trustLine ? <p className="cs-hero115__trust">{trustLine}</p> : null}
           </div>
 
           <img

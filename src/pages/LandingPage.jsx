@@ -2,11 +2,14 @@ import { useEffect, useState } from 'react';
 import LandingHeader from '../components/landing/LandingHeader';
 import LandingHero from '../components/landing/LandingHero';
 import LandingStats from '../components/landing/LandingStats';
+import LandingProblemSolution from '../components/landing/LandingProblemSolution';
+import LandingHowItWorks from '../components/landing/LandingHowItWorks';
 import LandingReasons from '../components/landing/LandingReasons';
 import LandingTestimonials from '../components/landing/LandingTestimonials';
 import LandingPricing from '../components/landing/LandingPricing';
 import LandingFaq from '../components/landing/LandingFaq';
 import LandingCta from '../components/landing/LandingCta';
+import LandingFinalCta from '../components/landing/LandingFinalCta';
 import LandingFooter from '../components/landing/LandingFooter';
 import LandingCookieBanner, { COOKIE_CONSENT_KEY } from '../components/landing/LandingCookieBanner';
 import './LandingPage.css';
@@ -74,11 +77,14 @@ export default function LandingPage() {
       </div>
 
       <main id="main-content" className="cs-page-main" tabIndex={-1}>
+        <LandingProblemSolution />
+        <LandingHowItWorks />
         <LandingReasons />
-        <LandingPricing />
         <LandingTestimonials />
+        <LandingPricing />
         <LandingFaq />
         <LandingCta />
+        <LandingFinalCta />
       </main>
 
       <LandingFooter />

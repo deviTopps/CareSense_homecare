@@ -1,4 +1,4 @@
-import { APP_STORE_BADGE_SRC, GOOGLE_PLAY_BADGE_SRC, NURSE1_MOCKUP_SRC } from '../constants/brandAssets';
+import { APP_STORE_BADGE_SRC, GOOGLE_PLAY_BADGE_SRC, NURSE1_MOCKUP_SRC, PO_IMAGE_SRC } from '../constants/brandAssets';
 
 /** Landing page copy, navigation, and section metadata */
 
@@ -18,44 +18,91 @@ export const HERO_CONTENT = {
   title: 'Run your agency with clarity, not chaos',
   titleAccent: 'clarity',
   subtitle:
-    'CareSense brings patients, nurses, visits, and billing-ready reports into one calm workspace built for homecare teams.',
+    'CareSense unifies patients, nurses, visits, and billing-ready reports into one calm workspace — so your team spends less time on admin and more time on care.',
   primaryCta: { label: 'Get started free', href: '/login' },
   secondaryCta: { label: 'Book a demo', href: LANDING_PHONE_HREF },
-  bullets: [
-    'Patient & nurse management in one place',
-    'Scheduling and visit tracking that teams actually use',
-    'Reports ready for billing and compliance',
-  ],
-  floatCard: { label: 'Visits this week', value: '1,240+', trend: '+12%' },
+  trustLine: 'No credit card required. Free plan available.',
 };
 
 export const STATS_CONTENT = [
   { value: '100%', label: 'Workforce control' },
   { value: '98%', label: 'On-time visit completion' },
-  { value: '40%', label: 'Less admin time on reports' },
-  { value: '24/7', label: 'Support when you need it' },
+  { value: '40%', label: 'Less admin time' },
+  { value: '24/7', label: 'Always-on support' },
 ];
+
+export const TRUSTED_BY = {
+  label: 'Trusted by leading care organisations',
+};
+
+export const PROBLEM_SOLUTION_CONTENT = {
+  eyebrow: 'Why CareSense',
+  title: 'The Problem & Our Solution',
+  lead: 'Running an agency is complex. Managing it shouldn\'t be.',
+  problem: {
+    label: 'The problem',
+    body:
+      'As a care agency leader, you juggle compliance, staff turnover, and chaotic scheduling every day. When administrative hurdles take up your time, patient care takes a backseat.',
+    cta: { label: 'See how we help', href: '#features' },
+    image: {
+      src: PO_IMAGE_SRC,
+      alt: 'Healthcare professionals reviewing patient records together',
+    },
+  },
+  solution: {
+    label: 'Our solution',
+    body:
+      'CareSense brings your entire operation into a single, intuitive dashboard. We handle the backend complexity so you can focus on what matters most: delivering exceptional care.',
+    cta: { label: 'Get started free', href: '/login' },
+    image: {
+      src: '/mockups/HomePage.png',
+      alt: 'CareSense dashboard unifying patients, nurses, and visits',
+    },
+  },
+};
+
+export const HOW_IT_WORKS_CONTENT = {
+  eyebrow: 'How it works',
+  title: 'Up and running in three simple steps',
+  steps: [
+    {
+      number: '01',
+      title: 'Set up your agency',
+      body: 'Create your account, add your agency details, and configure your care regions in minutes.',
+    },
+    {
+      number: '02',
+      title: 'Onboard your team',
+      body: 'Invite nurses, assign roles, and upload credentials. Your workforce is organised from day one.',
+    },
+    {
+      number: '03',
+      title: 'Manage & deliver care',
+      body: 'Schedule visits, track attendance, document outcomes, and generate billing-ready reports — all in one place.',
+    },
+  ],
+};
 
 export const FEATURES_CONTENT = {
   eyebrow: 'Platform',
-  title: 'Everything your homecare team needs, connected',
+  title: 'Everything your homecare team needs',
   subtitle:
     'Replace scattered spreadsheets and phone calls with workflows designed for nurses, coordinators, and billing.',
   items: [
     {
       icon: 'patients',
       title: 'Patient management',
-      body: 'Central profiles, care plans, and history so every visit starts with full context.',
+      body: 'Central profiles, care plans, and clinical history so every visit starts with full context.',
     },
     {
       icon: 'nurses',
       title: 'Workforce & credentials',
-      body: 'Track nurses, skills, and availability without juggling multiple tools.',
+      body: 'Track nurses, qualifications, and availability without juggling multiple tools.',
     },
     {
       icon: 'schedule',
       title: 'Smart scheduling',
-      body: 'Assign visits with confidence—see conflicts and coverage at a glance.',
+      body: 'Assign visits with confidence — see conflicts and coverage at a glance.',
     },
     {
       icon: 'visits',
@@ -70,7 +117,7 @@ export const FEATURES_CONTENT = {
     {
       icon: 'security',
       title: 'Secure & compliant',
-      body: 'Role-based access and audit-friendly records built for regulated care.',
+      body: 'Role-based access and audit-friendly records built for regulated care environments.',
     },
   ],
 };
@@ -78,7 +125,7 @@ export const FEATURES_CONTENT = {
 export const REASONS_CONTENT = FEATURES_CONTENT;
 
 export const TESTIMONIALS_CONTENT = {
-  eyebrow: 'Customer stories',
+  eyebrow: 'What customers say',
   title: 'Trusted by homecare leaders',
   items: [
     {
@@ -103,27 +150,24 @@ export const TESTIMONIALS_CONTENT = {
       name: 'Marcus Adeyemi',
       role: 'Operations Lead',
       quote:
-        'From onboarding to reporting, everything feels built for real homecare teams—not generic hospital software.',
+        'From onboarding to reporting, everything feels built for real homecare teams — not generic hospital software.',
     },
   ],
 };
 
 export const PRICING_CONTENT = {
-  heading: 'Simple pricing plans',
+  heading: 'Simple, transparent pricing',
   description:
-    'Choose the plan that fits your agency. Start free and scale as your team grows.',
+    'Start free and scale as your agency grows. No hidden fees.',
   plans: [
     {
       name: 'Starter',
       monthlyPrice: 'GH₵0',
       yearlyPrice: 'GH₵0',
-      period: {
-        monthly: 'Per month',
-        yearly: 'Per year',
-      },
+      period: { monthly: 'Per month', yearly: 'Per year' },
       description: {
-        monthly: 'Ideal for small agencies getting started. No credit card required.',
-        yearly: 'Ideal for small agencies getting started. No credit card required.',
+        monthly: 'For small agencies getting started. No credit card required.',
+        yearly: 'For small agencies getting started. No credit card required.',
       },
       buttonText: 'Start for free',
       buttonUrl: '/login',
@@ -141,13 +185,10 @@ export const PRICING_CONTENT = {
       name: 'Standard',
       monthlyPrice: 'GH₵299',
       yearlyPrice: 'GH₵2,990',
-      period: {
-        monthly: 'Per month',
-        yearly: 'Per year',
-      },
+      period: { monthly: 'Per month', yearly: 'Per year' },
       description: {
         monthly: 'For growing agencies that need more power and visibility.',
-        yearly: 'For growing agencies. Save about 17% compared to monthly billing.',
+        yearly: 'For growing agencies. Save ~17% with annual billing.',
       },
       buttonText: 'Get started',
       buttonUrl: '/login',
@@ -166,13 +207,10 @@ export const PRICING_CONTENT = {
       name: 'Premium',
       monthlyPrice: 'GH₵799',
       yearlyPrice: 'GH₵7,990',
-      period: {
-        monthly: 'Per month',
-        yearly: 'Per year',
-      },
+      period: { monthly: 'Per month', yearly: 'Per year' },
       description: {
-        monthly: 'For larger organizations with advanced coordination needs.',
-        yearly: 'For larger organizations. Save about 17% compared to monthly billing.',
+        monthly: 'For larger organisations with advanced coordination needs.',
+        yearly: 'For larger organisations. Save ~17% with annual billing.',
       },
       buttonText: 'Contact sales',
       buttonUrl: LANDING_PHONE_HREF,
@@ -187,6 +225,13 @@ export const PRICING_CONTENT = {
       ],
     },
   ],
+};
+
+export const FINAL_CTA_CONTENT = {
+  title: 'Ready to transform your homecare operations?',
+  subtitle: 'Join agencies already using CareSense to deliver better care with less admin.',
+  primaryCta: { label: 'Get started free', href: '/login' },
+  secondaryCta: { label: 'Talk to sales', href: LANDING_PHONE_HREF },
 };
 
 export const CTA_CONTENT = {
