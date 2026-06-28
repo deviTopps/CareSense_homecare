@@ -19,6 +19,7 @@ import {
   isFallbackAlertId,
   patientInitials,
 } from '../utils/alertMapping';
+import CaseAttachedImageSection from './CaseAttachedImageSection';
 import './DashboardAlertModal.css';
 
 const RESOLUTION_SOLUTIONS = [
@@ -192,6 +193,8 @@ export default function DashboardAlertModal({ alert, onClose, onResolved, onUnau
               <p>{alert.diagnosis}</p>
             </section>
           )}
+
+          <CaseAttachedImageSection attachment={alert.attachedImage} />
 
           {vitalsEntries.length > 0 && (
             <section className="db2-alert-modal__section">

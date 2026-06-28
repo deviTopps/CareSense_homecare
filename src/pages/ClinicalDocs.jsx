@@ -9,6 +9,8 @@ import {
   fetchAllResolvedAlerts,
   fetchAlertsOptionalPath,
 } from '../utils/alerts';
+import { extractCaseImageAttachment } from '../utils/alertMapping';
+import CaseAttachedImageSection from '../components/CaseAttachedImageSection';
 import {
   FiAlertCircle, FiAlertTriangle, FiCheckCircle, FiClock, FiX, FiSearch,
   FiChevronLeft, FiChevronRight, FiChevronsLeft, FiChevronsRight,
@@ -462,6 +464,7 @@ function mapFlatResolvedVitalToCase(raw, index) {
     activities: [],
     vitals,
     medications: [],
+    attachedImage: extractCaseImageAttachment(raw),
     resolution: {
       resolvedBy: resolvedByStr || '—',
       resolvedDate: formatAlertDate(raw.resolvedAt) || formatAlertDate(raw.updatedAt),
@@ -554,6 +557,7 @@ function mapAlertToCase(raw, index) {
     activities: normalizeActivities(activitiesRaw),
     vitals: normalizeVitals(vitalsRaw),
     medications: normalizeMedications(medsRaw),
+    attachedImage: extractCaseImageAttachment(a),
     resolution,
   };
 }
@@ -1435,6 +1439,12 @@ export default function ClinicalDocs() {
                     {selected.diagnosis?.trim() ? selected.diagnosis : 'No diagnosis on file for this alert.'}
                   </p>
                 </section>
+
+                {selected.attachedImage ? (
+                  <section className="emergency-case-modal__section emergency-case-modal__section--image">
+                    <CaseAttachedImageSection attachment={selected.attachedImage} />
+                  </section>
+                ) : null}
 
                 <section className="emergency-case-modal__section">
                   <h3 className="emergency-case-modal__section-title">

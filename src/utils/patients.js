@@ -8,6 +8,11 @@ export function isUuidV4ish(value) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '').trim());
 }
 
+/** Relaxed UUID check (any version) for billing and patient routes. */
+export function isPatientUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || '').trim());
+}
+
 /**
  * Patient id for PATCH/POST bodies (`patientId` field).
  * Backend accepts MongoDB `_id` (24 hex) or patient uuid — not registration numbers.

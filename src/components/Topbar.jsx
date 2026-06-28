@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { useLocation, NavLink } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { FiSearch, FiBell, FiMenu, FiLogOut, FiShield, FiHelpCircle, FiSettings, FiMessageCircle } from '../icons/hugeicons-feather';
+import { FiSearch, FiMenu, FiLogOut, FiShield, FiHelpCircle, FiSettings, FiMessageCircle } from '../icons/hugeicons-feather';
+import TopbarNotifications from './TopbarNotifications';
 import { useTargetedGuide } from '../context/TargetedGuideContext';
 import { isTargetedGuideDismissed } from '../context/TargetedGuideContext';
 
@@ -34,6 +35,8 @@ const pageMeta = {
   '/patients':   { title: 'Patients',                sub: 'Enrolment & records' },
   '/enquiries': { title: 'Enquiries', sub: '' },
   '/reports':   { title: 'Reports',                 sub: 'Generated medical reports' },
+  '/finance':   { title: 'Finance',                 sub: 'Patient billing rates and invoice creation' },
+  '/invoices-payments': { title: 'Invoices & payments', sub: 'Manage invoices, record payments, and track collections' },
   '/billing':   { title: 'Billing',                 sub: 'Manage billing information and view receipts' },
   '/account':   { title: 'Settings',                sub: 'Account and preferences' },
 };
@@ -93,15 +96,7 @@ export default function Topbar({ onToggleSidebar, onLogout, user }) {
           <input type="text" placeholder="Search..." className="input input-bordered input-sm" />
         </div>
 
-        <motion.button
-          className="topbar-icon-btn"
-          whileHover={{ scale: 1.04 }}
-          whileTap={{ scale: 0.98 }}
-          style={{ position: 'relative' }}
-        >
-          <FiBell size={18} />
-          <span className="badge-dot"></span>
-        </motion.button>
+        <TopbarNotifications />
 
         <NavLink
           to="/enquiries"

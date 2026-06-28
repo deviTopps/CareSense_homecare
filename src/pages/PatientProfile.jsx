@@ -23,12 +23,14 @@ import {
   extractApiPatientId,
   extractMongoObjectId,
   isLikelyMongoObjectId,
+  isPatientUuid,
   isUuidV4ish,
   resolveMongoIdFromCandidates,
   resolvePatientMutationId,
 } from '../utils/patients';
 import { TablePageLoaderPanel } from '../components/TablePageLoader';
 import PatientBillingTab from '../components/PatientBillingTab';
+import { resolvePatientBillingRouteId } from '../utils/patientBilling';
 import { invalidateMedicalReportsCache } from '../utils/medicalReports';
 import { findAdmissionDraftForPatient } from '../utils/admissionDrafts';
 import { ADMISSION_SECTION_COUNT } from '../utils/admissionResume';
@@ -44,6 +46,8 @@ import {
   listRecentIsoDates,
   parseDailyChecklistResponsePayload,
 } from '../utils/carePlanChecklist';
+import { extractIncidentImages } from '../utils/alertMapping';
+import IncidentImagesSection from '../components/IncidentImagesSection';
 import './PatientProfile.css';
 
 const DEFAULT_PROFILE_PLACEHOLDER = '/images/default-profile-avatar.svg';
@@ -385,17 +389,17 @@ const FlagItem = ({ label, detail }) => (
 );
 
 const TABS = [
-  { key: 'chart', label: 'General', icon: <FiGrid size={14} /> },
-  { key: 'assignednurses', label: 'Assigned Nurses' },
+  { key: 'chart', label: 'General' },
+  { key: 'assignednurses', label: 'Nurses' },
   { key: 'medications', label: 'Medications' },
   { key: 'clinical', label: 'Clinical' },
   { key: 'vitals', label: 'Vitals' },
-  { key: 'care', label: 'Lifestyle records' },
-  { key: 'notes', label: 'Nurse Note' },
-  { key: 'incidents', label: 'Incident Report' },
-  { key: 'careplan', label: 'Care Plan' },
+  { key: 'care', label: 'Lifestyle' },
+  { key: 'notes', label: 'Notes' },
+  { key: 'incidents', label: 'Incidents' },
+  { key: 'careplan', label: 'Care plan' },
   { key: 'billing', label: 'Billing' },
-  { key: 'checkliststatus', label: 'Daily care', icon: <FiBarChart2 size={14} /> },
+  { key: 'checkliststatus', label: 'Daily care' },
 ];
 
 const Panel = ({ title, icon, accent, children, action, variant = 'default', bodyClassName = '' }) => {
@@ -1010,7 +1014,11 @@ function normalizePatientProfile(rawPatient, fallbackId) {
 
   return {
     id: rawPatient?.registrationNumber || rawPatient?.regNo || apiPatientId || fallbackId || '',
-    patientId: mutationPatientId || apiPatientId,
+    patientId: apiPatientId || mutationPatientId,
+    uuid: rawPatient?.uuid || rawPatient?.patientUuid || rawPatient?.patientUUID
+      || (isPatientUuid(apiPatientId) ? apiPatientId : '')
+      || (isPatientUuid(mutationPatientId) ? mutationPatientId : '')
+      || (isPatientUuid(rawPatient?.id) ? String(rawPatient.id).trim() : ''),
     recordMongoId,
     agencyId: resolveAgencyId(rawPatient),
     name: fullName || '',
@@ -4480,6 +4488,10 @@ function normalizeIncident(rawIncident, fallback = {}) {
       || ''
     ).trim(),
     timestamp: raw?.createdAt || raw?.recordedAt || raw?.updatedAt || fallback?.timestamp || '',
+    images: (() => {
+      const parsed = extractIncidentImages(raw);
+      return parsed.length ? parsed : (Array.isArray(fallback?.images) ? fallback.images : []);
+    })(),
   };
 }
 
@@ -4489,6 +4501,33 @@ function sortIncidents(items) {
     const right = new Date(`${b.date || '1970-01-01'}T${b.time || '00:00'}`);
     return right - left;
   });
+}
+
+function appendIncidentImagesToPayload(payload, images) {
+  const refs = (images || [])
+    .map((img) => ({
+      mediaId: String(img?.mediaId || '').trim() || undefined,
+      objectKey: String(img?.objectKey || '').trim() || undefined,
+      url: String(img?.url || '').trim() || undefined,
+    }))
+    .filter((img) => img.mediaId || img.objectKey || img.url);
+  if (!refs.length) return payload;
+  return {
+    ...payload,
+    images: refs,
+    attachments: refs,
+    mediaIds: refs.map((ref) => ref.mediaId).filter(Boolean),
+  };
+}
+
+function incidentImagesFromFormState(images) {
+  return (images || [])
+    .map((img) => ({
+      url: img.url || img.previewUrl || null,
+      mediaId: img.mediaId || null,
+      objectKey: img.objectKey || null,
+    }))
+    .filter((img) => img.url || img.mediaId || img.objectKey);
 }
 
 function isPatientDeactivatedStatus(status) {
@@ -4666,6 +4705,7 @@ export default function PatientProfile() {
   /** Incremented after each profile fetch attempt so meds/care-plan loads run after patient payload exists. */
   const [patientApiSyncVersion, setPatientApiSyncVersion] = useState(0);
   const [remotePatient, setRemotePatient] = useState(null);
+  const [apiPatientRaw, setApiPatientRaw] = useState(null);
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileError, setProfileError] = useState('');
   const [photoUploading, setPhotoUploading] = useState(false);
@@ -4680,6 +4720,7 @@ export default function PatientProfile() {
   const [assigningProfileNurseId, setAssigningProfileNurseId] = useState('');
   const [pendingRemoveAssignedNurse, setPendingRemoveAssignedNurse] = useState(null);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
+  const [showTopbarMenu, setShowTopbarMenu] = useState(false);
   const [savingProfileUpdate, setSavingProfileUpdate] = useState(false);
   const [profileUpdateError, setProfileUpdateError] = useState('');
   const [profileUpdateSuccess, setProfileUpdateSuccess] = useState('');
@@ -4732,6 +4773,7 @@ export default function PatientProfile() {
     setProfileLoading(true);
     setProfileError('');
     rawPatientApiRef.current = null;
+    setApiPatientRaw(null);
     try {
       const response = await apiFetch(`/patients/${effectivePatientId}`, { method: 'GET' });
       let data = {};
@@ -4751,16 +4793,17 @@ export default function PatientProfile() {
       }
 
       rawPatientApiRef.current = rawPatient;
+      setApiPatientRaw(rawPatient);
       const apiPatientId = extractApiPatientId(rawPatient);
       const mutationPatientId = resolvePatientMutationId(rawPatient, effectivePatientId);
-      const profileId = mutationPatientId || apiPatientId || effectivePatientId;
+      const profileId = apiPatientId || mutationPatientId || effectivePatientId;
 
       setRemotePatient(buildQuickPatientProfile(rawPatient, profileId));
       setProfileLoading(false);
       setPatientApiSyncVersion((n) => n + 1);
 
       const routeId = String(effectivePatientId || '').trim();
-      const canonicalRouteId = mutationPatientId || apiPatientId;
+      const canonicalRouteId = apiPatientId || mutationPatientId;
       if (canonicalRouteId && canonicalRouteId !== routeId) {
         navigate(`/patients/${encodeURIComponent(canonicalRouteId)}`, { replace: true });
       }
@@ -4769,6 +4812,7 @@ export default function PatientProfile() {
         try {
           const enrichedPatient = await enrichRawPatientRecord(rawPatient, effectivePatientId);
           rawPatientApiRef.current = enrichedPatient;
+          setApiPatientRaw(enrichedPatient);
           const hydratedProfile = await hydratePatientProfile(enrichedPatient, profileId);
           setRemotePatient(hydratedProfile);
           setPatientApiSyncVersion((n) => n + 1);
@@ -4779,6 +4823,7 @@ export default function PatientProfile() {
     } catch (error) {
       setProfileError(error?.message || 'Unable to load patient profile.');
       rawPatientApiRef.current = null;
+      setApiPatientRaw(null);
       setProfileLoading(false);
     }
   }, [effectivePatientId, navigate]);
@@ -6070,9 +6115,18 @@ export default function PatientProfile() {
   const [incidentDeleteModalError, setIncidentDeleteModalError] = useState('');
   const [updatingIncidentStatusId, setUpdatingIncidentStatusId] = useState(null);
   const [editingIncidentId, setEditingIncidentId] = useState(null);
+  const [incidentFormImages, setIncidentFormImages] = useState([]);
+  const [uploadingIncidentImages, setUploadingIncidentImages] = useState(false);
+  const incidentImageInputRef = useRef(null);
 
   const resetIncidentForm = () => {
     setEditingIncidentId(null);
+    setIncidentFormImages((prev) => {
+      prev.forEach((img) => {
+        if (img.previewUrl?.startsWith('blob:')) URL.revokeObjectURL(img.previewUrl);
+      });
+      return [];
+    });
     setIncidentForm({
       date: new Date().toISOString().slice(0, 10), time: new Date().toTimeString().slice(0, 5),
       reportedBy: String(currentUserName || '').trim(),
@@ -6081,6 +6135,63 @@ export default function PatientProfile() {
       physicianNotified: false, familyNotified: false,
     });
     setIncidentSaveError('');
+  };
+
+  const setIncidentFormImagesFromIncident = (inc) => {
+    setIncidentFormImages((prev) => {
+      prev.forEach((img) => {
+        if (img.previewUrl?.startsWith('blob:')) URL.revokeObjectURL(img.previewUrl);
+      });
+      return (inc?.images || []).map((attachment, index) => ({
+        id: `existing-${index}-${attachment.mediaId || attachment.objectKey || attachment.url || index}`,
+        url: attachment.url || '',
+        mediaId: attachment.mediaId || '',
+        objectKey: attachment.objectKey || '',
+        previewUrl: attachment.url || '',
+      }));
+    });
+  };
+
+  const handleIncidentImageSelect = async (event) => {
+    const files = Array.from(event.target.files || []);
+    event.target.value = '';
+    if (!files.length || uploadingIncidentImages) return;
+
+    setUploadingIncidentImages(true);
+    setIncidentSaveError('');
+    try {
+      for (const file of files) {
+        if (!file.type.startsWith('image/')) {
+          setIncidentSaveError('Only image files can be attached.');
+          continue;
+        }
+        const compressed = await compressImage(file, { maxWidth: 1600, maxHeight: 1600, quality: 0.85 });
+        const previewUrl = URL.createObjectURL(compressed);
+        const { objectKey, mediaId } = await uploadFileViaBackend(compressed);
+        setIncidentFormImages((prev) => [
+          ...prev,
+          {
+            id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            mediaId,
+            objectKey,
+            previewUrl,
+            url: '',
+          },
+        ]);
+      }
+    } catch (error) {
+      setIncidentSaveError(error?.message || 'Unable to upload photo.');
+    } finally {
+      setUploadingIncidentImages(false);
+    }
+  };
+
+  const removeIncidentFormImage = (imageId) => {
+    setIncidentFormImages((prev) => {
+      const target = prev.find((img) => img.id === imageId);
+      if (target?.previewUrl?.startsWith('blob:')) URL.revokeObjectURL(target.previewUrl);
+      return prev.filter((img) => img.id !== imageId);
+    });
   };
 
   const loadIncidents = useCallback(async () => {
@@ -6214,7 +6325,7 @@ export default function PatientProfile() {
       return;
     }
 
-    const apiPayload = {
+    const apiPayload = appendIncidentImagesToPayload({
       nurseId: reportingNurseId,
       patientId: String(effectivePatientId || '').trim(),
       date: incidentDateToApi(incidentForm.date),
@@ -6228,7 +6339,7 @@ export default function PatientProfile() {
       followUpPlan: incidentForm.followUp || '',
       physicianNotified: Boolean(incidentForm.physicianNotified),
       familyNotified: Boolean(incidentForm.familyNotified),
-    };
+    }, incidentFormImages);
 
     setSavingIncident(true);
     setIncidentSaveError('');
@@ -6278,6 +6389,7 @@ export default function PatientProfile() {
           familyNotified: incidentForm.familyNotified,
           reportedBy: reporterFallback,
           status: 'open',
+          images: incidentImagesFromFormState(incidentFormImages),
         }
       );
 
@@ -6343,7 +6455,7 @@ export default function PatientProfile() {
     const currentInc = incidents.find((i) => String(i.id) === incidentId);
     const statusPayload = incidentStatusToApi(currentInc?.status ?? 'open');
 
-    const apiPayload = {
+    const apiPayload = appendIncidentImagesToPayload({
       nurseId: reportingNurseId,
       patientId: String(effectivePatientId || '').trim(),
       date: incidentDateToApi(incidentForm.date),
@@ -6358,7 +6470,7 @@ export default function PatientProfile() {
       physicianNotified: Boolean(incidentForm.physicianNotified),
       familyNotified: Boolean(incidentForm.familyNotified),
       status: statusPayload,
-    };
+    }, incidentFormImages);
 
     setSavingIncident(true);
     setIncidentSaveError('');
@@ -6408,6 +6520,7 @@ export default function PatientProfile() {
           familyNotified: incidentForm.familyNotified,
           reportedBy: reporterFallback,
           status: currentInc?.status ?? 'open',
+          images: incidentImagesFromFormState(incidentFormImages),
         }
       );
 
@@ -7799,6 +7912,16 @@ export default function PatientProfile() {
     return candidateIds.includes(String(patientId || ''));
   });
   const p = remotePatient || localPatient;
+  const billingPatientId = useMemo(
+    () => resolvePatientBillingRouteId(effectivePatientId, apiPatientRaw || remotePatient),
+    [effectivePatientId, apiPatientRaw, remotePatient],
+  );
+  const billingPatientRecord = useMemo(
+    () => (apiPatientRaw && remotePatient
+      ? { ...remotePatient, ...apiPatientRaw }
+      : (apiPatientRaw || remotePatient)),
+    [apiPatientRaw, remotePatient],
+  );
   const isPatientDeactivated = isPatientDeactivatedStatus(p?.status);
   const assignedNursesForProfile = Array.isArray(p?.assignedNurses) ? p.assignedNurses : [];
   const nurseNotesDirectory = useMemo(
@@ -7940,6 +8063,17 @@ export default function PatientProfile() {
 
     return () => window.clearTimeout(timer);
   }, [vitalSaveSuccess]);
+
+  useEffect(() => {
+    if (!showTopbarMenu) return undefined;
+    const onPointerDown = (event) => {
+      if (!event.target.closest('.pp-pharm-topbar-menu')) {
+        setShowTopbarMenu(false);
+      }
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, [showTopbarMenu]);
 
   useEffect(() => {
     if (!carePlanSaveSuccess) return undefined;
@@ -8111,19 +8245,6 @@ export default function PatientProfile() {
     || (completedAdmissionSections > 0 && completedAdmissionSections < ADMISSION_SECTION_COUNT),
   );
   const admissionResumeProgress = admissionDraft?.completedTabs?.length || completedAdmissionSections;
-  const patientProfileDetails = [
-    { label: 'Patient ID', value: p.id || '—' },
-    { label: 'Date of Birth', value: p.dob || '—' },
-    { label: 'Phone', value: p.phone || '—' },
-    { label: 'Address', value: p.address || '—' },
-    { label: 'Primary Nurse', value: p.nurse || '—' },
-    { label: 'Physician', value: p.doctor?.name || '—' },
-  ];
-  const patientHighlights = [
-    `Emergency contact: ${p.emergency?.name || '—'}${p.emergency?.relationship ? ` (${p.emergency.relationship})` : ''}`,
-    `Clinical focus: ${p.diagnosis || 'No diagnosis recorded'}`,
-    `Latest vitals update: ${latestVitalSummary}`,
-  ];
   const patientSnapshotItems = [
     { label: 'Registration No.', value: p.regNo || '—' },
     { label: 'Region', value: p.region || '—' },
@@ -8156,13 +8277,6 @@ export default function PatientProfile() {
       status: latestVitalRecord ? 'Updated' : hasInitialVitalsData ? 'On file' : 'No data',
     },
   ];
-  const patientNameParts = (() => {
-    const full = String(p.name || '').trim();
-    if (!full) return { first: '—', last: '—' };
-    const parts = full.split(/\s+/);
-    if (parts.length === 1) return { first: parts[0], last: '—' };
-    return { first: parts.slice(0, -1).join(' '), last: parts[parts.length - 1] };
-  })();
   const sidebarAllergies = (() => {
     const rows = [];
     if (p.nutrition?.allergies) {
@@ -8177,18 +8291,6 @@ export default function PatientProfile() {
       rows.push({ label: 'No allergies recorded', severity: null, tone: 'none' });
     }
     return rows;
-  })();
-  const sidebarLanguage = String(p.region || p.cultural || 'English').split('—')[0].trim().slice(0, 24) || 'English';
-  const sidebarHeightDisplay = String(p.sectionInitialVitals?.height || p.sectionInitialVitals?.Height || '').trim() || '—';
-  const sidebarNotesPreview = (() => {
-    const raw = String(filteredNotes[0]?.content || '')
-      .replace(/<br\s*\/?>/gi, ', ')
-      .replace(/<[^>]+>/g, '')
-      .replace(/\s+/g, ' ')
-      .trim();
-    if (raw) return raw.length > 280 ? `${raw.slice(0, 280)}…` : raw;
-    if (String(p.diagnosis || '').trim()) return String(p.diagnosis).trim();
-    return 'No notes yet.';
   })();
 
   const handlePrimaryAction = () => {
@@ -8371,25 +8473,162 @@ export default function PatientProfile() {
     ) : null
   );
 
+  const activeProfileToast = (() => {
+    if (showProfileSaveAlert && profileUpdateSuccess) {
+      return {
+        title: 'Changes saved',
+        message: profileUpdateSuccess,
+        onDismiss: () => {
+          setShowProfileSaveAlert(false);
+          setProfileUpdateSuccess('');
+        },
+      };
+    }
+    if (showMedicationSaveAlert && medicationSaveSuccess) {
+      return {
+        title: 'Medication saved',
+        message: medicationSaveSuccess,
+        onDismiss: () => {
+          setShowMedicationSaveAlert(false);
+          setMedicationSaveSuccess('');
+        },
+      };
+    }
+    if (showVitalSaveAlert && vitalSaveSuccess) {
+      return {
+        title: 'Vital recorded',
+        message: vitalSaveSuccess,
+        onDismiss: () => {
+          setShowVitalSaveAlert(false);
+          setVitalSaveSuccess('');
+        },
+      };
+    }
+    if (showDeactivateSuccessAlert && deactivateSuccess) {
+      return {
+        title: deactivateSuccess.toLowerCase().includes('reactivat') ? 'Patient reactivated' : 'Patient deactivated',
+        message: deactivateSuccess,
+        onDismiss: () => setShowDeactivateSuccessAlert(false),
+      };
+    }
+    if (carePlanSaveSuccess) {
+      return {
+        title: 'Care plan updated',
+        message: carePlanSaveSuccess,
+        onDismiss: () => setCarePlanSaveSuccess(''),
+      };
+    }
+    return null;
+  })();
+
+  const renderMedicationCard = (med, { variant = 'full' } = {}) => {
+    const isExisting = med.source === 'existing';
+    const hasReminder = Array.isArray(med?.reminders?.times) && med.reminders.times.length > 0;
+    const reminderTargets = med.reminders
+      ? [med.reminders.notifyNurse && 'Nurse', med.reminders.notifyPatient && 'Patient'].filter(Boolean)
+      : [];
+    const startDate = normalizeMedicationDateForInput(med.startDate);
+    const endDate = normalizeMedicationDateForInput(med.endDate);
+    const doseLine = [med.dosage, med.route].filter((v) => v && v !== '—').join(' · ') || '—';
+    const durationLine = startDate || endDate
+      ? `${startDate || '—'} – ${endDate || 'Ongoing'}`
+      : null;
+    const reminderLine = hasReminder
+      ? `${med.reminders.times.join(', ')}${reminderTargets.length ? ` · ${reminderTargets.join(', ')}` : ''}`
+      : null;
+
+    if (variant === 'compact') {
+      return (
+        <article key={med.id} className="patient-med-card patient-med-card--compact">
+          <div className="patient-med-card__compact-row">
+            <span className="patient-med-card__freq">{med.frequency || '—'}</span>
+            <span className="patient-med-card__name">{med.drug}</span>
+            {hasReminder && <span className="patient-med-card__reminder-dot" title="Reminder set" />}
+          </div>
+          <p className="patient-med-card__dose">{doseLine}</p>
+        </article>
+      );
+    }
+
+    return (
+      <article key={med.id} className="patient-med-card">
+        <div className="patient-med-card__rail" aria-hidden />
+        <div className="patient-med-card__body">
+          <div className="patient-med-card__row">
+            <div className="patient-med-card__primary">
+              <span className="patient-med-card__freq">{med.frequency || '—'}</span>
+              <span className="patient-med-card__name">{med.drug}</span>
+              {doseLine !== '—' && <span className="patient-med-card__dose">{doseLine}</span>}
+            </div>
+            <span className={`patient-med-card__status${isExisting ? ' patient-med-card__status--record' : ''}`}>
+              {isExisting ? 'On record' : 'Active'}
+            </span>
+          </div>
+
+          {(durationLine || reminderLine || med.notes) && (
+            <p className="patient-med-card__meta">
+              {[
+                durationLine && `Duration: ${durationLine}`,
+                hasReminder ? `Reminder: ${reminderLine}` : 'Reminder: Not set',
+                med.notes && `Notes: ${med.notes}`,
+              ].filter(Boolean).join(' · ')}
+            </p>
+          )}
+
+          <footer className="patient-med-card__footer">
+            <div className="patient-med-card__actions">
+              {!isExisting && !hasReminder && (
+                <button
+                  type="button"
+                  className="patient-med-card__action"
+                  onClick={() => {
+                    setShowReminderForm(med.id);
+                    setReminderForm(createMedicationReminderState(med));
+                  }}
+                >
+                  Set reminder
+                </button>
+              )}
+              {!isExisting && (
+                <button
+                  type="button"
+                  className="patient-med-card__action"
+                  onClick={() => openMedicationEditor(med)}
+                >
+                  Edit
+                </button>
+              )}
+              <button
+                type="button"
+                className="patient-med-card__action patient-med-card__action--danger"
+                onClick={() => setConfirmDelete({
+                  type: isExisting ? 'existing' : 'added',
+                  id: isExisting ? med.originalIndex : med.id,
+                  name: med.drug,
+                })}
+              >
+                Remove
+              </button>
+            </div>
+          </footer>
+        </div>
+      </article>
+    );
+  };
+
   return (
     <motion.div className="page-wrapper nurse-profile-page patient-profile-page" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.24 }}>
-      {showProfileSaveAlert && (
+      {activeProfileToast && (
         <div className="patient-profile-save-alert" role="status" aria-live="polite">
-          <div className="patient-profile-save-alert__icon">
-            <FiCheckCircle size={18} />
-          </div>
           <div className="patient-profile-save-alert__content">
-            <strong>Changes saved</strong>
-            <span>{profileUpdateSuccess}</span>
+            <strong>{activeProfileToast.title}</strong>
+            <span>{activeProfileToast.message}</span>
           </div>
           <button
             type="button"
             className="patient-profile-save-alert__close"
-            onClick={() => {
-              setShowProfileSaveAlert(false);
-              setProfileUpdateSuccess('');
-            }}
-            aria-label="Dismiss save alert"
+            onClick={activeProfileToast.onDismiss}
+            aria-label="Dismiss notification"
           >
             <FiX size={16} />
           </button>
@@ -8413,99 +8652,6 @@ export default function PatientProfile() {
           </button>
         </div>
       )}
-      {showMedicationSaveAlert && (
-        <div className="patient-profile-save-alert" role="status" aria-live="polite" style={{ top: showProfileSaveAlert ? 92 : 24 }}>
-          <div className="patient-profile-save-alert__icon">
-            <FiCheckCircle size={18} />
-          </div>
-          <div className="patient-profile-save-alert__content">
-            <strong>Medication added</strong>
-            <span>{medicationSaveSuccess}</span>
-          </div>
-          <button
-            type="button"
-            className="patient-profile-save-alert__close"
-            onClick={() => {
-              setShowMedicationSaveAlert(false);
-              setMedicationSaveSuccess('');
-            }}
-            aria-label="Dismiss medication save alert"
-          >
-            <FiX size={16} />
-          </button>
-        </div>
-      )}
-      {showVitalSaveAlert && (
-        <div className="patient-profile-save-alert" role="status" aria-live="polite" style={{ top: `${24 + (showProfileSaveAlert ? 68 : 0) + (showMedicationSaveAlert ? 68 : 0)}px` }}>
-          <div className="patient-profile-save-alert__icon">
-            <FiCheckCircle size={18} />
-          </div>
-          <div className="patient-profile-save-alert__content">
-            <strong>Vital recorded</strong>
-            <span>{vitalSaveSuccess}</span>
-          </div>
-          <button
-            type="button"
-            className="patient-profile-save-alert__close"
-            onClick={() => {
-              setShowVitalSaveAlert(false);
-              setVitalSaveSuccess('');
-            }}
-            aria-label="Dismiss vital save alert"
-          >
-            <FiX size={16} />
-          </button>
-        </div>
-      )}
-      {showDeactivateSuccessAlert && (
-        <div className="patient-profile-save-alert" role="status" aria-live="polite">
-          <div className="patient-profile-save-alert__icon">
-            <FiCheckCircle size={18} />
-          </div>
-          <div className="patient-profile-save-alert__content">
-            <strong>{deactivateSuccess.toLowerCase().includes('reactivat') ? 'Patient Reactivated' : 'Patient Deactivated'}</strong>
-            <span>{deactivateSuccess}</span>
-          </div>
-          <button
-            type="button"
-            className="patient-profile-save-alert__close"
-            onClick={() => setShowDeactivateSuccessAlert(false)}
-            aria-label="Dismiss deactivate alert"
-          >
-            <FiX size={16} />
-          </button>
-        </div>
-      )}
-      {carePlanSaveSuccess && (
-        <div
-          className="patient-profile-save-alert"
-          role="status"
-          aria-live="polite"
-          style={{
-            top: `${24
-              + (showProfileSaveAlert ? 68 : 0)
-              + (showMedicationSaveAlert ? 68 : 0)
-              + (showVitalSaveAlert ? 68 : 0)
-              + (showDeactivateSuccessAlert ? 68 : 0)}px`,
-          }}
-        >
-          <div className="patient-profile-save-alert__icon">
-            <FiCheckCircle size={18} />
-          </div>
-          <div className="patient-profile-save-alert__content">
-            <strong>Care plan item added</strong>
-            <span>{carePlanSaveSuccess}</span>
-          </div>
-          <button
-            type="button"
-            className="patient-profile-save-alert__close"
-            onClick={() => setCarePlanSaveSuccess('')}
-            aria-label="Dismiss care plan save alert"
-          >
-            <FiX size={16} />
-          </button>
-        </div>
-      )}
       <div className="nurse-profile-shell">
         <input type="file" accept="image/*" ref={fileRef} onChange={handlePhoto} style={{ display: 'none' }} />
         <div className="nurse-profile-topbar pp-pharm-topbar">
@@ -8524,9 +8670,6 @@ export default function PatientProfile() {
             </div>
           </div>
           <div className="pp-pharm-topbar__actions">
-            <button type="button" className="pp-pharm-btn-yellow pp-pharm-btn-yellow--secondary" onClick={handleGenerateReport}>
-              Generate Report
-            </button>
             <button
               type="button"
               className="pp-pharm-btn-yellow"
@@ -8534,44 +8677,69 @@ export default function PatientProfile() {
             >
               Edit profile
             </button>
-            <button
-              type="button"
-              className="pp-pharm-btn-yellow pp-pharm-btn-yellow--danger"
-              title="Report patient death"
-              onClick={() => setShowReportDeathModal(true)}
-            >
-              Report Death
-            </button>
-            {isPatientDeactivated ? (
+            <div className="pp-pharm-topbar-menu">
               <button
                 type="button"
-                className="pp-pharm-btn-yellow pp-pharm-btn-yellow--secondary"
-                title="Reactivate patient"
-                onClick={() => {
-                  setPatientStatusConfirmError('');
-                  setPatientStatusConfirm({ action: 'reactivate' });
-                }}
-                disabled={deactivatingPatient}
+                className="pp-pharm-btn-yellow pp-pharm-btn-yellow--secondary pp-pharm-topbar-menu__trigger"
+                onClick={() => setShowTopbarMenu((open) => !open)}
+                aria-expanded={showTopbarMenu}
+                aria-haspopup="menu"
               >
-                Reactivate
+                More
               </button>
-            ) : (
-              <button
-                type="button"
-                className="pp-pharm-btn-yellow pp-pharm-btn-yellow--danger"
-                title="Deactivate patient"
-                onClick={() => {
-                  setPatientStatusConfirmError('');
-                  setPatientStatusConfirm({ action: 'deactivate' });
-                }}
-                disabled={deactivatingPatient}
-              >
-                Deactivate
-              </button>
-            )}
-            <button type="button" className="pp-pharm-icon-quiet" title="Refresh profile" onClick={loadPatientProfile}>
-              <FiRefreshCw size={16} />
-            </button>
+              {showTopbarMenu && (
+                <div className="pp-pharm-topbar-menu__panel" role="menu">
+                  <button type="button" role="menuitem" onClick={() => { setShowTopbarMenu(false); handleGenerateReport(); }}>
+                    Generate report
+                  </button>
+                  {p.phone && (
+                    <button type="button" role="menuitem" onClick={() => { setShowTopbarMenu(false); handlePrimaryAction(); }}>
+                      Call patient
+                    </button>
+                  )}
+                  <button type="button" role="menuitem" onClick={() => { setShowTopbarMenu(false); loadPatientProfile(); }}>
+                    Refresh profile
+                  </button>
+                  <hr />
+                  {isPatientDeactivated ? (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setShowTopbarMenu(false);
+                        setPatientStatusConfirmError('');
+                        setPatientStatusConfirm({ action: 'reactivate' });
+                      }}
+                      disabled={deactivatingPatient}
+                    >
+                      Reactivate patient
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="is-danger"
+                      onClick={() => {
+                        setShowTopbarMenu(false);
+                        setPatientStatusConfirmError('');
+                        setPatientStatusConfirm({ action: 'deactivate' });
+                      }}
+                      disabled={deactivatingPatient}
+                    >
+                      Deactivate patient
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="is-danger"
+                    onClick={() => { setShowTopbarMenu(false); setShowReportDeathModal(true); }}
+                  >
+                    Report death
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -8595,14 +8763,12 @@ export default function PatientProfile() {
                   />
                 </div>
                 <div className="pp-pharm-side-profile__body">
-                  <h2 className="pp-pharm-side-profile__name">{p.name}</h2>
                   <div className={`pp-pharm-side-profile__status${patientStatusClass}`}>{patientStatusLabel}</div>
                   {p.regNo && <p className="pp-pharm-side-profile__reg">Reg. {p.regNo}</p>}
                   <dl className="pp-pharm-side-profile__facts">
                     <div><dt>Gender</dt><dd>{p.gender || '—'}</dd></div>
                     <div><dt>Age</dt><dd>{p.age != null && p.age !== '' ? p.age : '—'}</dd></div>
-                    <div><dt>Address</dt><dd>{p.address || '—'}</dd></div>
-                    <div><dt>Height</dt><dd>{sidebarHeightDisplay}</dd></div>
+                    <div><dt>Phone</dt><dd>{p.phone || '—'}</dd></div>
                   </dl>
                   {(photoUploading || photoUploadSuccess || photoUploadError) && (
                     <div className={`pp-pharm-side-profile__photo-msg${photoUploadError ? ' is-error' : ''}${photoUploadSuccess ? ' is-success' : ''}`}>
@@ -8643,27 +8809,7 @@ export default function PatientProfile() {
                 ))}
               </ul>
               <button type="button" className="pp-pharm-side-muted-link" onClick={() => setTab('clinical')}>
-                + Add allergy
-              </button>
-            </div>
-
-            <div className="pp-pharm-side-card">
-              <div className="pp-pharm-side-card__title">Notes</div>
-              <p className="pp-pharm-side-notes">{sidebarNotesPreview}</p>
-              <button type="button" className="pp-pharm-side-muted-link" onClick={() => handleProfileTabChange('notes')}>
-                Open Nurse Note
-              </button>
-            </div>
-
-            <div className="pp-pharm-side-quick">
-              <button type="button" className="pp-pharm-side-quick__btn" onClick={() => handleProfileTabChange('vitals')}>
-                <FiActivity size={14} /> Vitals
-              </button>
-              <button type="button" className="pp-pharm-side-quick__btn" onClick={() => handleProfileTabChange('medications')}>
-                <FiFileText size={14} /> Medications
-              </button>
-              <button type="button" className="pp-pharm-side-quick__btn" onClick={handlePrimaryAction}>
-                <FiPhone size={14} /> Call
+                Manage in Clinical
               </button>
             </div>
           </aside>
@@ -8674,18 +8820,9 @@ export default function PatientProfile() {
           <div className="nurse-profile-tabs pp-pharm-tabs">
             {TABS.map((item) => (
               <button key={item.key} type="button" onClick={() => handleProfileTabChange(item.key)} className={`nurse-profile-tab${tab === item.key || (item.key === 'vitals' && showVitalsMegaModal) || (item.key === 'notes' && showNotesMegaModal) || (item.key === 'incidents' && showIncidentsMegaModal) || (item.key === 'medications' && showMedicationsMegaModal) ? ' active' : ''}`}>
-                {item.icon}
                 {item.label}
               </button>
             ))}
-            <button
-              type="button"
-              className="nurse-profile-tab pp-pharm-tab-plus"
-              title="Edit profile"
-              onClick={() => setShowUpdateModal(true)}
-            >
-              <FiPlus size={14} />
-            </button>
           </div>
           </div>
 
@@ -8698,95 +8835,56 @@ export default function PatientProfile() {
             <div className="pp-pharm-panel">
               <div className="pp-pharm-panel__section-title">Personal details</div>
               <div className="pp-pharm-personal-grid">
-                <div><span className="pp-pharm-field-label">Last name</span><span className="pp-pharm-field-value">{patientNameParts.last}</span></div>
-                <div><span className="pp-pharm-field-label">First name</span><span className="pp-pharm-field-value">{patientNameParts.first}</span></div>
-                <div><span className="pp-pharm-field-label">Salutation</span><span className="pp-pharm-field-value">—</span></div>
-                <div><span className="pp-pharm-field-label">Birthdate</span><span className="pp-pharm-field-value">{p.dob || '—'}</span></div>
-                <div className="pp-pharm-personal-grid__wide"><span className="pp-pharm-field-label">Address</span><span className="pp-pharm-field-value">{p.address || '—'}</span></div>
+                <div><span className="pp-pharm-field-label">Name</span><span className="pp-pharm-field-value">{p.name || '—'}</span></div>
+                <div><span className="pp-pharm-field-label">Date of birth</span><span className="pp-pharm-field-value">{p.dob || '—'}</span></div>
                 <div><span className="pp-pharm-field-label">Phone</span><span className="pp-pharm-field-value">{p.phone || '—'}</span></div>
                 <div><span className="pp-pharm-field-label">Email</span><span className="pp-pharm-field-value">{p.email || '—'}</span></div>
-              </div>
-
-              <div className="pp-pharm-panel__section-title pp-pharm-panel__section-title--mt">Care routing</div>
-              <div className="pp-pharm-faux-selects">
-                <div><span className="pp-pharm-faux-label">Delivery type</span><div className="pp-pharm-faux-select">Home visit (default)</div></div>
-                <div><span className="pp-pharm-faux-label">Home address</span><div className="pp-pharm-faux-select">{p.address || p.region || p.gps || '—'}</div></div>
-                <div><span className="pp-pharm-faux-label">Risk level</span><div className="pp-pharm-faux-select">{flags[0]?.label || 'Standard'}</div></div>
-                <div><span className="pp-pharm-faux-label">Service line 1</span><div className="pp-pharm-faux-select">{p.nurse ? 'Assigned RN' : 'Unassigned'}</div></div>
-                <div><span className="pp-pharm-faux-label">Service line 2</span><div className="pp-pharm-faux-select">{String(p.diagnosis || 'General care').slice(0, 42)}{String(p.diagnosis || '').length > 42 ? '…' : ''}</div></div>
-              </div>
-              <div className="pp-pharm-inline-meta">
-                <span className="pp-pharm-inline-meta__label">Handbook</span>
-                <span className="pp-pharm-inline-meta__value">{p.handbookGiven ? 'On file' : 'Not recorded'}</span>
-              </div>
-              <div className="pp-pharm-check-row">
-                <label className="pp-pharm-check"><input type="checkbox" readOnly checked={Boolean(p.handbookGiven)} /> Cultural preferences documented</label>
-                <label className="pp-pharm-check"><input type="checkbox" readOnly checked={hasNextOfKinData} /> Emergency contacts verified</label>
-                <label className="pp-pharm-check"><input type="checkbox" readOnly checked={Boolean(p.doctor?.name)} /> Physician on file</label>
+                <div className="pp-pharm-personal-grid__wide"><span className="pp-pharm-field-label">Address</span><span className="pp-pharm-field-value">{p.address || '—'}</span></div>
+                <div><span className="pp-pharm-field-label">Diagnosis</span><span className="pp-pharm-field-value">{p.diagnosis || '—'}</span></div>
+                <div><span className="pp-pharm-field-label">Primary nurse</span><span className="pp-pharm-field-value">{p.nurse || '—'}</span></div>
               </div>
             </div>
 
-            <div className="pp-pharm-panel pp-pharm-panel--table">
+            <div className="pp-pharm-panel pp-pharm-panel--compact">
               <div className="pp-pharm-used-head">
-                <h3 className="pp-pharm-used-title">Used drugs</h3>
+                <h3 className="pp-pharm-used-title">Medications</h3>
                 <button type="button" className="pp-pharm-used-add" onClick={() => handleProfileTabChange('medications')}>
-                  <FiPlus size={14} /> Add drug
+                  Manage all
                 </button>
               </div>
-              <div className="pp-pharm-table-wrap">
-                <table className="pp-pharm-used-table">
-                  <thead>
-                    <tr>
-                      <th>Brand name</th>
-                      <th>Generic name</th>
-                      <th>Strength</th>
-                      <th>Pack</th>
-                      <th>Form</th>
-                      <th>Care team notes</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {activeMedicationRecords.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="pp-pharm-used-table__empty">No medications on file — add from Medications.</td>
-                      </tr>
-                    ) : activeMedicationRecords.map((med, idx) => (
-                      <tr key={`${med.drug}-${idx}`}>
-                        <td><strong>{med.drug || '—'}</strong></td>
-                        <td>—</td>
-                        <td>{med.dosage && med.dosage !== '—' ? med.dosage : '—'}</td>
-                        <td>—</td>
-                        <td>{med.route || '—'}</td>
-                        <td className="pp-pharm-used-table__notes">{med.frequency && med.frequency !== '—' ? med.frequency : (med.notes || '—')}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              {activeMedicationRecords.length === 0 ? (
+                <p className="pp-pharm-panel__hint">No medications on file.</p>
+              ) : (
+                <>
+                  <div className="patient-med-card-grid patient-med-card-grid--profile">
+                    {activeMedicationRecords.slice(0, 4).map((med) => renderMedicationCard(med, { variant: 'compact' }))}
+                  </div>
+                  {activeMedicationRecords.length > 4 && (
+                    <p className="pp-pharm-panel__hint">
+                      +{activeMedicationRecords.length - 4} more — open Medications to view all.
+                    </p>
+                  )}
+                </>
+              )}
             </div>
           </div>
 
           <div className="nurse-profile-overview-grid" style={{ marginBottom: 18 }}>
             <div className="nurse-profile-card nurse-profile-card--timeline">
               <div className="nurse-profile-card-heading nurse-profile-card-heading--with-action">
-                <span>Care Summary</span>
+                <span>Care team & contacts</span>
                 <button type="button" className="nurse-profile-inline-btn" onClick={() => setTab('clinical')}>Clinical details</button>
               </div>
-              <div className="nurse-profile-timeline-table">
+              <div className="nurse-profile-timeline-table nurse-profile-timeline-table--compact">
                 <div className="nurse-profile-timeline-head">
-                  <span>Category</span>
-                  <span>Detail</span>
-                  <span>Context</span>
+                  <span>Role</span>
+                  <span>Details</span>
                   <span>Status</span>
                 </div>
                 {patientOverviewRows.map((row) => (
                   <div key={row.label} className="nurse-profile-timeline-row" style={{ cursor: 'default' }}>
-                    <span>
-                      <strong>{row.label}</strong>
-                      <small>{row.meta}</small>
-                    </span>
-                    <span>{row.detail}</span>
-                    <span>{row.meta}</span>
+                    <span><strong>{row.label}</strong></span>
+                    <span>{row.detail}{row.meta ? ` · ${row.meta}` : ''}</span>
                     <span>
                       <em className={row.status === 'Assigned' || row.status === 'Updated' || row.status === 'Reachable' ? 'is-active' : ''}>{row.status}</em>
                     </span>
@@ -8796,7 +8894,7 @@ export default function PatientProfile() {
             </div>
 
             <div className="nurse-profile-card nurse-profile-card--snapshot">
-              <div className="nurse-profile-card-heading">Profile Snapshot</div>
+              <div className="nurse-profile-card-heading">At a glance</div>
               <div className="nurse-profile-snapshot-list">
                 {patientSnapshotItems.map((item) => (
                   <div key={item.label} className="nurse-profile-snapshot-item">
@@ -9006,13 +9104,13 @@ export default function PatientProfile() {
             </Panel>
 
             <Panel title="Current Medications" variant="summary">
-              {activeMedicationRecords.length > 0 ? activeMedicationRecords.map((med, i) => (
-                <div key={i} className="d-flex align-items-center" style={{
-                  padding: '7px 10px', borderBottom: '1px solid #f3f4f6', fontSize: 12.5,
-                }}>
-                  <span style={{ color: 'var(--kh-text)', fontWeight: 500 }}>{med.drug}{med.dosage && med.dosage !== '—' ? ` ${med.dosage}` : ''}{med.frequency && med.frequency !== '—' ? ` ${med.frequency}` : ''}</span>
+              {activeMedicationRecords.length > 0 ? (
+                <div className="patient-med-card-grid patient-med-card-grid--profile">
+                  {activeMedicationRecords.slice(0, 6).map((med) => renderMedicationCard(med, { variant: 'compact' }))}
                 </div>
-              )) : <NoDataState text="No current medications are available from the endpoint." />}
+              ) : (
+                <NoDataState text="No current medications are available from the endpoint." />
+              )}
             </Panel>
           </div>
           </div>
@@ -10069,25 +10167,35 @@ export default function PatientProfile() {
           >
             <div className="patient-medications-mega-modal__header">
               <div className="patient-medications-mega-modal__header-copy">
-                <span className="patient-medications-mega-modal__eyebrow">Medication management</span>
-                <div className="patient-medications-mega-modal__title-row">
-                  <span className="patient-medications-mega-modal__title-icon"><FiFileText size={20} /></span>
-                  <div>
-                    <h3>
-                      Active Medications
-                      <span className="patient-medications-mega-modal__count">{activeMedicationRecords.length}</span>
-                    </h3>
-                    <p>Review, prescribe, and schedule reminders for {p.name}. Drug catalog is sourced live from <code>/drugs</code>.</p>
-                  </div>
-                </div>
+                <h3 className="patient-medications-mega-modal__title">
+                  Medications
+                  <span className="patient-medications-mega-modal__count">{activeMedicationRecords.length}</span>
+                  {medicationReminderCount > 0 && (
+                    <span className="patient-medications-mega-modal__pill">
+                      {medicationReminderCount} with reminders
+                    </span>
+                  )}
+                </h3>
+                <p className="patient-medications-mega-modal__subtitle">
+                  Active medications for {p.name}
+                </p>
               </div>
               <div className="patient-medications-mega-modal__actions">
                 <button
                   type="button"
                   className="patient-medications-mega-modal__add-btn"
-                  onClick={() => { setShowMedForm(true); setDrugSearch(''); setShowCustomDrug(false); setShowDrugDropdown(false); }}
+                  onClick={() => {
+                    if (showMedForm) {
+                      resetMedicationComposer();
+                    } else {
+                      setShowMedForm(true);
+                      setDrugSearch('');
+                      setShowCustomDrug(false);
+                      setShowDrugDropdown(false);
+                    }
+                  }}
                 >
-                  <FiPlus size={14} /> Add Medication
+                  {showMedForm ? 'Close form' : 'Add medication'}
                 </button>
                 <button
                   type="button"
@@ -10095,12 +10203,18 @@ export default function PatientProfile() {
                   onClick={() => { if (!showMedForm && !showReminderForm) setShowMedicationsMegaModal(false); }}
                   aria-label="Close medications"
                 >
-                  <FiX size={14} />
+                  Close
                 </button>
               </div>
             </div>
 
             <div className="patient-medications-mega-modal__body">
+              <div className="patient-medications-toolbar">
+                <p className="patient-medications-toolbar__hint">
+                  {activeMedicationRecords.length} medication{activeMedicationRecords.length === 1 ? '' : 's'}
+                  {medicationNewCount > 0 ? ` · ${medicationNewCount} added this session` : ''}
+                </p>
+              </div>
               {/* Add Medication Modal */}
               {showMedForm && (
                 <div
@@ -10122,123 +10236,89 @@ export default function PatientProfile() {
                     aria-modal="true"
                     aria-label={editingMedicationId ? 'Edit medication' : 'Add medication'}
                   >
-                    <div className="kh-modal-header patient-medication-modal__header" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+                    <div className="kh-modal-header patient-medication-modal__header patient-medication-modal__header--clean">
                       <div className="patient-medication-modal__header-copy">
-                        <div className="patient-medication-modal__eyebrow">Medication workflow</div>
-                        <div className="patient-medication-modal__title-row">
-                          <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--kh-text)' }}>{editingMedicationId ? 'Edit Medication' : 'Add Medication'}</div>
-                          <span className={`patient-medication-modal__status${drugCatalogError ? ' is-warning' : ''}`}>
-                            {drugCatalogLoading
-                              ? 'Syncing /drugs'
-                              : drugCatalogError
-                                ? 'Using fallback list'
-                                : `${drugCatalog.length} drugs available`}
-                          </span>
-                        </div>
-                        <div className="patient-medication-modal__header-text">
-                          {editingMedicationId
-                            ? 'Update the medication details and reminder schedule in one place.'
-                            : 'Search the live drug catalog, confirm the prescription details, then continue to reminders.'}
-                        </div>
+                        <h4 className="patient-medication-modal__title">{editingMedicationId ? 'Edit medication' : 'Add medication'}</h4>
+                        {drugCatalogError && (
+                          <p className="patient-medication-modal__catalog-note">Using fallback drug list — live catalog unavailable.</p>
+                        )}
                       </div>
                       <button
                         type="button"
                         onClick={resetMedicationComposer}
-                        className="patient-update-modal__close-btn"
-                        style={{ cursor: 'pointer' }}
+                        className="patient-medications-mega-modal__close"
+                        aria-label="Close medication form"
                       >
-                        <FiX size={18} />
+                        Close
                       </button>
                     </div>
 
-                    <div className="kh-modal-body patient-medication-modal__body" style={{ overflowY: 'auto' }}>
+                    <div className="kh-modal-body patient-medication-modal__body patient-medication-modal__body--clean">
                       {medicationSaveError && (
-                        <div style={{ marginBottom: 12, borderRadius: 8, border: '1px solid #fecaca', background: '#fef2f2', color: '#dc2626', padding: '10px 12px', fontSize: 12.5, fontWeight: 600 }}>
-                          {medicationSaveError}
-                        </div>
+                        <div className="patient-medications-form__error">{medicationSaveError}</div>
                       )}
-                      <div className="patient-medication-modal__layout">
+                      <div className="patient-medication-modal__layout patient-medication-modal__layout--single">
                         <div className="patient-medication-modal__main">
-                          <section className="patient-medication-modal__section">
-                            <div className="patient-medication-modal__section-header">
-                              <div>
-                                <div className="patient-medication-modal__section-title">Drug selection</div>
-                                <div className="patient-medication-modal__section-copy">
-                                  {drugCatalogLoading
-                                    ? 'Loading the latest drugs from `/drugs`.'
-                                    : drugCatalogError
-                                      ? `${drugCatalogError} The default list is available below.`
-                                      : 'Search and select a medication from the live catalog.'}
-                                </div>
-                              </div>
-                              <span className="patient-medication-modal__pill">{editingMedicationId ? 'Edit mode' : 'New entry'}</span>
-                            </div>
+                          <section className="patient-medication-modal__section patient-medication-modal__section--clean">
+                            <label className="patient-medication-modal__label">Drug name *</label>
+                            <div className="patient-medication-modal__search-wrap patient-medication-modal__search-wrap--clean">
+                              <input
+                                value={drugSearch}
+                                onChange={e => { setDrugSearch(e.target.value); setShowDrugDropdown(true); setMedForm(f => ({ ...f, drug: '' })); setShowCustomDrug(false); }}
+                                onFocus={() => setShowDrugDropdown(true)}
+                                placeholder="Search medication"
+                                className="patient-medication-modal__search-input"
+                              />
 
-                            <div className="patient-medication-modal__field">
-                              <label className="patient-medication-modal__label">Drug Name *</label>
-                              <div className="patient-medication-modal__search-wrap">
-                                <FiSearch size={14} className="patient-medication-modal__search-icon" />
-                                <input
-                                  value={drugSearch}
-                                  onChange={e => { setDrugSearch(e.target.value); setShowDrugDropdown(true); setMedForm(f => ({ ...f, drug: '' })); setShowCustomDrug(false); }}
-                                  onFocus={() => setShowDrugDropdown(true)}
-                                  placeholder="Search medication"
-                                  className="patient-medication-modal__search-input"
-                                />
-                                <FiChevronDown size={14} className="patient-medication-modal__search-caret" />
-
-                                {showDrugDropdown && drugSearch.length >= 1 && (
-                                  <div className="patient-medication-modal__search-dropdown">
-                                    {drugCatalogLoading ? (
-                                      <div className="patient-medication-modal__search-empty">Loading available drugs...</div>
-                                    ) : filteredDrugs.length > 0 ? (
-                                      filteredDrugs.map((drugOption, index) => (
-                                        <button
-                                          key={drugOption.id || index}
-                                          type="button"
-                                          onClick={() => selectDrug(drugOption)}
-                                          className="patient-medication-modal__search-option"
-                                        >
-                                          <span>{drugOption.name}</span>
-                                          <small>{drugOption.category}{drugOption.commonDose ? ` · ${drugOption.commonDose}` : ''}</small>
-                                        </button>
-                                      ))
-                                    ) : (
-                                      <div style={{ padding: '12px' }}>
-                                        <div className="patient-medication-modal__search-miss">
-                                          <FiAlertTriangle size={12} /> "{drugSearch}" not found in the drug list
-                                        </div>
-                                        <button
-                                          type="button"
-                                          onClick={() => { setShowCustomDrug(true); setCustomDrugName(drugSearch); setShowDrugDropdown(false); }}
-                                          className="patient-medication-modal__custom-trigger"
-                                        >
-                                          <FiPlus size={12} /> Add as Custom Medication
-                                        </button>
+                              {showDrugDropdown && drugSearch.length >= 1 && (
+                                <div className="patient-medication-modal__search-dropdown">
+                                  {drugCatalogLoading ? (
+                                    <div className="patient-medication-modal__search-empty">Loading drugs…</div>
+                                  ) : filteredDrugs.length > 0 ? (
+                                    filteredDrugs.map((drugOption, index) => (
+                                      <button
+                                        key={drugOption.id || index}
+                                        type="button"
+                                        onClick={() => selectDrug(drugOption)}
+                                        className="patient-medication-modal__search-option"
+                                      >
+                                        <span>{drugOption.name}</span>
+                                        <small>{drugOption.category}{drugOption.commonDose ? ` · ${drugOption.commonDose}` : ''}</small>
+                                      </button>
+                                    ))
+                                  ) : (
+                                    <div className="patient-medication-modal__search-miss-wrap">
+                                      <div className="patient-medication-modal__search-miss">
+                                        &quot;{drugSearch}&quot; not found
                                       </div>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-
-                              {medForm.drug && (
-                                <div className="patient-medication-modal__selected-chip">
-                                  <span className="patient-medication-modal__selected-chip-icon"><FiCheckCircle size={11} /></span>
-                                  <span>{medForm.drug}</span>
-                                  <button
-                                    type="button"
-                                    onClick={() => { setMedForm(f => ({ ...f, drug: '', dosage: '' })); setDrugSearch(''); }}
-                                  >
-                                    <FiX size={11} />
-                                  </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => { setShowCustomDrug(true); setCustomDrugName(drugSearch); setShowDrugDropdown(false); }}
+                                        className="patient-medication-modal__custom-trigger"
+                                      >
+                                        Add as custom medication
+                                      </button>
+                                    </div>
+                                  )}
                                 </div>
                               )}
                             </div>
 
+                            {medForm.drug && (
+                              <div className="patient-medication-modal__selected-chip patient-medication-modal__selected-chip--clean">
+                                <span>{medForm.drug}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => { setMedForm(f => ({ ...f, drug: '', dosage: '' })); setDrugSearch(''); }}
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            )}
+
                             {showCustomDrug && (
-                              <div className="patient-medication-modal__custom-card">
-                                <div className="patient-medication-modal__custom-title">Custom medication</div>
-                                <div className="patient-medication-modal__custom-copy">Use this when the searched drug is not yet available from `/drugs`.</div>
+                              <div className="patient-medication-modal__custom-card patient-medication-modal__custom-card--clean">
+                                <label className="patient-medication-modal__label">Custom medication name</label>
                                 <div className="patient-medication-modal__custom-actions">
                                   <input
                                     value={customDrugName}
@@ -10252,7 +10332,7 @@ export default function PatientProfile() {
                                     disabled={!customDrugName.trim()}
                                     className="patient-medication-modal__inline-btn patient-medication-modal__inline-btn--primary"
                                   >
-                                    <FiCheckCircle size={12} /> Confirm
+                                    Confirm
                                   </button>
                                   <button
                                     type="button"
@@ -10266,15 +10346,7 @@ export default function PatientProfile() {
                             )}
                           </section>
 
-                          <section className="patient-medication-modal__section">
-                            <div className="patient-medication-modal__section-header">
-                              <div>
-                                <div className="patient-medication-modal__section-title">Prescription details</div>
-                                <div className="patient-medication-modal__section-copy">Complete the core details before saving the medication.</div>
-                              </div>
-                              <span className="patient-medication-modal__required-note">Required fields are marked with *</span>
-                            </div>
-
+                          <section className="patient-medication-modal__section patient-medication-modal__section--clean">
                             <div className="row g-3">
                               <div className="col-md-4">
                                 <div className="patient-medication-modal__field">
@@ -10360,14 +10432,8 @@ export default function PatientProfile() {
                           </section>
 
                           {editingMedicationId && (
-                            <section className="patient-medication-modal__section">
-                              <div className="patient-medication-modal__section-header">
-                                <div>
-                                  <div className="patient-medication-modal__section-title">Reminder schedule</div>
-                                  <div className="patient-medication-modal__section-copy">Update dates, notifications, and reminder times for this medication.</div>
-                                </div>
-                              </div>
-
+                            <section className="patient-medication-modal__section patient-medication-modal__section--clean">
+                              <h5 className="patient-medication-modal__subsection-title">Reminder schedule</h5>
                               <div className="row g-3" style={{ marginBottom: 12 }}>
                                 <div className="col-md-4">
                                   <div className="patient-medication-modal__field">
@@ -10409,18 +10475,15 @@ export default function PatientProfile() {
                               </div>
 
                               <div>
-                                <div className="patient-medication-modal__section-header patient-medication-modal__section-header--compact">
-                                  <div>
-                                    <div className="patient-medication-modal__section-title">Reminder times</div>
-                                  </div>
-                                  <button onClick={addReminderTime} type="button" className="patient-medications-table__action">
-                                    <FiPlus size={11} /> Add Time
+                                <div className="patient-medication-modal__times-header">
+                                  <label className="patient-medication-modal__label">Reminder times</label>
+                                  <button onClick={addReminderTime} type="button" className="patient-med-card__action">
+                                    Add time
                                   </button>
                                 </div>
                                 <div className="patient-medication-modal__time-list">
                                   {reminderForm.times.map((time, index) => (
-                                    <div key={index} className="patient-medication-modal__time-chip">
-                                      <FiClock size={12} style={{ color: '#45B6FE' }} />
+                                    <div key={index} className="patient-medication-modal__time-chip patient-medication-modal__time-chip--clean">
                                       <input
                                         type="time"
                                         value={time}
@@ -10428,7 +10491,7 @@ export default function PatientProfile() {
                                       />
                                       {reminderForm.times.length > 1 && (
                                         <button type="button" onClick={() => removeReminderTime(index)}>
-                                          <FiX size={12} />
+                                          Remove
                                         </button>
                                       )}
                                     </div>
@@ -10438,57 +10501,20 @@ export default function PatientProfile() {
                             </section>
                           )}
                         </div>
-
-                        <aside className="patient-medication-modal__aside">
-                          <div className="patient-medication-modal__summary-card">
-                            <div className="patient-medication-modal__summary-title">Medication summary</div>
-                            <div className="patient-medication-modal__summary-list">
-                              <div><span>Drug</span><strong>{medForm.drug || 'Select a drug'}</strong></div>
-                              <div><span>Dosage</span><strong>{medForm.dosage || 'Not set'}</strong></div>
-                              <div><span>Frequency</span><strong>{medForm.frequency || 'Not set'}</strong></div>
-                              <div><span>Route</span><strong>{medForm.route || 'Oral'}</strong></div>
-                            </div>
-                          </div>
-
-                          <div className="patient-medication-modal__summary-card patient-medication-modal__summary-card--soft">
-                            <div className="patient-medication-modal__summary-title">Next step</div>
-                            <div className="patient-medication-modal__summary-copy">
-                              {editingMedicationId
-                                ? 'Save your changes to update both the medication details and its reminder schedule.'
-                                : 'Save the medication first, then continue to reminder setup right away.'}
-                            </div>
-                          </div>
-
-                          <div className="patient-medication-modal__summary-card patient-medication-modal__summary-card--soft">
-                            <div className="patient-medication-modal__summary-title">Drug source</div>
-                            <div className="patient-medication-modal__summary-copy">
-                              {drugCatalogLoading
-                                ? 'Checking `/drugs` for the latest medication list.'
-                                : drugCatalogError
-                                  ? 'The modal is showing the local fallback list because the live drug list is unavailable.'
-                                  : 'The dropdown is powered by the live `/drugs` endpoint.'}
-                            </div>
-                          </div>
-                        </aside>
                       </div>
                     </div>
 
-                    <div className="kh-modal-footer patient-update-modal__footer patient-medication-modal__footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                      <button onClick={resetMedicationComposer}
-                        type="button"
-                        className="patient-update-modal__action-btn patient-update-modal__action-btn--secondary"
-                        style={{ cursor: 'pointer' }}>
+                    <div className="kh-modal-footer patient-medication-modal__footer patient-medication-modal__footer--clean">
+                      <button onClick={resetMedicationComposer} type="button" className="patient-medications-form__btn patient-medications-form__btn--secondary">
                         Cancel
                       </button>
-                      <button onClick={handleAddMed} disabled={!medForm.drug || !medForm.dosage || !medForm.frequency || savingMedication}
+                      <button
+                        onClick={handleAddMed}
+                        disabled={!medForm.drug || !medForm.dosage || !medForm.frequency || savingMedication}
                         type="button"
-                        className="patient-update-modal__action-btn patient-update-modal__action-btn--primary"
-                        style={{
-                          cursor: medForm.drug && medForm.dosage && medForm.frequency && !savingMedication ? 'pointer' : 'not-allowed',
-                          opacity: medForm.drug && medForm.dosage && medForm.frequency && !savingMedication ? 1 : 0.55,
-                          display: 'inline-flex', alignItems: 'center', gap: 6,
-                        }}>
-                        <FiSend size={12} /> {savingMedication ? 'Saving...' : editingMedicationId ? 'Save Changes' : 'Save & Continue'}
+                        className="patient-medications-form__btn patient-medications-form__btn--primary"
+                      >
+                        {savingMedication ? 'Saving…' : editingMedicationId ? 'Save changes' : 'Save medication'}
                       </button>
                     </div>
                   </div>
@@ -10500,111 +10526,89 @@ export default function PatientProfile() {
                 const med = addedMeds.find(m => m.id === showReminderForm);
                 if (!med) return null;
                 return (
-                  <div style={{ padding: '16px', marginBottom: 16, borderRadius: 2, background: '#fffbeb', border: '1px solid #fde68a' }}>
-                    <div className="d-flex justify-content-between align-items-center" style={{ marginBottom: 12 }}>
-                      <div className="d-flex align-items-center gap-2">
-                        <FiBell size={14} style={{ color: '#d97706' }} />
-                        <span style={{ fontSize: 13, fontWeight: 700, color: '#92400e' }}>Set Reminder for {med.drug}</span>
-                      </div>
-                      <button onClick={() => setShowReminderForm(null)}
-                        style={{ background: 'none', border: '1px solid #e5e7eb', borderRadius: 2, padding: '4px 6px', cursor: 'pointer', color: 'var(--kh-text-muted)', display: 'flex' }}>
-                        <FiX size={14} />
+                  <div className="patient-medications-reminder-form">
+                    <div className="patient-medications-reminder-form__header">
+                      <h4 className="patient-medications-reminder-form__title">Set reminder for {med.drug}</h4>
+                      <button type="button" className="patient-medications-reminder-form__close" onClick={() => setShowReminderForm(null)}>
+                        Close
                       </button>
                     </div>
 
-                    {/* Medication summary */}
-                    <div style={{ padding: '10px 14px', marginBottom: 14, borderRadius: 2, background: '#fff', border: '1px solid #e5e7eb' }}>
-                      <div className="d-flex align-items-center gap-3">
-                        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--kh-text)' }}>{med.drug}</span>
-                        <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 2, background: '#F0F7FE', color: '#45B6FE', border: '1px solid #A8D8FC' }}>{med.dosage} · {med.frequency}</span>
-                        <span style={{ fontSize: 11, color: 'var(--kh-text-muted)' }}>via {med.route}</span>
-                      </div>
-                    </div>
+                    <p className="patient-medications-reminder-form__summary">
+                      {[med.dosage, med.frequency, med.route].filter(Boolean).join(' · ')}
+                    </p>
 
                     <div className="row g-2 mb-3">
-                      {/* Reminder Type */}
                       <div className="col-md-3">
-                        <label style={{ display: 'block', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#92400e', marginBottom: 4 }}>Schedule</label>
-                        <select value={reminderForm.reminderType} onChange={e => setReminderForm(f => ({ ...f, reminderType: e.target.value }))}
-                          style={{ width: '100%', padding: '8px 12px', fontSize: 13, fontWeight: 600, border: '1px solid #fde68a', borderRadius: 2, background: '#fff', color: 'var(--kh-text)', cursor: 'pointer' }}>
+                        <label className="patient-medication-modal__label">Schedule</label>
+                        <select
+                          value={reminderForm.reminderType}
+                          onChange={e => setReminderForm(f => ({ ...f, reminderType: e.target.value }))}
+                          className="patient-medication-modal__input"
+                        >
                           <option value="daily">Daily</option>
                           <option value="weekly">Weekly</option>
                           <option value="custom">Custom</option>
                         </select>
                       </div>
-
-                      {/* Start Date */}
                       <div className="col-md-3">
-                        <label style={{ display: 'block', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#92400e', marginBottom: 4 }}>Start Date</label>
-                        <input type="date" value={reminderForm.startDate} onChange={e => setReminderForm(f => ({ ...f, startDate: e.target.value }))}
-                          style={{ width: '100%', padding: '8px 12px', fontSize: 13, fontWeight: 500, border: '1px solid #fde68a', borderRadius: 2, background: '#fff', color: 'var(--kh-text)' }} />
+                        <label className="patient-medication-modal__label">Start date</label>
+                        <input
+                          type="date"
+                          value={reminderForm.startDate}
+                          onChange={e => setReminderForm(f => ({ ...f, startDate: e.target.value }))}
+                          className="patient-medication-modal__input"
+                        />
                       </div>
-
-                      {/* End Date */}
                       <div className="col-md-3">
-                        <label style={{ display: 'block', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#92400e', marginBottom: 4 }}>End Date</label>
-                        <input type="date" value={reminderForm.endDate} onChange={e => setReminderForm(f => ({ ...f, endDate: e.target.value }))}
-                          style={{ width: '100%', padding: '8px 12px', fontSize: 13, fontWeight: 500, border: '1px solid #fde68a', borderRadius: 2, background: '#fff', color: 'var(--kh-text)' }} />
+                        <label className="patient-medication-modal__label">End date</label>
+                        <input
+                          type="date"
+                          value={reminderForm.endDate}
+                          onChange={e => setReminderForm(f => ({ ...f, endDate: e.target.value }))}
+                          className="patient-medication-modal__input"
+                        />
                       </div>
-
-                      {/* Notify */}
                       <div className="col-md-3">
-                        <label style={{ display: 'block', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#92400e', marginBottom: 4 }}>Notify</label>
-                        <div className="d-flex flex-column gap-1">
-                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, fontWeight: 500, color: 'var(--kh-text)', cursor: 'pointer' }}>
-                            <input type="checkbox" checked={reminderForm.notifyNurse} onChange={e => setReminderForm(f => ({ ...f, notifyNurse: e.target.checked }))} style={{ accentColor: '#d97706' }} />
+                        <label className="patient-medication-modal__label">Notify</label>
+                        <div className="patient-medication-modal__checkboxes">
+                          <label>
+                            <input type="checkbox" checked={reminderForm.notifyNurse} onChange={e => setReminderForm(f => ({ ...f, notifyNurse: e.target.checked }))} />
                             Nurse
                           </label>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, fontWeight: 500, color: 'var(--kh-text)', cursor: 'pointer' }}>
-                            <input type="checkbox" checked={reminderForm.notifyPatient} onChange={e => setReminderForm(f => ({ ...f, notifyPatient: e.target.checked }))} style={{ accentColor: '#d97706' }} />
+                          <label>
+                            <input type="checkbox" checked={reminderForm.notifyPatient} onChange={e => setReminderForm(f => ({ ...f, notifyPatient: e.target.checked }))} />
                             Patient
                           </label>
                         </div>
                       </div>
                     </div>
 
-                    {/* Reminder Times */}
-                    <div style={{ marginBottom: 14 }}>
-                      <div className="d-flex align-items-center justify-content-between" style={{ marginBottom: 6 }}>
-                        <label style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#92400e' }}>
-                          <FiClock size={11} style={{ marginRight: 4 }} /> Reminder Times
-                        </label>
-                        <button onClick={addReminderTime} style={{
-                          padding: '3px 10px', fontSize: 11, fontWeight: 700, borderRadius: 2, cursor: 'pointer',
-                          background: '#fff', color: '#d97706', border: '1px solid #fde68a',
-                          display: 'flex', alignItems: 'center', gap: 3,
-                        }}>
-                          <FiPlus size={11} /> Add Time
+                    <div className="patient-medications-reminder-form__times">
+                      <div className="patient-medication-modal__times-header">
+                        <label className="patient-medication-modal__label">Reminder times</label>
+                        <button type="button" onClick={addReminderTime} className="patient-med-card__action">
+                          Add time
                         </button>
                       </div>
-                      <div className="d-flex flex-wrap gap-2">
+                      <div className="patient-medication-modal__time-list">
                         {reminderForm.times.map((t, i) => (
-                          <div key={i} className="d-flex align-items-center gap-1" style={{ background: '#fff', border: '1px solid #fde68a', borderRadius: 2, padding: '4px 8px' }}>
-                            <input type="time" value={t} onChange={e => updateReminderTime(i, e.target.value)}
-                              style={{ border: 'none', fontSize: 13, fontWeight: 600, color: 'var(--kh-text)', background: 'transparent', width: 90, outline: 'none' }} />
+                          <div key={i} className="patient-medication-modal__time-chip patient-medication-modal__time-chip--clean">
+                            <input type="time" value={t} onChange={e => updateReminderTime(i, e.target.value)} />
                             {reminderForm.times.length > 1 && (
-                              <button onClick={() => removeReminderTime(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#dc2626', display: 'flex', padding: 0 }}>
-                                <FiX size={12} />
-                              </button>
+                              <button type="button" onClick={() => removeReminderTime(i)}>Remove</button>
                             )}
                           </div>
                         ))}
                       </div>
                     </div>
 
-                    {/* Save / Skip */}
-                    <div className="d-flex gap-2 justify-content-end">
-                      <button onClick={() => setShowReminderForm(null)}
-                        style={{ padding: '8px 18px', fontSize: 12.5, fontWeight: 700, borderRadius: 2, cursor: 'pointer', background: '#fff', color: 'var(--kh-text-muted)', border: '1px solid #d1d5db' }}>
-                        Skip Reminder
+                    <div className="patient-medications-reminder-form__footer">
+                      <button type="button" onClick={() => setShowReminderForm(null)} className="patient-medications-form__btn patient-medications-form__btn--secondary">
+                        Skip
                       </button>
-                      <button onClick={() => saveReminder(med.id)}
-                        style={{
-                          padding: '8px 18px', fontSize: 12.5, fontWeight: 700, borderRadius: 2, border: 'none', cursor: 'pointer',
-                          background: '#d97706', color: '#fff',
-                          display: 'flex', alignItems: 'center', gap: 5,
-                        }}>
-                        <FiBell size={12} /> Save Reminder
+                      <button type="button" onClick={() => saveReminder(med.id)} className="patient-medications-form__btn patient-medications-form__btn--primary">
+                        Save reminder
                       </button>
                     </div>
                   </div>
@@ -10612,122 +10616,14 @@ export default function PatientProfile() {
               })()}
 
               {activeMedicationRecords.length > 0 ? (
-                <div className="patient-medications-table-wrap">
-                  <div className="table-responsive">
-                    <table className="patient-medications-table">
-                      <thead>
-                        <tr>
-                          <th>#</th>
-                          <th>Drug Name</th>
-                          <th>Dosage</th>
-                          <th>Frequency</th>
-                          <th>Route</th>
-                          <th>Start</th>
-                          <th>End</th>
-                          <th>Reminder</th>
-                          <th>Status</th>
-                          <th>Action</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {existingMedicationEntries.map((med, visibleIdx) => (
-                          <tr key={med.id}>
-                            <td>{visibleIdx + 1}</td>
-                            <td>
-                              <div className="patient-medications-table__name-cell">
-                                <strong>{med.drug}</strong>
-                                <span>Patient record</span>
-                              </div>
-                            </td>
-                            <td>{med.dosage || '—'}</td>
-                            <td>{med.frequency || '—'}</td>
-                            <td>{med.route || '—'}</td>
-                            <td>{normalizeMedicationDateForInput(med.startDate) || '—'}</td>
-                            <td>{normalizeMedicationDateForInput(med.endDate) || '—'}</td>
-                            <td><span className="patient-medications-table__reminder is-muted">No reminder</span></td>
-                            <td><span className="patient-medications-table__status">Active</span></td>
-                            <td>
-                              <button
-                                onClick={() => setConfirmDelete({ type: 'existing', id: med.originalIndex, name: med.drug })}
-                                className="patient-medications-table__action patient-medications-table__action--danger"
-                                title="Delete medication"
-                              >
-                                <FiX size={12} /> Remove
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                        {persistedMedicationEntries.map((med, i) => {
-                          const existingCount = existingMedicationEntries.length;
-                          const reminderTargets = med.reminders
-                            ? [med.reminders.notifyNurse && 'Nurse', med.reminders.notifyPatient && 'Patient'].filter(Boolean)
-                            : [];
-
-                          return (
-                            <tr key={med.id}>
-                              <td>{existingCount + i + 1}</td>
-                              <td>
-                                <div className="patient-medications-table__name-cell">
-                                  <strong>{med.drug}</strong>
-                                  {med.notes ? <span>{med.notes}</span> : null}
-                                </div>
-                              </td>
-                              <td>{med.dosage || '—'}</td>
-                              <td>{med.frequency || '—'}</td>
-                              <td>{med.route || '—'}</td>
-                              <td>{normalizeMedicationDateForInput(med.startDate) || '—'}</td>
-                              <td>{normalizeMedicationDateForInput(med.endDate) || '—'}</td>
-                              <td>
-                                {med.reminders ? (
-                                  <div className="patient-medications-table__badges">
-                                    {med.reminders.times.map((time, timeIndex) => (
-                                      <span key={timeIndex} className="patient-medications-table__badge">
-                                        {time}
-                                      </span>
-                                    ))}
-                                    {reminderTargets.map((target) => (
-                                      <span key={target} className="patient-medications-table__badge patient-medications-table__badge--soft">
-                                        {target}
-                                      </span>
-                                    ))}
-                                  </div>
-                                ) : (
-                                  <button
-                                    onClick={() => { setShowReminderForm(med.id); setReminderForm(createMedicationReminderState(med)); }}
-                                    className="patient-medications-table__action"
-                                  >
-                                    <FiBell size={12} /> Set Reminder
-                                  </button>
-                                )}
-                              </td>
-                              <td><span className="patient-medications-table__status patient-medications-table__status--new">New</span></td>
-                              <td>
-                                <div className="patient-medications-table__actions">
-                                  <button
-                                    onClick={() => openMedicationEditor(med)}
-                                    className="patient-medications-table__action patient-medications-table__action--secondary"
-                                    title="Edit medication"
-                                  >
-                                    <FiEdit2 size={12} /> Edit
-                                  </button>
-                                  <button
-                                    onClick={() => setConfirmDelete({ type: 'added', id: med.id, name: med.drug })}
-                                    className="patient-medications-table__action patient-medications-table__action--danger"
-                                    title="Remove medication"
-                                  >
-                                    <FiX size={12} /> Remove
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
+                <div className="patient-med-card-grid">
+                  {activeMedicationRecords.map((med) => renderMedicationCard(med))}
                 </div>
               ) : (
-                <NoDataState text="No active medications have been recorded for this patient yet." />
+                <div className="patient-medications-empty">
+                  <p className="patient-medications-empty__title">No medications on file</p>
+                  <p className="patient-medications-empty__hint">Use &quot;Add medication&quot; to prescribe one.</p>
+                </div>
               )}
             </div>
           </div>
@@ -11266,25 +11162,21 @@ export default function PatientProfile() {
             {/* Modal header */}
             <div className="patient-incidents-mega-modal__header">
               <div className="patient-incidents-mega-modal__header-copy">
-                <span className="patient-incidents-mega-modal__eyebrow">Safety incidents</span>
-                <div className="patient-incidents-mega-modal__title-row">
-                  <span className="patient-incidents-mega-modal__title-icon"><FiAlertTriangle size={20} /></span>
-                  <div>
-                    <h3>
-                      Incident Reports
-                      <span className="patient-incidents-mega-modal__count">{incidents.length}</span>
-                      {incidents.filter(i => i.status === 'open').length > 0 && (
-                        <span className="patient-incidents-mega-modal__open-pill">
-                          {incidents.filter(i => i.status === 'open').length} Open
-                        </span>
-                      )}
-                      {incidentsLoading && (
-                        <span className="patient-incidents-mega-modal__open-pill">Loading…</span>
-                      )}
-                    </h3>
-                    <p>File and track safety incidents for {p.name}. Records sync to the patient timeline immediately.</p>
-                  </div>
-                </div>
+                <h3 className="patient-incidents-mega-modal__title">
+                  Incident Reports
+                  <span className="patient-incidents-mega-modal__count">{incidents.length}</span>
+                  {incidents.filter(i => i.status === 'open').length > 0 && (
+                    <span className="patient-incidents-mega-modal__open-pill">
+                      {incidents.filter(i => i.status === 'open').length} open
+                    </span>
+                  )}
+                  {incidentsLoading && (
+                    <span className="patient-incidents-mega-modal__open-pill">Loading…</span>
+                  )}
+                </h3>
+                <p className="patient-incidents-mega-modal__subtitle">
+                  Safety incidents for {p.name}
+                </p>
               </div>
               <div className="patient-incidents-mega-modal__actions">
                 <button
@@ -11300,7 +11192,7 @@ export default function PatientProfile() {
                     }
                   }}
                 >
-                  {showIncidentForm ? <><FiX size={14} /> {editingIncidentId ? 'Close editor' : 'Cancel'}</> : <><FiPlus size={14} /> Report Incident</>}
+                  {showIncidentForm ? (editingIncidentId ? 'Close editor' : 'Cancel') : 'Report incident'}
                 </button>
                 <button
                   type="button"
@@ -11314,7 +11206,7 @@ export default function PatientProfile() {
                   }}
                   aria-label="Close incident reports"
                 >
-                  <FiX size={14} />
+                  Close
                 </button>
               </div>
             </div>
@@ -11324,29 +11216,30 @@ export default function PatientProfile() {
               {/* Toolbar */}
               <div className="patient-incidents-toolbar">
                 <div className="patient-incidents-toolbar__group">
+                  <label className="patient-incidents-toolbar__label" htmlFor="incident-type-filter">
+                    Filter by type
+                  </label>
                   <select
+                    id="incident-type-filter"
                     value={incidentFilter}
                     onChange={e => setIncidentFilter(e.target.value)}
                     className="patient-incidents-toolbar__select"
                   >
-                    <option value="All">All Types</option>
+                    <option value="All">All types</option>
                     {INCIDENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                   <button
                     type="button"
                     onClick={loadIncidents}
-                    title="Refresh incidents"
                     disabled={incidentsLoading}
-                    className="patient-notes-toolbar__icon-btn"
-                    style={{ borderColor: '#e5e7eb', color: '#6b7280' }}
+                    className="patient-incidents-toolbar__refresh"
                   >
-                    <FiRefreshCw size={13} />
+                    {incidentsLoading ? 'Refreshing…' : 'Refresh'}
                   </button>
                 </div>
-                <div className="patient-incidents-toolbar__hint">
-                  <FiAlertCircle size={12} />
-                  <span>Showing {filteredIncidents.length} of {incidents.length} incident{incidents.length === 1 ? '' : 's'}</span>
-                </div>
+                <p className="patient-incidents-toolbar__hint">
+                  {filteredIncidents.length} of {incidents.length} incident{incidents.length === 1 ? '' : 's'}
+                </p>
               </div>
 
               {incidentsError && (
@@ -11357,15 +11250,13 @@ export default function PatientProfile() {
               {showIncidentForm && (
                 <div className="patient-incidents-form">
                   {editingIncidentId && (
-                    <div style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 10, background: '#eff6ff', border: '1px solid #bfdbfe', fontSize: 12.5, fontWeight: 600, color: '#1e40af' }}>
-                      Editing this incident report — save to update it on the server.
-                    </div>
+                    <p className="patient-incidents-form__edit-notice">
+                      Editing this incident — save to update it on the server.
+                    </p>
                   )}
                   <div className="row g-2 mb-3">
                     <div className="col-md-3">
-                      <label className="patient-incidents-form__label">
-                        <FiCalendar size={11} /> Date
-                      </label>
+                      <label className="patient-incidents-form__label">Date</label>
                       <input
                         type="date"
                         value={incidentForm.date}
@@ -11374,9 +11265,7 @@ export default function PatientProfile() {
                       />
                     </div>
                     <div className="col-md-2">
-                      <label className="patient-incidents-form__label">
-                        <FiClock size={11} /> Time
-                      </label>
+                      <label className="patient-incidents-form__label">Time</label>
                       <input
                         type="time"
                         value={incidentForm.time}
@@ -11385,9 +11274,7 @@ export default function PatientProfile() {
                       />
                     </div>
                     <div className="col-md-3">
-                      <label className="patient-incidents-form__label">
-                        <FiUser size={11} /> Reported By
-                      </label>
+                      <label className="patient-incidents-form__label">Reported by</label>
                       <input
                         type="text"
                         placeholder="Name of person reporting"
@@ -11398,7 +11285,7 @@ export default function PatientProfile() {
                       />
                     </div>
                     <div className="col-md-2">
-                      <label className="patient-incidents-form__label">Incident Type</label>
+                      <label className="patient-incidents-form__label">Incident type</label>
                       <select
                         value={incidentForm.type}
                         onChange={e => setIncidentForm({ ...incidentForm, type: e.target.value })}
@@ -11420,12 +11307,10 @@ export default function PatientProfile() {
                   </div>
 
                   <div className="mb-3">
-                    <label className="patient-incidents-form__label">
-                      <FiMapPin size={11} /> Location of Incident
-                    </label>
+                    <label className="patient-incidents-form__label">Location</label>
                     <input
                       type="text"
-                      placeholder="e.g. Bedroom — bedside, Bathroom, Kitchen..."
+                      placeholder="e.g. Bedroom, Bathroom, Kitchen"
                       value={incidentForm.location}
                       onChange={e => setIncidentForm({ ...incidentForm, location: e.target.value })}
                       className="patient-incidents-form__input"
@@ -11434,11 +11319,11 @@ export default function PatientProfile() {
 
                   <div className="mb-3">
                     <label className="patient-incidents-form__label patient-incidents-form__label--required">
-                      <FiAlertTriangle size={11} /> Incident Description
+                      Description
                     </label>
                     <textarea
                       rows={3}
-                      placeholder="Describe what happened in detail..."
+                      placeholder="Describe what happened"
                       value={incidentForm.description}
                       onChange={e => setIncidentForm({ ...incidentForm, description: e.target.value })}
                       className="patient-incidents-form__textarea"
@@ -11446,12 +11331,10 @@ export default function PatientProfile() {
                   </div>
 
                   <div className="mb-3">
-                    <label className="patient-incidents-form__label">
-                      <FiShield size={11} /> Immediate Action Taken
-                    </label>
+                    <label className="patient-incidents-form__label">Immediate action taken</label>
                     <textarea
                       rows={2}
-                      placeholder="Describe immediate actions taken..."
+                      placeholder="Actions taken immediately after the incident"
                       value={incidentForm.immediateAction}
                       onChange={e => setIncidentForm({ ...incidentForm, immediateAction: e.target.value })}
                       className="patient-incidents-form__textarea"
@@ -11482,14 +11365,50 @@ export default function PatientProfile() {
                   </div>
 
                   <div className="mb-3">
-                    <label className="patient-incidents-form__label">Follow-Up Plan</label>
+                    <label className="patient-incidents-form__label">Follow-up plan</label>
                     <textarea
                       rows={2}
-                      placeholder="Describe follow-up actions planned..."
+                      placeholder="Planned follow-up actions"
                       value={incidentForm.followUp}
                       onChange={e => setIncidentForm({ ...incidentForm, followUp: e.target.value })}
                       className="patient-incidents-form__textarea"
                     />
+                  </div>
+
+                  <div className="patient-incidents-form__images">
+                    <label className="patient-incidents-form__label">Photos</label>
+                    <div className="patient-incidents-form__images-grid">
+                      {incidentFormImages.map((img) => (
+                        <div key={img.id} className="patient-incidents-form__image-item">
+                          <img
+                            src={img.previewUrl || img.url}
+                            alt="Incident upload preview"
+                          />
+                          <button
+                            type="button"
+                            className="patient-incidents-form__image-remove"
+                            onClick={() => removeIncidentFormImage(img.id)}
+                            disabled={uploadingIncidentImages || savingIncident}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                      <label
+                        className={`patient-incidents-form__image-add${uploadingIncidentImages ? ' is-disabled' : ''}`}
+                      >
+                        <input
+                          ref={incidentImageInputRef}
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp,image/gif"
+                          multiple
+                          hidden
+                          disabled={uploadingIncidentImages || savingIncident}
+                          onChange={handleIncidentImageSelect}
+                        />
+                        {uploadingIncidentImages ? 'Uploading…' : 'Add photo'}
+                      </label>
+                    </div>
                   </div>
 
                   <div className="patient-incidents-form__checkrow">
@@ -11499,7 +11418,7 @@ export default function PatientProfile() {
                         checked={incidentForm.physicianNotified}
                         onChange={e => setIncidentForm({ ...incidentForm, physicianNotified: e.target.checked })}
                       />
-                      <span>Physician Notified</span>
+                      <span>Physician notified</span>
                     </label>
                     <label className="patient-incidents-form__checkbox">
                       <input
@@ -11507,7 +11426,7 @@ export default function PatientProfile() {
                         checked={incidentForm.familyNotified}
                         onChange={e => setIncidentForm({ ...incidentForm, familyNotified: e.target.checked })}
                       />
-                      <span>Family/Next of Kin Notified</span>
+                      <span>Family notified</span>
                     </label>
                   </div>
 
@@ -11527,7 +11446,7 @@ export default function PatientProfile() {
                         className="patient-incidents-form__btn patient-incidents-form__btn--danger"
                         style={{ marginRight: 'auto' }}
                       >
-                        <FiTrash2 size={13} /> Delete report
+                        Delete
                       </button>
                     )}
                     <button
@@ -11544,7 +11463,7 @@ export default function PatientProfile() {
                       disabled={!incidentForm.description.trim() || savingIncident}
                       className="patient-incidents-form__btn patient-incidents-form__btn--primary"
                     >
-                      <FiSend size={13} /> {savingIncident ? 'Saving…' : editingIncidentId ? 'Save changes' : 'Submit Incident Report'}
+                      {savingIncident ? 'Saving…' : editingIncidentId ? 'Save changes' : 'Submit report'}
                     </button>
                   </div>
                 </div>
@@ -11553,64 +11472,85 @@ export default function PatientProfile() {
               {/* Incident List */}
               {filteredIncidents.length === 0 ? (
                 <div className="patient-incidents-empty">
-                  <FiAlertTriangle size={32} className="patient-incidents-empty__icon" />
-                  <div className="patient-incidents-empty__title">
+                  <p className="patient-incidents-empty__title">
                     {incidentFilter !== 'All'
-                      ? `No incidents found for "${incidentFilter}" type`
-                      : 'No incident reports filed'}
-                  </div>
-                  <div className="patient-incidents-empty__hint">
-                    Click "Report Incident" to file a new incident report for this patient
-                  </div>
+                      ? `No incidents for "${incidentFilter}"`
+                      : 'No incident reports yet'}
+                  </p>
+                  <p className="patient-incidents-empty__hint">
+                    Use &quot;Report incident&quot; to add one.
+                  </p>
                 </div>
               ) : (
                 <div className="patient-incidents-list">
                   {filteredIncidents.map((inc) => {
-                    const sevStyle = getIncidentSeverityStyle(inc.severity);
                     const statStyle = getIncidentStatusStyle(inc.status);
+                    const sevStyle = getIncidentSeverityStyle(inc.severity);
                     const isExpanded = expandedIncident === inc.id;
                     return (
                       <article
                         key={inc.id}
                         className="patient-incidents-card"
-                        style={{ borderLeftColor: sevStyle.color }}
+                        style={{ '--incident-accent': sevStyle.border }}
                       >
                         <div
                           onClick={() => setExpandedIncident(isExpanded ? null : inc.id)}
                           className="patient-incidents-card__header"
                           role="button"
                           tabIndex={0}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              setExpandedIncident(isExpanded ? null : inc.id);
+                            }
+                          }}
                         >
-                          <div className="patient-incidents-card__chips">
-                            <FiChevronRight
-                              size={14}
-                              className="patient-incidents-card__chevron"
-                              style={{ transform: isExpanded ? 'rotate(90deg)' : 'none' }}
-                            />
-                            <span
-                              className="patient-incidents-card__chip patient-incidents-card__chip--severity"
-                              style={{ background: sevStyle.bg, color: sevStyle.color, borderColor: sevStyle.border }}
-                            >
-                              {inc.severity}
-                            </span>
-                            <span className="patient-incidents-card__chip patient-incidents-card__chip--type">
-                              {inc.type}
-                            </span>
-                            <span
-                              className="patient-incidents-card__chip"
-                              style={{ background: statStyle.bg, color: statStyle.color, borderColor: statStyle.border, textTransform: 'capitalize' }}
-                            >
-                              {statStyle.label}
-                            </span>
-                            <span className="patient-incidents-card__meta">
-                              <FiCalendar size={11} /> {inc.date}
-                            </span>
-                            <span className="patient-incidents-card__meta">
-                              <FiClock size={11} /> {inc.time}
-                            </span>
+                          <div className="patient-incidents-card__rail" aria-hidden />
+                          <div className="patient-incidents-card__main">
+                            <div className="patient-incidents-card__topline">
+                              <h4 className="patient-incidents-card__title">{inc.type}</h4>
+                              <div className="patient-incidents-card__badges">
+                                <span
+                                  className="patient-incidents-badge patient-incidents-badge--severity"
+                                  style={{
+                                    background: sevStyle.bg,
+                                    color: sevStyle.color,
+                                    borderColor: sevStyle.border,
+                                  }}
+                                >
+                                  {inc.severity}
+                                </span>
+                                <span
+                                  className="patient-incidents-badge patient-incidents-badge--status"
+                                  style={{
+                                    background: statStyle.bg,
+                                    color: statStyle.color,
+                                    borderColor: statStyle.border,
+                                  }}
+                                >
+                                  {statStyle.label}
+                                </span>
+                              </div>
+                            </div>
+                            <p className="patient-incidents-card__when">
+                              {inc.date} at {inc.time}
+                              {inc.reportedBy ? ` · Reported by ${inc.reportedBy}` : ''}
+                              {inc.location ? ` · ${inc.location}` : ''}
+                            </p>
+                            {!isExpanded && inc.description && (
+                              <p className="patient-incidents-card__preview">
+                                {inc.description.length > 140
+                                  ? `${inc.description.slice(0, 140).trim()}…`
+                                  : inc.description}
+                              </p>
+                            )}
+                            {!isExpanded && inc.images?.length > 0 && (
+                              <span className="patient-incidents-card__photo-count">
+                                {inc.images.length} photo{inc.images.length === 1 ? '' : 's'} attached
+                              </span>
+                            )}
                           </div>
                           <div className="patient-incidents-card__actions">
-                            <span className="patient-incidents-card__reporter">{inc.reportedBy || 'Unknown'}</span>
                             {incidentIdIsPersisted(inc.id) && (
                               <button
                                 type="button"
@@ -11634,138 +11574,132 @@ export default function PatientProfile() {
                                   });
                                   setIncidentSaveError('');
                                   setShowIncidentForm(true);
+                                  setIncidentFormImagesFromIncident(inc);
                                   setExpandedIncident(inc.id);
                                 }}
-                                title="Edit incident report"
-                                className="patient-incidents-card__icon-btn"
+                                className="patient-incidents-card__text-btn"
                               >
-                                <FiEdit2 size={14} />
+                                Edit
                               </button>
                             )}
                             <button
                               type="button"
                               onClick={(e) => { e.stopPropagation(); handleDeleteIncident(inc.id); }}
                               disabled={deletingIncidentId === inc.id}
-                              title={deletingIncidentId === inc.id ? 'Deleting…' : 'Delete incident report'}
-                              className="patient-incidents-card__icon-btn patient-incidents-card__icon-btn--danger"
-                              style={{ opacity: deletingIncidentId === inc.id ? 0.55 : 1 }}
+                              className="patient-incidents-card__text-btn patient-incidents-card__text-btn--danger"
                             >
-                              <FiTrash2 size={14} />
+                              {deletingIncidentId === inc.id ? 'Deleting…' : 'Delete'}
                             </button>
+                            <span className="patient-incidents-card__toggle">
+                              {isExpanded ? 'Collapse' : 'Expand'}
+                            </span>
                           </div>
                         </div>
 
                         {isExpanded && (
                           <div className="patient-incidents-card__body">
-                            <section className="patient-incidents-card__section">
-                              <header className="patient-incidents-card__section-title patient-incidents-card__section-title--danger">
-                                <FiAlertTriangle size={11} /> Incident Description
-                              </header>
-                              <div className="patient-incidents-card__text">{inc.description}</div>
-                            </section>
-
-                            {(inc.location || inc.witnesses) && (
-                              <div className="row g-2 mb-3">
-                                {inc.location && (
-                                  <div className="col-md-6">
-                                    <div className="patient-incidents-card__factbox">
-                                      <div className="patient-incidents-card__factbox-label">Location</div>
-                                      <div className="patient-incidents-card__factbox-value">
-                                        <FiMapPin size={12} /> {inc.location}
-                                      </div>
-                                    </div>
-                                  </div>
-                                )}
-                                {inc.witnesses && (
-                                  <div className="col-md-6">
-                                    <div className="patient-incidents-card__factbox">
-                                      <div className="patient-incidents-card__factbox-label">Witnesses</div>
-                                      <div className="patient-incidents-card__factbox-value">
-                                        <FiUser size={12} /> {inc.witnesses}
-                                      </div>
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-
-                            {inc.injuryDetails && (
-                              <div className="patient-incidents-card__injury">
-                                <div className="patient-incidents-card__injury-label">Injury Details</div>
-                                <div className="patient-incidents-card__injury-text">{inc.injuryDetails}</div>
-                              </div>
-                            )}
-
-                            {inc.immediateAction && (
-                              <section className="patient-incidents-card__section">
-                                <header className="patient-incidents-card__section-title patient-incidents-card__section-title--info">
-                                  <FiShield size={11} /> Immediate Action Taken
-                                </header>
-                                <div className="patient-incidents-card__highlight patient-incidents-card__highlight--info">
-                                  {inc.immediateAction}
+                            <div className="patient-incidents-report">
+                              <div className="patient-incidents-report__facts">
+                                <div className="patient-incidents-fact">
+                                  <span className="patient-incidents-fact__label">Date</span>
+                                  <span className="patient-incidents-fact__value">{inc.date}</span>
                                 </div>
-                              </section>
-                            )}
-
-                            {inc.followUp && (
-                              <section className="patient-incidents-card__section">
-                                <header className="patient-incidents-card__section-title patient-incidents-card__section-title--accent">
-                                  <FiClipboard size={11} /> Follow-Up Plan
-                                </header>
-                                <div className="patient-incidents-card__highlight patient-incidents-card__highlight--accent">
-                                  {inc.followUp}
+                                <div className="patient-incidents-fact">
+                                  <span className="patient-incidents-fact__label">Time</span>
+                                  <span className="patient-incidents-fact__value">{inc.time}</span>
                                 </div>
-                              </section>
-                            )}
-
-                            <div className="patient-incidents-card__notify-row">
-                              <div className="patient-incidents-card__notify-pills">
-                                {inc.physicianNotified && (
-                                  <span className="patient-incidents-card__notify-pill patient-incidents-card__notify-pill--ok">
-                                    <FiCheckCircle size={11} /> Physician Notified
-                                  </span>
-                                )}
-                                {inc.familyNotified && (
-                                  <span className="patient-incidents-card__notify-pill patient-incidents-card__notify-pill--ok">
-                                    <FiCheckCircle size={11} /> Family Notified
-                                  </span>
-                                )}
-                                {!inc.physicianNotified && (
-                                  <span className="patient-incidents-card__notify-pill patient-incidents-card__notify-pill--warn">
-                                    <FiAlertCircle size={11} /> Physician Not Notified
-                                  </span>
-                                )}
+                                <div className="patient-incidents-fact">
+                                  <span className="patient-incidents-fact__label">Reported by</span>
+                                  <span className="patient-incidents-fact__value">{inc.reportedBy || '—'}</span>
+                                </div>
+                                <div className="patient-incidents-fact">
+                                  <span className="patient-incidents-fact__label">Location</span>
+                                  <span className="patient-incidents-fact__value">{inc.location || '—'}</span>
+                                </div>
                               </div>
-                              {inc.status !== 'resolved' && (
-                                <div className="patient-incidents-card__status-actions">
-                                  {inc.status === 'open' && (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleUpdateIncidentStatus(inc.id, 'in-progress')}
-                                      disabled={updatingIncidentStatusId === inc.id}
-                                      className="patient-incidents-card__status-btn patient-incidents-card__status-btn--progress"
-                                    >
-                                      <FiClock size={12} /> {updatingIncidentStatusId === inc.id ? 'Updating…' : 'Mark In Progress'}
-                                    </button>
+
+                              <section className="patient-incidents-report__section">
+                                <h5 className="patient-incidents-report__heading">What happened</h5>
+                                <p className="patient-incidents-report__text">{inc.description}</p>
+                              </section>
+
+                              <section className="patient-incidents-report__section patient-incidents-report__section--photos">
+                                <IncidentImagesSection
+                                  images={inc.images}
+                                  title="Photos"
+                                  emptyMessage="No photos were uploaded with this report."
+                                />
+                              </section>
+
+                              {inc.witnesses && (
+                                <section className="patient-incidents-report__section patient-incidents-report__section--compact">
+                                  <h5 className="patient-incidents-report__heading">Witnesses</h5>
+                                  <p className="patient-incidents-report__text">{inc.witnesses}</p>
+                                </section>
+                              )}
+
+                              {inc.injuryDetails && (
+                                <section className="patient-incidents-report__section patient-incidents-report__section--highlight">
+                                  <h5 className="patient-incidents-report__heading">Injury details</h5>
+                                  <p className="patient-incidents-report__text">{inc.injuryDetails}</p>
+                                </section>
+                              )}
+
+                              {(inc.immediateAction || inc.followUp) && (
+                                <div className="patient-incidents-report__split">
+                                  {inc.immediateAction && (
+                                    <section className="patient-incidents-report__section">
+                                      <h5 className="patient-incidents-report__heading">Immediate action</h5>
+                                      <p className="patient-incidents-report__text">{inc.immediateAction}</p>
+                                    </section>
                                   )}
-                                  <button
-                                    type="button"
-                                    onClick={() => handleUpdateIncidentStatus(inc.id, 'resolved')}
-                                    disabled={updatingIncidentStatusId === inc.id}
-                                    className="patient-incidents-card__status-btn patient-incidents-card__status-btn--resolve"
-                                  >
-                                    <FiCheckCircle size={12} /> {updatingIncidentStatusId === inc.id ? 'Updating…' : 'Resolve'}
-                                  </button>
+                                  {inc.followUp && (
+                                    <section className="patient-incidents-report__section">
+                                      <h5 className="patient-incidents-report__heading">Follow-up plan</h5>
+                                      <p className="patient-incidents-report__text">{inc.followUp}</p>
+                                    </section>
+                                  )}
                                 </div>
                               )}
+
+                              <div className="patient-incidents-report__footer">
+                                <span className="patient-incidents-report__notify">
+                                  Physician notified
+                                  <strong className={inc.physicianNotified ? 'is-yes' : 'is-no'}>
+                                    {inc.physicianNotified ? 'Yes' : 'No'}
+                                  </strong>
+                                </span>
+                                <span className="patient-incidents-report__notify">
+                                  Family notified
+                                  <strong className={inc.familyNotified ? 'is-yes' : 'is-no'}>
+                                    {inc.familyNotified ? 'Yes' : 'No'}
+                                  </strong>
+                                </span>
+                              </div>
                             </div>
 
-                            <div className="patient-incidents-card__footer">
-                              <span className="patient-incidents-card__footer-avatar"><FiUser size={11} /></span>
-                              <span className="patient-incidents-card__footer-text">
-                                Reported by <strong>{inc.reportedBy || 'Unknown'}</strong> on {inc.date} at {inc.time}
-                              </span>
-                            </div>
+                            {inc.status !== 'resolved' && (
+                              <div className="patient-incidents-card__status-actions">
+                                {inc.status === 'open' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleUpdateIncidentStatus(inc.id, 'in-progress')}
+                                    disabled={updatingIncidentStatusId === inc.id}
+                                    className="patient-incidents-card__status-btn"
+                                  >
+                                    {updatingIncidentStatusId === inc.id ? 'Updating…' : 'Mark in progress'}
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateIncidentStatus(inc.id, 'resolved')}
+                                  disabled={updatingIncidentStatusId === inc.id}
+                                  className="patient-incidents-card__status-btn patient-incidents-card__status-btn--primary"
+                                >
+                                  {updatingIncidentStatusId === inc.id ? 'Updating…' : 'Mark resolved'}
+                                </button>
+                              </div>
+                            )}
                           </div>
                         )}
                       </article>
@@ -12144,8 +12078,11 @@ export default function PatientProfile() {
       {/* ── Billing Tab ── */}
       {tab === 'billing' && (
         <PatientBillingTab
-          patientId={effectivePatientId}
+          key={billingPatientId || effectivePatientId}
+          patientId={billingPatientId || effectivePatientId}
           patientName={p?.name}
+          patientRecord={billingPatientRecord}
+          profileLoading={profileLoading}
         />
       )}
 

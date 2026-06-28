@@ -59,6 +59,135 @@
   color: var(--kh-text-muted, #64748b);
 }
 
+.patient-billing__summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.patient-billing__summary-grid--compact {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.patient-billing__summary-card {
+  padding: 14px 16px;
+  border: 1px solid #e8edf3;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.patient-billing__summary-label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.patient-billing__summary-value {
+  font-size: 18px;
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+}
+
+.patient-billing__current {
+  padding: 16px 18px;
+  border: 1px solid #dbeafe;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #f8fbff 0%, #fff 100%);
+}
+
+.patient-billing__current-label {
+  margin-bottom: 12px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #2563eb;
+}
+
+.patient-billing__current-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.patient-billing__current-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.patient-billing__current-item span {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.patient-billing__current-item strong {
+  font-size: 15px;
+  color: #0f172a;
+}
+
+.patient-billing__current-item--wide {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 767px) {
+  .patient-billing__current-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.patient-billing__field--checkbox {
+  display: flex;
+  align-items: flex-end;
+}
+
+.patient-billing__checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+  cursor: pointer;
+}
+
+.patient-billing__checkbox input {
+  width: 16px;
+  height: 16px;
+}
+
+.patient-billing__preview {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+.patient-billing__preview-total {
+  display: block;
+  font-size: 20px;
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+}
+
+.patient-billing__preview-note {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+@media (max-width: 767px) {
+  .patient-billing__summary-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .patient-billing__card {
   border: 1px solid #e8edf3;
   border-radius: 18px;
@@ -382,6 +511,89 @@
   border-radius: 18px;
   box-shadow: 0 28px 70px rgba(15, 23, 42, 0.25);
   overflow: hidden;
+}
+
+.patient-billing-modal--confirm {
+  width: min(420px, 96vw);
+  max-height: none;
+}
+
+.patient-billing-delete {
+  padding: 24px 22px 20px;
+  text-align: center;
+}
+
+.patient-billing-delete__icon {
+  width: 52px;
+  height: 52px;
+  margin: 0 auto 14px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fef2f2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+}
+
+.patient-billing-delete__title {
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #0f172a;
+}
+
+.patient-billing-delete__lead {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #64748b;
+}
+
+.patient-billing-delete__summary {
+  margin: 16px 0 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  text-align: left;
+}
+
+.patient-billing-delete__summary-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  font-size: 13px;
+  color: #64748b;
+}
+
+.patient-billing-delete__summary-row + .patient-billing-delete__summary-row {
+  border-top: 1px solid #e2e8f0;
+}
+
+.patient-billing-delete__summary-row strong {
+  color: #0f172a;
+  font-weight: 700;
+  text-align: right;
+}
+
+.patient-billing-delete__actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.patient-billing-delete__actions .patient-billing__btn {
+  min-width: 120px;
+}
+
+.patient-billing__btn--danger:hover:not(:disabled) {
+  background: #fef2f2;
+  border-color: #ef4444;
 }
 
 .patient-billing-modal__head {

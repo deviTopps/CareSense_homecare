@@ -18,6 +18,8 @@ import Enquiries from './pages/Enquiries';
 import NurseScheduling from './pages/NurseScheduling';
 import Account from './pages/Account';
 import Billing from './pages/Billing';
+import Finance from './pages/Finance';
+import InvoicesPayments from './pages/InvoicesPayments';
 import Reports from './pages/Reports';
 import WalletSuccess from './pages/WalletSuccess';
 import Auth from './pages/Auth';
@@ -256,6 +258,16 @@ function App() {
       <Route path="/billing" element={
         <ProtectedRoute isAuthenticated={isAuthenticated}>
           <AuthLayout><Billing /></AuthLayout>
+        </ProtectedRoute>
+      } />
+      <Route path="/finance" element={
+        <ProtectedRoute isAuthenticated={isAuthenticated}>
+          <AuthLayout><Finance /></AuthLayout>
+        </ProtectedRoute>
+      } />
+      <Route path="/invoices-payments" element={
+        <ProtectedRoute isAuthenticated={isAuthenticated}>
+          <AuthLayout><InvoicesPayments /></AuthLayout>
         </ProtectedRoute>
       } />
 

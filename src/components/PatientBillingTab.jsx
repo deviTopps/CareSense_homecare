@@ -3,33 +3,31 @@ import {
   FiCreditCard,
   FiEdit2,
   FiPlus,
+  FiRefreshCw,
   FiTrash2,
   FiSave,
   FiX,
 } from '../icons/hugeicons-feather';
 import {
-  BILLING_STATUSES,
-  PAYMENT_METHODS,
-  EMPTY_BILLING_PROFILE,
-  createEmptyBillingRecordForm,
-  fetchPatientBilling,
-  savePatientBillingBundle,
-  buildBillingRecordFromForm,
-  summarizeBillingRecords,
+  INVOICE_FREQUENCIES,
+  createEmptyInvoiceForm,
+  deletePatientInvoice,
+  fetchPatientInvoices,
   formatBillingMoney,
+  invoiceFormFromRecord,
+  refreshPatientInvoicesAfterMutation,
+  resolvePatientBillingRouteId,
+  savePatientInvoice,
+  summarizeBillingRecords,
 } from '../utils/patientBilling';
 import './PatientBillingTab.css';
 
-function statusBadgeClass(status) {
-  const s = String(status || '').toLowerCase();
-  if (s === 'paid') return 'patient-billing__badge--paid';
-  if (s === 'partial') return 'patient-billing__badge--partial';
-  if (s === 'overdue') return 'patient-billing__badge--overdue';
-  if (s === 'waived') return 'patient-billing__badge--waived';
-  return 'patient-billing__badge--pending';
-}
-
-export default function PatientBillingTab({ patientId, patientName }) {
+export default function PatientBillingTab({
+  patientId,
+  patientName,
+  patientRecord,
+  profileLoading = false,
+}) {
   const [loading, setLoading] = useState(true);
   const [loaded, setLoaded] = useState(false);
   const [records, setRecords] = useState([]);
@@ -40,35 +38,59 @@ export default function PatientBillingTab({ patientId, patientName }) {
   const [success, setSuccess] = useState('');
   const [showRecordForm, setShowRecordForm] = useState(false);
   const [editingRecordId, setEditingRecordId] = useState('');
-  const [recordForm, setRecordForm] = useState(() => createEmptyBillingRecordForm());
-  const storedProfileRef = useRef({ ...EMPTY_BILLING_PROFILE });
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [recordForm, setRecordForm] = useState(() => createEmptyInvoiceForm());
+
+  const billingUuid = useMemo(
+    () => resolvePatientBillingRouteId(patientId, patientRecord),
+    [patientId, patientRecord],
+  );
+
+  const applyRecords = useCallback((rows) => {
+    setRecords(rows.map((row) => ({
+      ...row,
+      patientName: row.patientName || patientName || 'Patient',
+    })));
+  }, [patientName]);
 
   const loadBilling = useCallback(async () => {
-    const pid = String(patientId || '').trim();
-    if (!pid) {
+    if (!billingUuid) {
       setRecords([]);
-      setLoading(false);
-      setLoaded(true);
+      setLoading(Boolean(profileLoading));
+      setLoaded(!profileLoading);
+      setError(
+        profileLoading
+          ? ''
+          : 'Patient UUID is required to load billing. Refresh the profile and try again.',
+      );
       return;
     }
 
     setLoading(true);
     setError('');
     try {
-      const data = await fetchPatientBilling(pid);
-      storedProfileRef.current = data.profile || { ...EMPTY_BILLING_PROFILE };
-      setRecords(Array.isArray(data.records) ? data.records : []);
+      const data = await fetchPatientInvoices(billingUuid, { patientRecord });
+      applyRecords(data.records);
     } catch (err) {
       setError(err?.message || 'Unable to load billing information.');
+      setRecords([]);
     } finally {
       setLoading(false);
       setLoaded(true);
     }
-  }, [patientId]);
+  }, [billingUuid, patientRecord, profileLoading, applyRecords]);
 
   useEffect(() => {
     loadBilling();
   }, [loadBilling]);
+
+  const wasProfileLoadingRef = useRef(profileLoading);
+  useEffect(() => {
+    if (wasProfileLoadingRef.current && !profileLoading && billingUuid) {
+      loadBilling();
+    }
+    wasProfileLoadingRef.current = profileLoading;
+  }, [profileLoading, billingUuid, loadBilling]);
 
   useEffect(() => {
     if (!success) return undefined;
@@ -80,37 +102,50 @@ export default function PatientBillingTab({ patientId, patientName }) {
   const currency = records[0]?.currency || 'GHS';
 
   const openRecordForm = useCallback(() => {
-    setRecordForm(createEmptyBillingRecordForm({ currency }));
-    setEditingRecordId('');
+    if (records.length >= 1) {
+      setEditingRecordId(records[0].id);
+      setRecordForm(invoiceFormFromRecord(records[0]));
+      setFormError('');
+      setShowRecordForm(true);
+      return;
+    }
     setFormError('');
+    setEditingRecordId('');
+    setRecordForm(createEmptyInvoiceForm());
     setShowRecordForm(true);
-  }, [currency]);
+  }, [records]);
 
   const resetRecordForm = useCallback(() => {
-    setRecordForm(createEmptyBillingRecordForm({ currency }));
+    setRecordForm(createEmptyInvoiceForm());
     setEditingRecordId('');
     setFormError('');
     setShowRecordForm(false);
-  }, [currency]);
+  }, []);
 
   useEffect(() => {
-    if (!showRecordForm) return undefined;
+    if (!showRecordForm && !deleteTarget) return undefined;
     const onKeyDown = (event) => {
-      if (event.key === 'Escape' && !savingRecord) resetRecordForm();
+      if (event.key !== 'Escape') return;
+      if (showRecordForm && !savingRecord) resetRecordForm();
+      if (deleteTarget && !deletingRecordId) setDeleteTarget(null);
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [showRecordForm, savingRecord, resetRecordForm]);
+  }, [showRecordForm, deleteTarget, savingRecord, deletingRecordId, resetRecordForm]);
 
   const handleSaveRecord = async () => {
-    const pid = String(patientId || '').trim();
-    if (!pid) return;
-    if (!recordForm.description.trim()) {
-      setFormError('Description is required for a billing entry.');
+    const billingUuid = resolvePatientBillingRouteId(patientId, patientRecord);
+    if (!billingUuid) {
+      setFormError('Patient UUID is required for billing. Wait for the profile to finish loading.');
       return;
     }
-    if (!Number.isFinite(Number(recordForm.amount)) || Number(recordForm.amount) <= 0) {
-      setFormError('Enter a valid amount greater than zero.');
+
+    if (!Number.isFinite(Number(recordForm.rate)) || Number(recordForm.rate) <= 0) {
+      setFormError('Enter a valid rate greater than zero.');
+      return;
+    }
+    if (!String(recordForm.note || '').trim()) {
+      setFormError('Note is required.');
       return;
     }
 
@@ -119,22 +154,16 @@ export default function PatientBillingTab({ patientId, patientName }) {
     setError('');
     setSuccess('');
     try {
-      const nextRecord = buildBillingRecordFromForm(recordForm, {
-        patientId: pid,
-        recordId: editingRecordId || undefined,
+      const existingId = editingRecordId || undefined;
+      const saved = await savePatientInvoice(billingUuid, recordForm, {
+        invoiceId: existingId,
+        patientRecord,
       });
-
-      const nextRecords = editingRecordId
-        ? records.map((row) => (row.id === editingRecordId ? { ...row, ...nextRecord, id: editingRecordId } : row))
-        : [nextRecord, ...records];
-
-      const saved = await savePatientBillingBundle(pid, {
-        profile: storedProfileRef.current,
-        records: nextRecords,
-      });
-      setRecords(saved.records);
+      const refreshed = await refreshPatientInvoicesAfterMutation(billingUuid, { patientRecord });
+      const nextRecords = refreshed.length ? refreshed : (saved ? [saved] : []);
+      applyRecords(nextRecords);
       resetRecordForm();
-      setSuccess(editingRecordId ? 'Billing entry updated.' : 'Billing entry added.');
+      setSuccess(existingId || records.length ? 'Billing entry updated.' : 'Billing entry saved.');
     } catch (err) {
       setFormError(err?.message || 'Failed to save billing entry.');
     } finally {
@@ -144,47 +173,34 @@ export default function PatientBillingTab({ patientId, patientName }) {
 
   const startEditRecord = (record) => {
     setEditingRecordId(record.id);
-    setRecordForm({
-      date: record.date || new Date().toISOString().slice(0, 10),
-      description: record.description || '',
-      amount: String(record.amount ?? ''),
-      currency: record.currency || currency,
-      status: record.status || 'Pending',
-      paymentMethod: record.paymentMethod || '',
-      referenceNumber: record.referenceNumber || '',
-      notes: record.notes || '',
-    });
+    setRecordForm(invoiceFormFromRecord(record));
     setShowRecordForm(true);
     setFormError('');
     setError('');
     setSuccess('');
   };
 
-  const handleDeleteRecord = async (recordId) => {
-    const pid = String(patientId || '').trim();
-    if (!pid || !recordId) return;
-    if (!window.confirm('Delete this billing entry? This cannot be undone.')) return;
+  const handleConfirmDelete = async () => {
+    const billingUuid = resolvePatientBillingRouteId(patientId, patientRecord);
+    if (!billingUuid || !deleteTarget) return;
 
-    setDeletingRecordId(recordId);
+    setDeletingRecordId(billingUuid);
     setError('');
     setSuccess('');
     try {
-      const nextRecords = records.filter((row) => row.id !== recordId);
-      const saved = await savePatientBillingBundle(pid, {
-        profile: storedProfileRef.current,
-        records: nextRecords,
-      });
-      setRecords(saved.records);
-      if (editingRecordId === recordId) resetRecordForm();
-      setSuccess('Billing entry deleted.');
+      const nextRecords = await deletePatientInvoice(billingUuid, { patientRecord });
+      applyRecords(nextRecords);
+      if (editingRecordId) resetRecordForm();
+      setDeleteTarget(null);
+      setSuccess('Billing record deleted.');
     } catch (err) {
-      setError(err?.message || 'Failed to delete billing entry.');
+      setError(err?.message || 'Failed to delete billing record.');
     } finally {
       setDeletingRecordId('');
     }
   };
 
-  if (loading && !loaded) {
+  if ((loading && !loaded) || (profileLoading && !billingUuid)) {
     return (
       <div className="patient-billing-loading" role="status" aria-live="polite" aria-label="Loading billing">
         <span className="patient-billing-loading__spinner" aria-hidden />
@@ -199,7 +215,7 @@ export default function PatientBillingTab({ patientId, patientName }) {
         <div className="patient-billing__hero-text">
           <h2 id="patient-billing-title" className="patient-billing__title">Billing</h2>
           <p className="patient-billing__subtitle">
-            Record and track all charges for {patientName || 'this patient'}.
+            Record and track billing rates for {patientName || 'this patient'}.
           </p>
         </div>
         <button
@@ -208,12 +224,43 @@ export default function PatientBillingTab({ patientId, patientName }) {
           onClick={openRecordForm}
         >
           <FiPlus size={15} aria-hidden />
-          Add billing entry
+          {records.length ? 'Edit billing entry' : 'Add billing entry'}
         </button>
       </header>
 
+      <div className="patient-billing__summary-grid patient-billing__summary-grid--compact">
+        <div className="patient-billing__summary-card">
+          <span className="patient-billing__summary-label">Entries</span>
+          <strong className="patient-billing__summary-value">{summary.count}</strong>
+        </div>
+        <div className="patient-billing__summary-card">
+          <span className="patient-billing__summary-label">Combined rate</span>
+          <strong className="patient-billing__summary-value">{formatBillingMoney(summary.billed, currency)}</strong>
+        </div>
+      </div>
+
       {!!error && <div className="patient-billing__alert patient-billing__alert--error" role="alert">{error}</div>}
       {!!success && <div className="patient-billing__alert patient-billing__alert--success" role="status">{success}</div>}
+
+      {records.length > 0 && (
+        <div className="patient-billing__current" aria-label="Current billing">
+          <div className="patient-billing__current-label">Current billing</div>
+          <div className="patient-billing__current-grid">
+            <div className="patient-billing__current-item">
+              <span>Rate</span>
+              <strong>{formatBillingMoney(records[0].rate, records[0].currency || currency)}</strong>
+            </div>
+            <div className="patient-billing__current-item">
+              <span>Frequency</span>
+              <strong>{records[0].frequencyLabel || records[0].frequency}</strong>
+            </div>
+            <div className="patient-billing__current-item patient-billing__current-item--wide">
+              <span>Note</span>
+              <strong>{records[0].note || '—'}</strong>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showRecordForm && (
         <div
@@ -255,83 +302,40 @@ export default function PatientBillingTab({ patientId, patientName }) {
 
               <div className="patient-billing__grid">
                 <div className="patient-billing__field">
-                  <label className="patient-billing__label" htmlFor="billing-record-date">Date</label>
+                  <label className="patient-billing__label" htmlFor="billing-invoice-rate">Rate</label>
                   <input
-                    id="billing-record-date"
-                    type="date"
-                    className="patient-billing__input"
-                    value={recordForm.date}
-                    onChange={(e) => setRecordForm((prev) => ({ ...prev, date: e.target.value }))}
-                  />
-                </div>
-                <div className="patient-billing__field patient-billing__field--full">
-                  <label className="patient-billing__label" htmlFor="billing-record-description">Description</label>
-                  <input
-                    id="billing-record-description"
-                    className="patient-billing__input"
-                    value={recordForm.description}
-                    onChange={(e) => setRecordForm((prev) => ({ ...prev, description: e.target.value }))}
-                    placeholder="e.g. Home visit — wound dressing"
-                  />
-                </div>
-                <div className="patient-billing__field">
-                  <label className="patient-billing__label" htmlFor="billing-record-amount">Amount</label>
-                  <input
-                    id="billing-record-amount"
+                    id="billing-invoice-rate"
                     type="number"
                     min="0"
                     step="0.01"
                     className="patient-billing__input"
-                    value={recordForm.amount}
-                    onChange={(e) => setRecordForm((prev) => ({ ...prev, amount: e.target.value }))}
-                    placeholder="0.00"
+                    value={recordForm.rate}
+                    onChange={(e) => setRecordForm((prev) => ({ ...prev, rate: e.target.value }))}
+                    placeholder="20"
                   />
                 </div>
                 <div className="patient-billing__field">
-                  <label className="patient-billing__label" htmlFor="billing-record-status">Status</label>
+                  <label className="patient-billing__label" htmlFor="billing-invoice-frequency">Frequency</label>
                   <select
-                    id="billing-record-status"
+                    id="billing-invoice-frequency"
                     className="patient-billing__select"
-                    value={recordForm.status}
-                    onChange={(e) => setRecordForm((prev) => ({ ...prev, status: e.target.value }))}
+                    value={recordForm.frequency}
+                    onChange={(e) => setRecordForm((prev) => ({ ...prev, frequency: e.target.value }))}
                   >
-                    {BILLING_STATUSES.map((status) => (
-                      <option key={status} value={status}>{status}</option>
+                    {INVOICE_FREQUENCIES.map((entry) => (
+                      <option key={entry.value} value={entry.value}>{entry.label}</option>
                     ))}
                   </select>
-                </div>
-                <div className="patient-billing__field">
-                  <label className="patient-billing__label" htmlFor="billing-record-payment">Payment method</label>
-                  <select
-                    id="billing-record-payment"
-                    className="patient-billing__select"
-                    value={recordForm.paymentMethod}
-                    onChange={(e) => setRecordForm((prev) => ({ ...prev, paymentMethod: e.target.value }))}
-                  >
-                    <option value="">Not specified</option>
-                    {PAYMENT_METHODS.map((method) => (
-                      <option key={method} value={method}>{method}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="patient-billing__field">
-                  <label className="patient-billing__label" htmlFor="billing-record-reference">Reference / invoice #</label>
-                  <input
-                    id="billing-record-reference"
-                    className="patient-billing__input"
-                    value={recordForm.referenceNumber}
-                    onChange={(e) => setRecordForm((prev) => ({ ...prev, referenceNumber: e.target.value }))}
-                    placeholder="Optional"
-                  />
                 </div>
                 <div className="patient-billing__field patient-billing__field--full">
-                  <label className="patient-billing__label" htmlFor="billing-record-notes">Notes</label>
+                  <label className="patient-billing__label" htmlFor="billing-invoice-note">Note</label>
                   <textarea
-                    id="billing-record-notes"
+                    id="billing-invoice-note"
                     className="patient-billing__textarea"
-                    value={recordForm.notes}
-                    onChange={(e) => setRecordForm((prev) => ({ ...prev, notes: e.target.value }))}
-                    placeholder="Additional billing details"
+                    value={recordForm.note}
+                    onChange={(e) => setRecordForm((prev) => ({ ...prev, note: e.target.value }))}
+                    placeholder="Home care rate"
+                    rows={3}
                   />
                 </div>
               </div>
@@ -350,15 +354,88 @@ export default function PatientBillingTab({ patientId, patientName }) {
         </div>
       )}
 
+      {deleteTarget && (
+        <div
+          className="patient-billing-modal-overlay"
+          role="presentation"
+          onClick={() => { if (!deletingRecordId) setDeleteTarget(null); }}
+        >
+          <div
+            className="patient-billing-modal patient-billing-modal--confirm"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="patient-billing-delete-title"
+            aria-describedby="patient-billing-delete-desc"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="patient-billing-delete">
+              <div className="patient-billing-delete__icon" aria-hidden>
+                <FiTrash2 size={24} />
+              </div>
+              <h3 id="patient-billing-delete-title" className="patient-billing-delete__title">
+                Delete billing entry?
+              </h3>
+              <p id="patient-billing-delete-desc" className="patient-billing-delete__lead">
+                This will permanently remove the billing record for {patientName || 'this patient'}. This action cannot be undone.
+              </p>
+              <div className="patient-billing-delete__summary">
+                <div className="patient-billing-delete__summary-row">
+                  <span>Rate</span>
+                  <strong>{formatBillingMoney(deleteTarget.rate, deleteTarget.currency || currency)}</strong>
+                </div>
+                <div className="patient-billing-delete__summary-row">
+                  <span>Frequency</span>
+                  <strong>{deleteTarget.frequencyLabel || deleteTarget.frequency}</strong>
+                </div>
+                {deleteTarget.note && (
+                  <div className="patient-billing-delete__summary-row">
+                    <span>Note</span>
+                    <strong>{deleteTarget.note}</strong>
+                  </div>
+                )}
+              </div>
+              <div className="patient-billing-delete__actions">
+                <button
+                  type="button"
+                  className="patient-billing__btn patient-billing__btn--secondary"
+                  onClick={() => setDeleteTarget(null)}
+                  disabled={Boolean(deletingRecordId)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="patient-billing__btn patient-billing__btn--danger"
+                  onClick={handleConfirmDelete}
+                  disabled={Boolean(deletingRecordId)}
+                >
+                  <FiTrash2 size={14} aria-hidden />
+                  {deletingRecordId ? 'Deleting…' : 'Delete entry'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="patient-billing__card">
         <div className="patient-billing__card-head">
           <div>
             <h3 className="patient-billing__card-title">Billing history</h3>
             <p className="patient-billing__card-desc">
               {records.length} {records.length === 1 ? 'entry' : 'entries'}
-              {summary.openCount > 0 ? ` · ${summary.openCount} open` : ''}
             </p>
           </div>
+          <button
+            type="button"
+            className="patient-billing__btn patient-billing__btn--ghost"
+            onClick={loadBilling}
+            disabled={loading}
+            title="Refresh billing"
+          >
+            <FiRefreshCw size={14} aria-hidden />
+            Refresh
+          </button>
         </div>
         {records.length === 0 ? (
           <div className="patient-billing__empty">
@@ -367,7 +444,7 @@ export default function PatientBillingTab({ patientId, patientName }) {
             </div>
             <div className="patient-billing__empty-title">No billing entries yet</div>
             <p className="patient-billing__empty-text">
-              Add visits, supplies, assessments, and other charges to keep a complete billing record for this patient.
+              Add a rate with frequency and note for this patient.
             </p>
           </div>
         ) : (
@@ -376,28 +453,21 @@ export default function PatientBillingTab({ patientId, patientName }) {
               <thead>
                 <tr>
                   <th>Date</th>
-                  <th>Description</th>
-                  <th>Amount</th>
-                  <th>Status</th>
-                  <th>Reference</th>
+                  <th>Rate</th>
+                  <th>Frequency</th>
+                  <th>Note</th>
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {records.map((record) => (
                   <tr key={record.id}>
-                    <td>{record.displayDate || record.date || '—'}</td>
-                    <td>
-                      <strong>{record.description}</strong>
-                      {record.notes ? <div style={{ marginTop: 4, fontSize: 12, color: '#64748b' }}>{record.notes}</div> : null}
+                    <td>{record.displayDate}</td>
+                    <td className="patient-billing__amount">
+                      {formatBillingMoney(record.rate, record.currency || currency)}
                     </td>
-                    <td className="patient-billing__amount">{formatBillingMoney(record.amount, record.currency || currency)}</td>
-                    <td>
-                      <span className={`patient-billing__badge ${statusBadgeClass(record.status)}`}>
-                        {record.status}
-                      </span>
-                    </td>
-                    <td>{record.referenceNumber || '—'}</td>
+                    <td>{record.frequencyLabel || record.frequency}</td>
+                    <td>{record.note || '—'}</td>
                     <td>
                       <div className="patient-billing__row-actions">
                         <button
@@ -412,8 +482,8 @@ export default function PatientBillingTab({ patientId, patientName }) {
                           type="button"
                           className="patient-billing__icon-btn patient-billing__icon-btn--danger"
                           title="Delete entry"
-                          onClick={() => handleDeleteRecord(record.id)}
-                          disabled={deletingRecordId === record.id}
+                          onClick={() => setDeleteTarget(record)}
+                          disabled={Boolean(deletingRecordId)}
                         >
                           <FiTrash2 size={14} />
                         </button>

@@ -1,5 +1,7 @@
 /** Shared alert row normalization for dashboard watchlist and emergency cases. */
 
+import { extractUrlFromPayload } from './resolveStoredMediaUrl';
+
 function pickFirst(obj, keys) {
   if (!obj || typeof obj !== 'object') return undefined;
   for (const k of keys) {
@@ -242,6 +244,233 @@ export function isFallbackAlertId(id) {
   return /^AL-\d+$/i.test(String(id ?? '').trim());
 }
 
+function isLikelyImageUrl(value) {
+  const s = String(value || '').trim();
+  if (!s) return false;
+  if (s.startsWith('data:image/')) return true;
+  if (/^https?:\/\//i.test(s) || s.startsWith('/')) {
+    return /\.(png|jpe?g|gif|webp|bmp|svg)(\?|#|$)/i.test(s) || s.includes('/image') || s.includes('media');
+  }
+  return false;
+}
+
+function parseImageAttachmentValue(value) {
+  if (value == null || value === '') return null;
+
+  if (typeof value === 'string') {
+    const url = value.trim();
+    if (!url) return null;
+    if (isLikelyImageUrl(url)) {
+      return { url, mediaId: null, objectKey: null };
+    }
+    return null;
+  }
+
+  if (typeof value !== 'object' || Array.isArray(value)) return null;
+
+  const url = String(
+    extractUrlFromPayload(value)
+    || pickFirst(value, ['url', 'imageUrl', 'image_url', 'photoUrl', 'photo_url', 'src', 'href', 'link'])
+    || value?.link?.url
+    || '',
+  ).trim();
+
+  const mediaId = String(
+    pickFirst(value, ['mediaId', 'media_id', 'mediaID'])
+    || value?.media?.id
+    || value?.media?.mediaId
+    || '',
+  ).trim();
+
+  const objectKey = String(
+    pickFirst(value, ['objectKey', 'object_key', 'key', 'storageKey', 'storage_key'])
+    || value?.media?.objectKey
+    || '',
+  ).trim();
+
+  const mimeType = String(
+    pickFirst(value, ['mimeType', 'mime_type', 'contentType', 'content_type', 'fileType', 'file_type'])
+    || value?.media?.mimeType
+    || '',
+  ).trim();
+
+  if (!url && !mediaId && !objectKey) return null;
+  if (mimeType && !mimeType.toLowerCase().startsWith('image/')) return null;
+
+  return {
+    url: url || null,
+    mediaId: mediaId || null,
+    objectKey: objectKey || null,
+    mimeType: mimeType || null,
+  };
+}
+
+/** Extract wound/case photo attachment from alert API payloads. */
+export function extractCaseImageAttachment(raw) {
+  const a = raw && typeof raw === 'object' ? raw : {};
+  const dataObj = a.data && typeof a.data === 'object' ? a.data : null;
+
+  const scalarCandidates = [
+    a.image,
+    a.imageUrl,
+    a.image_url,
+    a.photoUrl,
+    a.photo_url,
+    a.attachmentUrl,
+    a.attachment_url,
+    a.caseImage,
+    a.case_image,
+    a.woundImage,
+    a.wound_image,
+    a.attachedImage,
+    a.attached_image,
+    a.attachmentImage,
+    a.attachment_image,
+    a.evidenceImage,
+    a.evidence_image,
+    a.photo,
+    a.picture,
+    a.snapshot,
+    a.attachment,
+    a.media,
+    a.imageAttachment,
+    a.caseAttachment,
+    dataObj?.image,
+    dataObj?.imageUrl,
+    dataObj?.attachment,
+    dataObj?.media,
+    dataObj?.caseImage,
+    dataObj?.woundImage,
+  ];
+
+  for (const candidate of scalarCandidates) {
+    const parsed = parseImageAttachmentValue(candidate);
+    if (parsed) return parsed;
+  }
+
+  const arrayCandidates = [
+    a.images,
+    a.attachments,
+    a.photos,
+    a.mediaFiles,
+    a.files,
+    dataObj?.images,
+    dataObj?.attachments,
+    dataObj?.photos,
+    dataObj?.mediaFiles,
+  ];
+
+  for (const arr of arrayCandidates) {
+    if (!Array.isArray(arr)) continue;
+    for (const entry of arr) {
+      const parsed = parseImageAttachmentValue(entry);
+      if (parsed) return parsed;
+    }
+  }
+
+  const mediaId = String(
+    pickFirst(a, ['imageMediaId', 'image_media_id', 'attachmentMediaId', 'attachment_media_id', 'mediaId', 'media_id'])
+    || pickFirst(dataObj || {}, ['imageMediaId', 'attachmentMediaId', 'mediaId'])
+    || '',
+  ).trim();
+  const objectKey = String(
+    pickFirst(a, ['imageObjectKey', 'image_object_key', 'attachmentObjectKey', 'attachment_object_key', 'objectKey', 'object_key'])
+    || pickFirst(dataObj || {}, ['imageObjectKey', 'attachmentObjectKey', 'objectKey'])
+    || '',
+  ).trim();
+
+  if (mediaId || objectKey) {
+    return { url: null, mediaId: mediaId || null, objectKey: objectKey || null };
+  }
+
+  return null;
+}
+
+function attachmentDedupeKey(attachment) {
+  if (!attachment) return '';
+  return String(
+    attachment.url
+    || `${attachment.mediaId || ''}|${attachment.objectKey || ''}`,
+  ).trim();
+}
+
+/** Extract all image attachments from incident API payloads. */
+export function extractIncidentImages(raw) {
+  const a = raw && typeof raw === 'object' ? raw : {};
+  const dataObj = a.data && typeof a.data === 'object' ? a.data : null;
+  const seen = new Set();
+  const images = [];
+
+  const push = (candidate) => {
+    const parsed = parseImageAttachmentValue(candidate);
+    const key = attachmentDedupeKey(parsed);
+    if (!parsed || !key || seen.has(key)) return;
+    seen.add(key);
+    images.push(parsed);
+  };
+
+  const scalarCandidates = [
+    a.image,
+    a.imageUrl,
+    a.image_url,
+    a.photoUrl,
+    a.photo_url,
+    a.attachmentUrl,
+    a.attachment_url,
+    a.attachedImage,
+    a.attached_image,
+    a.evidenceImage,
+    a.evidence_image,
+    a.photo,
+    a.picture,
+    a.snapshot,
+    a.attachment,
+    a.media,
+    a.imageAttachment,
+    dataObj?.image,
+    dataObj?.imageUrl,
+    dataObj?.attachment,
+    dataObj?.media,
+  ];
+
+  scalarCandidates.forEach(push);
+
+  const arrayCandidates = [
+    a.images,
+    a.attachments,
+    a.photos,
+    a.mediaFiles,
+    a.files,
+    a.incidentImages,
+    a.incident_images,
+    dataObj?.images,
+    dataObj?.attachments,
+    dataObj?.photos,
+    dataObj?.mediaFiles,
+  ];
+
+  arrayCandidates.forEach((arr) => {
+    if (!Array.isArray(arr)) return;
+    arr.forEach(push);
+  });
+
+  const mediaIds = [
+    ...(Array.isArray(a.mediaIds) ? a.mediaIds : []),
+    ...(Array.isArray(a.media_ids) ? a.media_ids : []),
+    ...(Array.isArray(dataObj?.mediaIds) ? dataObj.mediaIds : []),
+  ];
+  mediaIds.forEach((id) => {
+    const mediaId = String(id || '').trim();
+    if (!mediaId) return;
+    const key = `${mediaId}|`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    images.push({ url: null, mediaId, objectKey: null });
+  });
+
+  return images;
+}
+
 function normalizeAlertRecordId(raw, index) {
   const a = raw && typeof raw === 'object' ? raw : {};
   const asString = (v) => {
@@ -319,6 +548,7 @@ export function mapAlertToCase(raw, index) {
     activities: normalizeActivities(activitiesRaw),
     vitals,
     medications: normalizeMedications(medsRaw),
+    attachedImage: extractCaseImageAttachment(a),
   };
 }
 

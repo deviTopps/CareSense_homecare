@@ -833,8 +833,8 @@ export default function Patients() {
 
     return {
       id: displayId,
-      patientId: mutationPatientId || apiPatientId || null,
-      profileRouteId: mutationPatientId || apiPatientId || uuid || displayId,
+      patientId: apiPatientId || uuid || mutationPatientId || null,
+      profileRouteId: apiPatientId || uuid || mutationPatientId || displayId,
       recordId,
       uuid,
       name: fullName || 'Unknown Patient',

@@ -35,7 +35,7 @@
   --cs-shadow: 0 8px 30px rgba(12, 31, 51, 0.08);
   --cs-shadow-lg: 0 24px 48px rgba(12, 31, 51, 0.12);
 
-  font-family: 'Google Sans', system-ui, -apple-system, sans-serif;
+  font-family: var(--kh-font-family, 'Inter', system-ui, -apple-system, sans-serif);
   color: var(--cs-text);
   background: var(--cs-white);
   line-height: 1.55;

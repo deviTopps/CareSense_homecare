@@ -62,13 +62,13 @@
   font-size: 13px;
   font-weight: 700;
   color: #fff;
-  background: linear-gradient(135deg, #45b6fe 0%, #289ff0 100%);
-  box-shadow: 0 4px 14px rgba(69, 182, 254, 0.28);
+  background: var(--pp-accent);
+  box-shadow: none;
 }
 
 .patient-profile-page .pp-pharm-btn-yellow:hover {
-  background: linear-gradient(135deg, #2e9de8 0%, #1d8fd9 100%);
-  transform: translateY(-1px);
+  background: var(--pp-accent-dark);
+  transform: none;
 }
 
 .patient-profile-page .pp-pharm-btn-yellow--secondary {
@@ -115,23 +115,51 @@
   width: 96px;
   height: 96px;
   border-radius: 14px;
+}
+
+.patient-profile-page .pp-pharm-topbar-menu {
   position: relative;
 }
 
-.patient-profile-page .pp-pharm-side-profile__photo::after {
-  content: '';
+.patient-profile-page .pp-pharm-topbar-menu__panel {
   position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: linear-gradient(180deg, transparent 55%, rgba(15, 23, 42, 0.35));
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.15s ease;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  min-width: 196px;
+  padding: 6px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.12);
 }
 
-.patient-profile-page .pp-pharm-side-profile__photo:hover::after,
-.patient-profile-page .pp-pharm-side-profile__photo:focus-visible::after {
-  opacity: 1;
+.patient-profile-page .pp-pharm-topbar-menu__panel button {
+  display: block;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+  cursor: pointer;
+}
+
+.patient-profile-page .pp-pharm-topbar-menu__panel button:hover:not(:disabled) {
+  background: #f3f4f6;
+}
+
+.patient-profile-page .pp-pharm-topbar-menu__panel button.is-danger {
+  color: #b91c1c;
+}
+
+.patient-profile-page .pp-pharm-topbar-menu__panel hr {
+  margin: 6px 0;
+  border: none;
+  border-top: 1px solid #f3f4f6;
 }
 
 .patient-profile-page .pp-pharm-side-profile__status {
@@ -218,33 +246,33 @@
 .patient-profile-page .pp-pharm-tabs {
   flex-wrap: nowrap;
   min-width: min-content;
-  padding: 10px 12px !important;
-  background: #f8fafc !important;
+  padding: 8px 12px !important;
+  background: #fff !important;
   border-bottom: 1px solid #e8edf3 !important;
-  border-radius: 18px 18px 0 0;
+  border-radius: 0;
+  gap: 4px;
 }
 
 .patient-profile-page .pp-pharm-tabs .nurse-profile-tab {
   flex-shrink: 0;
   white-space: nowrap;
-  padding: 9px 14px !important;
-  font-size: 12.5px !important;
+  padding: 8px 12px !important;
+  font-size: 12px !important;
+  font-weight: 600;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: #64748b;
 }
 
 .patient-profile-page .pp-pharm-tabs .nurse-profile-tab.active {
   color: var(--pp-accent-dark) !important;
-  box-shadow: 0 2px 8px rgba(69, 182, 254, 0.12) !important;
+  background: var(--pp-accent-soft) !important;
+  box-shadow: none !important;
 }
 
 .patient-profile-page .pp-pharm-tab-plus {
-  border: 1px dashed #cbd5e1 !important;
-  background: transparent !important;
-  color: var(--pp-accent-dark) !important;
-}
-
-.patient-profile-page .pp-pharm-tab-plus:hover {
-  background: var(--pp-accent-soft) !important;
-  border-color: #45b6fe !important;
+  display: none;
 }
 
 .patient-profile-page .pp-pharm-board {
@@ -266,16 +294,56 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  color: var(--pp-accent-dark);
+  color: #374151;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0;
 }
 
 .patient-profile-page .pp-pharm-panel__section-title::before {
-  content: '';
-  width: 3px;
-  height: 14px;
-  border-radius: 2px;
-  background: var(--pp-accent);
-  flex-shrink: 0;
+  display: none;
+}
+
+.patient-profile-page .pp-pharm-panel--compact {
+  padding-bottom: 4px;
+}
+
+.patient-profile-page .pp-pharm-panel__hint {
+  margin: 0;
+  font-size: 13px;
+  color: #64748b;
+  line-height: 1.5;
+}
+
+.patient-profile-page .patient-med-card-grid--profile {
+  margin-top: 4px;
+}
+
+.patient-profile-page .patient-med-card--compact {
+  cursor: default;
+  transition: border-color 0.14s ease, background 0.14s ease;
+}
+
+.patient-profile-page .patient-med-card--compact:hover {
+  border-color: #bae0fd;
+  background: #f8fbff;
+}
+
+.patient-profile-page .nurse-profile-timeline-table--compact .nurse-profile-timeline-head,
+.patient-profile-page .nurse-profile-timeline-table--compact .nurse-profile-timeline-row {
+  grid-template-columns: minmax(120px, 0.9fr) minmax(0, 2fr) minmax(88px, 0.7fr);
+}
+
+.patient-profile-page .patient-profile-save-alert {
+  top: 20px;
+  right: 20px;
+  left: auto;
+  min-width: 280px;
+  max-width: min(420px, calc(100vw - 40px));
+  padding: 12px 14px;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
 }
 
 .patient-profile-page .pp-pharm-field-value {

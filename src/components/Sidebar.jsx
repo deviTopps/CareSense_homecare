@@ -1,5 +1,5 @@
-import { useEffect, useRef } from 'react';
-import { NavLink } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { NavLink, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { BRAND_LOGO_SRC } from '../constants/brandAssets';
 import {
@@ -20,7 +20,11 @@ import {
   FiMoon,
   FiSun,
   FiCreditCard,
+  FiFileText,
+  FiChevronDown,
 } from '../icons/hugeicons-feather';
+
+const FINANCE_NAV_ID = 'finance';
 
 const sidebarGroups = [
   {
@@ -34,6 +38,26 @@ const sidebarGroups = [
       { to: '/clinical', icon: FiAlertCircle, label: 'Emergency Cases', guideTarget: 'nav-clinical' },
       { to: '/attendance', icon: FiClock, label: 'Attendance', guideTarget: 'nav-attendance' },
       { to: '/reports', icon: FiFolder, label: 'Reports', guideTarget: 'nav-reports' },
+      {
+        id: FINANCE_NAV_ID,
+        icon: FiBarChart2,
+        label: 'Finance',
+        guideTarget: 'nav-finance',
+        children: [
+          {
+            to: '/finance',
+            icon: FiCreditCard,
+            label: 'Patient billing',
+            guideTarget: 'nav-finance-billing',
+          },
+          {
+            to: '/invoices-payments',
+            icon: FiFileText,
+            label: 'Invoices & payments',
+            guideTarget: 'nav-invoices-payments',
+          },
+        ],
+      },
     ],
   },
   {
@@ -57,9 +81,119 @@ export default function Sidebar({
   isDark = false,
   onToggleTheme,
 }) {
+  const { pathname } = useLocation();
   const resizeActive = useRef(false);
   const startXRef = useRef(0);
   const startWidthRef = useRef(sidebarWidth);
+  const [openGroups, setOpenGroups] = useState({ [FINANCE_NAV_ID]: true });
+  const [collapsedFlyout, setCollapsedFlyout] = useState('');
+
+  const isFinanceRoute = pathname === '/finance' || pathname.startsWith('/invoices-payments');
+
+  useEffect(() => {
+    if (isFinanceRoute) {
+      setOpenGroups((prev) => ({ ...prev, [FINANCE_NAV_ID]: true }));
+    }
+  }, [isFinanceRoute]);
+
+  useEffect(() => {
+    setCollapsedFlyout('');
+  }, [pathname, isCollapsed]);
+
+  const toggleGroup = (groupId) => {
+    if (isCollapsed) {
+      setCollapsedFlyout((current) => (current === groupId ? '' : groupId));
+      return;
+    }
+    setOpenGroups((prev) => ({ ...prev, [groupId]: !prev[groupId] }));
+  };
+
+  const renderNavItem = (item) => {
+    if (item.children?.length) {
+      const Icon = item.icon;
+      const isOpen = isCollapsed ? collapsedFlyout === item.id : openGroups[item.id];
+      const isActive = item.children.some((child) => pathname === child.to || pathname.startsWith(`${child.to}/`));
+
+      return (
+        <div key={item.id || item.label} className="sidebar-nav-group">
+          <button
+            type="button"
+            className={`sidebar-link sidebar-nav-group__trigger${isActive ? ' active' : ''}${isOpen ? ' is-open' : ''}`}
+            onClick={() => toggleGroup(item.id)}
+            title={item.label}
+            aria-expanded={isOpen}
+            {...(item.guideTarget ? { 'data-guide': item.guideTarget } : {})}
+          >
+            <span className="icon"><Icon size={18} /></span>
+            <span className="sidebar-link-label">{item.label}</span>
+            {!isCollapsed && (
+              <FiChevronDown size={16} className="sidebar-nav-group__chevron" aria-hidden />
+            )}
+          </button>
+
+          {isOpen && !isCollapsed && (
+            <div className="sidebar-submenu">
+              {item.children.map((child) => {
+                const ChildIcon = child.icon;
+                return (
+                  <NavLink
+                    key={child.to}
+                    to={child.to}
+                    className={({ isActive: childActive }) => `sidebar-link sidebar-submenu__link${childActive ? ' active' : ''}`}
+                    onClick={onClose}
+                    title={child.label}
+                    {...(child.guideTarget ? { 'data-guide': child.guideTarget } : {})}
+                  >
+                    <span className="icon"><ChildIcon size={16} /></span>
+                    <span className="sidebar-link-label">{child.label}</span>
+                  </NavLink>
+                );
+              })}
+            </div>
+          )}
+
+          {isOpen && isCollapsed && (
+            <div className="sidebar-flyout" role="menu">
+              <div className="sidebar-flyout__title">{item.label}</div>
+              {item.children.map((child) => {
+                const ChildIcon = child.icon;
+                return (
+                  <NavLink
+                    key={child.to}
+                    to={child.to}
+                    className={({ isActive: childActive }) => `sidebar-flyout__link${childActive ? ' active' : ''}`}
+                    onClick={() => {
+                      setCollapsedFlyout('');
+                      onClose?.();
+                    }}
+                    role="menuitem"
+                  >
+                    <ChildIcon size={16} aria-hidden />
+                    <span>{child.label}</span>
+                  </NavLink>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    const Icon = item.icon;
+    return (
+      <NavLink
+        key={item.to}
+        to={item.to}
+        className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`}
+        onClick={onClose}
+        title={item.label}
+        {...(item.guideTarget ? { 'data-guide': item.guideTarget } : {})}
+      >
+        <span className="icon"><Icon size={18} /></span>
+        <span className="sidebar-link-label">{item.label}</span>
+      </NavLink>
+    );
+  };
 
   useEffect(() => {
     const onMove = (e) => {
@@ -167,22 +301,7 @@ export default function Sidebar({
               <div key={group.title} className="sidebar-group">
                 {!isCollapsed && <div className="sidebar-group__title">{group.title}</div>}
                 <div className="sidebar-group__items">
-                  {group.items.map((item) => {
-                    const Icon = item.icon;
-                    return (
-                      <NavLink
-                        key={`${group.title}-${item.to}-${item.label}`}
-                        to={item.to}
-                        className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`}
-                        onClick={onClose}
-                        title={item.label}
-                        {...(item.guideTarget ? { 'data-guide': item.guideTarget } : {})}
-                      >
-                        <span className="icon"><Icon size={18} /></span>
-                        <span className="sidebar-link-label">{item.label}</span>
-                      </NavLink>
-                    );
-                  })}
+                  {group.items.map((item) => renderNavItem(item))}
                 </div>
               </div>
             ))}
