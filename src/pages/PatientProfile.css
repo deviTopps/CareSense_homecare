@@ -412,3 +412,23 @@
     margin-right: auto;
   }
 }
+
+/* Vitals records modal — two cards per row */
+.patient-vitals-mega-modal .patient-vitals-records__grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  width: 100%;
+}
+
+.patient-vitals-mega-modal .patient-vitals-records__section-head--full {
+  flex: 0 0 100%;
+  width: 100%;
+}
+
+.patient-vitals-mega-modal .patient-vitals-record-card {
+  box-sizing: border-box;
+  flex: 0 0 calc(50% - 8px);
+  width: calc(50% - 8px);
+  max-width: calc(50% - 8px);
+}

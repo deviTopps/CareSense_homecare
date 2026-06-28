@@ -6191,6 +6191,7 @@ body.sidebar-resizing {
 .patient-notes-mega-modal__panel,
 .patient-incidents-mega-modal__panel,
 .patient-medications-mega-modal__panel {
+  position: relative;
   width: min(1480px, calc(100vw - 20px));
   height: calc(100vh - 32px);
   max-height: calc(100vh - 32px);
@@ -6386,7 +6387,7 @@ body.sidebar-resizing {
 .patient-medications-mega-modal__body {
   padding: 20px 22px 22px;
   overflow-y: auto;
-  background: linear-gradient(180deg, #fbfdff 0%, #f7faff 100%);
+  background: #fff;
 }
 
 .patient-incidents-mega-modal__body {
@@ -6420,6 +6421,391 @@ body.sidebar-resizing {
   border-radius: 18px;
   overflow: hidden;
   box-shadow: 0 14px 34px rgba(15, 23, 42, 0.06);
+}
+
+
+.patient-vitals-records {
+  width: 100%;
+}
+
+.patient-vitals-records__section-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.patient-vitals-records__section-head--full {
+  flex: 0 0 100%;
+  width: 100%;
+  margin-top: 8px;
+}
+
+.patient-vitals-records__section-head--full:first-child {
+  margin-top: 0;
+}
+
+.patient-vitals-records__section-label {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.patient-vitals-records__section-line {
+  flex: 1;
+  height: 0;
+  border-top: 1px dotted #cbd5e1;
+}
+
+.patient-vitals-records__grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  width: 100%;
+}
+
+.patient-vitals-record-card {
+  box-sizing: border-box;
+  flex: 0 0 calc(50% - 8px);
+  width: calc(50% - 8px);
+  max-width: calc(50% - 8px);
+  min-width: 0;
+  background: #fff;
+  border: 1px solid #e8edf2;
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+  overflow: visible;
+}
+
+.patient-vitals-record-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px 12px;
+}
+
+.patient-vitals-record-card__recorder {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #2e8fd4;
+}
+
+.patient-vitals-record-card__recorder span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.patient-vitals-record-card__recorder-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #94a3b8;
+  flex-shrink: 0;
+}
+
+.patient-vitals-record-card__menu-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.patient-vitals-record-card__menu-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+}
+
+.patient-vitals-record-card__menu-btn:hover {
+  background: #f1f5f9;
+}
+
+.patient-vitals-record-card__menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 20;
+  min-width: 130px;
+  padding: 6px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+}
+
+.patient-vitals-record-card__menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #334155;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+}
+
+.patient-vitals-record-card__menu button:hover {
+  background: #f8fafc;
+}
+
+.patient-vitals-record-card__menu-danger {
+  color: #dc2626 !important;
+}
+
+.patient-vitals-record-card__divider {
+  margin: 0 16px;
+  border-top: 1px dotted #d1d5db;
+}
+
+.patient-vitals-record-card__body {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+}
+
+.patient-vitals-record-card__copy {
+  min-width: 0;
+}
+
+.patient-vitals-record-card__copy h4 {
+  margin: 0 0 6px;
+  font-size: 17px;
+  font-weight: 700;
+  color: #1e293b;
+  line-height: 1.25;
+}
+
+.patient-vitals-record-card__copy p {
+  margin: 0;
+  font-size: 12.5px;
+  color: #94a3b8;
+}
+
+.patient-vitals-record-card__view-btn {
+  flex-shrink: 0;
+  padding: 8px 16px;
+  border: 1px solid #2e8fd4;
+  border-radius: 999px;
+  background: #fff;
+  color: #2e8fd4;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.patient-vitals-record-card__view-btn:hover,
+.patient-vitals-record-card__view-btn.is-active {
+  background: #2e8fd4;
+  border-color: #2e8fd4;
+  color: #fff;
+}
+
+.patient-vitals-records__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 48px 24px;
+  text-align: center;
+  color: #64748b;
+}
+
+.patient-vitals-records__empty p {
+  margin: 0;
+  max-width: 360px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.patient-vitals-detail-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.28);
+  backdrop-filter: blur(4px);
+}
+
+.patient-vitals-detail-panel {
+  width: min(640px, 100%);
+  max-height: min(80vh, 720px);
+  overflow-y: auto;
+  padding: 22px;
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 24px 48px rgba(15, 23, 42, 0.18);
+}
+
+.patient-vitals-detail-panel__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.patient-vitals-detail-panel__eyebrow {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.patient-vitals-detail-panel__header h4 {
+  margin: 0 0 6px;
+  font-size: 20px;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.patient-vitals-detail-panel__header p {
+  margin: 0;
+  font-size: 13px;
+  color: #64748b;
+}
+
+.patient-vitals-detail-panel__close {
+  width: 34px;
+  height: 34px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+  color: #64748b;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.patient-vitals-detail-panel__metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.patient-vitals-detail-panel__metric {
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+
+.patient-vitals-detail-panel__metric span {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.patient-vitals-detail-panel__metric strong {
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.patient-vitals-detail-panel__metric--high-risk {
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+
+.patient-vitals-detail-panel__metric--medium-risk {
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+
+.patient-vitals-detail-panel__metric--low-risk {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+}
+
+.patient-vitals-detail-panel__notes {
+  margin-top: 16px;
+  padding: 14px;
+  border-radius: 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+.patient-vitals-detail-panel__notes span {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.patient-vitals-detail-panel__notes p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #334155;
+}
+
+.patient-vitals-detail-panel__footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 18px;
+}
+
+.patient-vitals-detail-panel__edit-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 16px;
+  border: none;
+  border-radius: 10px;
+  background: #2e7db8;
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+@media (max-width: 900px) {
+  .patient-vitals-detail-panel__metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .patient-vitals-record-card__body {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .patient-vitals-record-card__view-btn {
+    align-self: flex-start;
+  }
 }
 
 /* â”€â”€ Notes mega modal â€” extras â”€â”€ */

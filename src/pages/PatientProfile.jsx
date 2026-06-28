@@ -7,7 +7,7 @@ import {
   FiAlertTriangle, FiAlertCircle, FiCheckCircle, FiThermometer, FiClipboard,
   FiClock, FiPlus, FiX, FiSend, FiRefreshCw,
   FiSearch, FiBell, FiChevronDown, FiChevronRight, FiBarChart2,
-  FiTrash2, FiGrid,
+  FiTrash2, FiGrid, FiMoreHorizontal,
 } from '../icons/hugeicons-feather';
 import compressImage from '../utils/compressImage';
 import {
@@ -3864,6 +3864,68 @@ function sortVitalRecords(records) {
   });
 }
 
+function formatVitalRelativeTime(date, time) {
+  const parsed = new Date(`${date || '1970-01-01'}T${time || '00:00'}`);
+  if (Number.isNaN(parsed.getTime())) {
+    return [date, time].filter(Boolean).join(' · ') || 'Date unavailable';
+  }
+  const diffMs = Date.now() - parsed.getTime();
+  if (diffMs < 0) {
+    return parsed.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  }
+  const diffMins = Math.floor(diffMs / 60000);
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins} minute${diffMins === 1 ? '' : 's'} ago`;
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours} hour${diffHours === 1 ? '' : 's'} ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 7) return `${diffDays} day${diffDays === 1 ? '' : 's'} ago`;
+  return parsed.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function buildVitalCardTitle(record) {
+  const labels = [];
+  if (record?.bp) labels.push('Blood Pressure');
+  if (record?.sugar) labels.push('Blood Sugar');
+  if (record?.spo2) labels.push('SPO₂');
+  if (record?.pulse) labels.push('Pulse');
+  if (record?.temp) labels.push('Temperature');
+  if (record?.resp) labels.push('Respiration');
+  if (record?.weight) labels.push('Weight');
+  if (record?.urinalysis) labels.push('Urinalysis');
+  if (!labels.length) return 'Vital Signs Reading';
+  if (labels.length <= 2) return labels.join(' · ');
+  return 'Vital Signs Reading';
+}
+
+function getVitalDateGroupLabel(dateStr) {
+  const normalized = String(dateStr || '').slice(0, 10);
+  if (!normalized) return 'Earlier records';
+  const today = new Date().toISOString().slice(0, 10);
+  const yesterdayDate = new Date();
+  yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+  const yesterday = yesterdayDate.toISOString().slice(0, 10);
+  if (normalized === today) return 'Today visit';
+  if (normalized === yesterday) return 'Yesterday';
+  const parsed = new Date(`${normalized}T12:00:00`);
+  if (Number.isNaN(parsed.getTime())) return normalized;
+  return parsed.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
+}
+
+function groupVitalRecordsByDate(records) {
+  const groups = [];
+  const groupIndex = new Map();
+  records.forEach((record) => {
+    const label = getVitalDateGroupLabel(record.date);
+    if (!groupIndex.has(label)) {
+      groupIndex.set(label, groups.length);
+      groups.push({ label, records: [] });
+    }
+    groups[groupIndex.get(label)].records.push(record);
+  });
+  return groups;
+}
+
 function extractCarePlanList(payload) {
   if (Array.isArray(payload)) return payload;
   if (Array.isArray(payload?.carePlans)) return payload.carePlans;
@@ -5048,6 +5110,7 @@ export default function PatientProfile() {
     if (!showVitalsMegaModal && tab !== 'vitals') return;
     loadVitalRecords();
   }, [showVitalsMegaModal, tab, loadVitalRecords]);
+
   const [showMedicationsMegaModal, setShowMedicationsMegaModal] = useState(false);
   const [showGenerateReportModal, setShowGenerateReportModal] = useState(false);
   const [generateReportSubmitting, setGenerateReportSubmitting] = useState(false);
@@ -5093,10 +5156,24 @@ export default function PatientProfile() {
   const [showVitalForm, setShowVitalForm] = useState(false);
   const [vitalForm, setVitalForm] = useState(() => createVitalForm(currentUserName));
   const [expandedVital, setExpandedVital] = useState(null);
+  const [vitalCardMenuId, setVitalCardMenuId] = useState(null);
   const [savingVital, setSavingVital] = useState(false);
   const [deletingVitalId, setDeletingVitalId] = useState(null);
   const [vitalSaveError, setVitalSaveError] = useState('');
   const [editingVitalId, setEditingVitalId] = useState(null);
+
+  useEffect(() => {
+    if (!showVitalsMegaModal) {
+      setVitalCardMenuId(null);
+    }
+  }, [showVitalsMegaModal]);
+
+  useEffect(() => {
+    if (!showVitalsMegaModal || !vitalCardMenuId) return undefined;
+    const closeMenu = () => setVitalCardMenuId(null);
+    document.addEventListener('click', closeMenu);
+    return () => document.removeEventListener('click', closeMenu);
+  }, [showVitalsMegaModal, vitalCardMenuId]);
 
   /* Reminder state */
   const [showReminderForm, setShowReminderForm] = useState(null); // med id
@@ -8197,7 +8274,11 @@ export default function PatientProfile() {
     urinalysis: latestVitalRecord?.urinalysis || p.vitals.urinalysis,
   };
   const latestRiskByField = getVitalFieldRisksFromRow(latestDisplayedVitals);
-  const admissionRiskByField = getVitalFieldRisksFromRow(p.vitals || {});
+  const groupedVitalRecords = groupVitalRecordsByDate(vitalRecords);
+  const hasAdmissionBaselineVitals = Boolean(
+    p.vitals.bp || p.vitals.sugar || p.vitals.spo2 || p.vitals.pulse
+    || p.vitals.temp || p.vitals.resp || p.vitals.weight || p.vitals.urinalysis,
+  );
   const hasNextOfKinData = hasMeaningfulSectionData(p.sectionNextOfKin);
   const hasAdmissionChecklistData = hasMeaningfulSectionData(p.sectionAdmissionChecklist);
   const hasMedicalHistoryData = hasMeaningfulSectionData(p.sectionMedicalHistory) || Boolean(String(p.medicalHistory || '').trim());
@@ -9930,224 +10011,239 @@ export default function PatientProfile() {
             </div>
           )}
 
-          {/* ── Vitals History Table ── */}
-            <div className="patient-vitals-mega-modal__table-card">
-              <div style={{
-                padding: '12px 18px', borderBottom: '1px solid #f3f4f6', display: 'flex',
-                alignItems: 'center', justifyContent: 'space-between',
-                borderLeft: '3px solid #2E7DB8',
-              }}>
-                <div className="d-flex align-items-center gap-2">
-                  <span style={{ color: '#2E7DB8', display: 'flex' }}><FiClock size={14} /></span>
-                  <span style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--kh-text)' }}>Vitals History</span>
-                </div>
-                <span style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--kh-text-muted)' }}>{vitalRecords.length + 1} records</span>
-              </div>
-              <div className="table-responsive">
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ background: '#F0F7FE' }}>
-                      {['Date & Time', 'BP', 'Sugar', 'SPO₂', 'Pulse', 'Temp', 'Resp', 'Weight', 'Recorded By', 'Actions'].map((h, i) => (
-                        <th key={i} style={{
-                          padding: '10px 12px', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase',
-                          letterSpacing: '0.5px', color: '#45B6FE', borderBottom: '2px solid #45B6FE',
-                          textAlign: 'left', whiteSpace: 'nowrap',
-                        }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {/* Added vital records */}
-                    {vitalRecords.map((r, idx) => {
-                      const rowRisks = getVitalFieldRisksFromRow(r);
+          {/* ── Vitals Records Grid ── */}
+            <div className="patient-vitals-records">
+              <div className="patient-vitals-records__grid">
+                {groupedVitalRecords.map((group) => (
+                  <Fragment key={group.label}>
+                    <div className="patient-vitals-records__section-head patient-vitals-records__section-head--full">
+                      <span className="patient-vitals-records__section-label">{group.label}</span>
+                      <span className="patient-vitals-records__section-line" aria-hidden />
+                    </div>
+                    {group.records.map((r) => {
+                      const recorderName = vitalRecorderDisplayName(r.recordedBy) || '—';
+                      const isViewing = expandedVital === r.id;
                       return (
-                      <Fragment key={r.id}>
-                        <tr
-                          style={{ background: idx % 2 === 0 ? 'transparent' : '#fafbfc', borderBottom: '1px solid #f3f4f6', cursor: 'pointer', transition: 'background 0.15s' }}
-                          onClick={() => setExpandedVital(expandedVital === r.id ? null : r.id)}
-                          onMouseEnter={e => e.currentTarget.style.background = '#F0F7FE'}
-                          onMouseLeave={e => e.currentTarget.style.background = idx % 2 === 0 ? 'transparent' : '#fafbfc'}
-                        >
-                          <td style={{ padding: '10px 12px' }}>
-                            <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--kh-text)' }}>{r.date}</div>
-                            <div style={{ fontSize: 11, color: 'var(--kh-text-muted)', marginBottom: 4 }}>{r.time}</div>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); startEditVital(r); }}
-                              title="Edit this vital record"
-                              style={{
-                                display: 'inline-flex', alignItems: 'center', gap: 4,
-                                background: '#2E7DB8', border: '1px solid #2E7DB8',
-                                color: '#fff', cursor: 'pointer',
-                                padding: '4px 9px', borderRadius: 4,
-                                fontSize: 11, fontWeight: 700, lineHeight: 1, letterSpacing: '0.3px',
-                              }}
-                            >
-                              <FiEdit2 size={11} /> Edit
-                            </button>
-                          </td>
-                          <td style={{ padding: '10px 12px' }}>
-                            {r.bp ? <span style={{ fontSize: 12.5, fontWeight: 700, color: rowRisks.bp === 'low-risk' ? 'var(--kh-text)' : riskColor(rowRisks.bp) }}>{r.bp}</span> : <span style={{ color: '#d1d5db' }}>—</span>}
-                          </td>
-                          <td style={{ padding: '10px 12px' }}>
-                            {r.sugar ? <span style={{ fontSize: 12.5, fontWeight: 700, color: rowRisks.sugar === 'low-risk' ? 'var(--kh-text)' : riskColor(rowRisks.sugar) }}>{r.sugar}</span> : <span style={{ color: '#d1d5db' }}>—</span>}
-                          </td>
-                          <td style={{ padding: '10px 12px' }}>
-                            {r.spo2 ? <span style={{ fontSize: 12.5, fontWeight: 700, color: rowRisks.spo2 === 'low-risk' ? 'var(--kh-text)' : riskColor(rowRisks.spo2) }}>{r.spo2}</span> : <span style={{ color: '#d1d5db' }}>—</span>}
-                          </td>
-                          <td style={{ padding: '10px 12px' }}>
-                            {r.pulse ? <span style={{ fontSize: 12.5, fontWeight: 700, color: rowRisks.pulse === 'low-risk' ? 'var(--kh-text)' : riskColor(rowRisks.pulse) }}>{r.pulse}</span> : <span style={{ color: '#d1d5db' }}>—</span>}
-                          </td>
-                          <td style={{ padding: '10px 12px' }}>
-                            {r.temp ? <span style={{ fontSize: 12.5, fontWeight: 700, color: rowRisks.temp === 'low-risk' ? 'var(--kh-text)' : riskColor(rowRisks.temp) }}>{r.temp}</span> : <span style={{ color: '#d1d5db' }}>—</span>}
-                          </td>
-                          <td style={{ padding: '10px 12px' }}>
-                            {r.resp ? <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--kh-text)' }}>{r.resp}</span> : <span style={{ color: '#d1d5db' }}>—</span>}
-                          </td>
-                          <td style={{ padding: '10px 12px' }}>
-                            {r.weight ? <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--kh-text)' }}>{r.weight}</span> : <span style={{ color: '#d1d5db' }}>—</span>}
-                          </td>
-                          <td style={{ padding: '10px 12px' }}>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                              <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--kh-text)' }}>{vitalRecorderDisplayName(r.recordedBy) || '—'}</span>
-                              <span style={{ fontSize: 10.5, color: 'var(--kh-text-muted)' }}>{vitalRecorderDisplayName(p?.nurse) || 'No nurse assigned'}</span>
-                            </div>
-                          </td>
-                          <td style={{ padding: '10px 12px' }}>
-                            <div className="d-flex align-items-center gap-2">
-                              <span style={{ display: 'flex', color: '#45B6FE', cursor: 'pointer' }} title="Expand">
-                                {expandedVital === r.id ? <FiChevronDown size={14} /> : <FiChevronRight size={14} />}
+                        <article key={r.id} className="patient-vitals-record-card">
+                          <div className="patient-vitals-record-card__header">
+                            <div className="patient-vitals-record-card__recorder">
+                              <span className="patient-vitals-record-card__recorder-icon" aria-hidden>
+                                <FiUser size={13} />
                               </span>
-                              <button
-                                onClick={(e) => { e.stopPropagation(); startEditVital(r); }}
-                                title="Edit this vital record"
-                                style={{
-                                  display: 'inline-flex', alignItems: 'center', gap: 4,
-                                  background: '#EAF4FE', border: '1px solid #BBDDFB',
-                                  color: '#1F5A8B', cursor: 'pointer',
-                                  padding: '4px 10px', borderRadius: 4,
-                                  fontSize: 11.5, fontWeight: 700, lineHeight: 1,
-                                }}
-                              >
-                                <FiEdit2 size={12} /> Edit
-                              </button>
-                              <button
-                                onClick={(e) => { e.stopPropagation(); deleteVitalRecord(r.id); }}
-                                title="Delete this vital record"
-                                disabled={deletingVitalId === r.id || savingVital}
-                                style={{
-                                  background: 'none', border: 'none',
-                                  cursor: deletingVitalId === r.id || savingVital ? 'not-allowed' : 'pointer',
-                                  color: '#dc2626', display: 'flex', padding: 2,
-                                  opacity: deletingVitalId === r.id || savingVital ? 0.5 : 1,
-                                }}
-                              >
-                                <FiX size={14} />
-                              </button>
+                              <span>{recorderName}</span>
                             </div>
-                          </td>
-                        </tr>
-                        {/* Expanded detail row */}
-                        {expandedVital === r.id && (
-                          <tr>
-                            <td colSpan={10} style={{ padding: 0, background: '#f9fafb' }}>
-                              <div style={{ padding: '12px 18px', borderBottom: '2px solid #e5e7eb' }}>
-                                <div className="d-flex flex-wrap gap-2 mb-2">
-                                  {[
-                                    r.bp && { label: 'Blood Pressure', value: r.bp, risk: rowRisks.bp, color: '#45B6FE' },
-                                    r.sugar && { label: 'Blood Sugar', value: r.sugar, risk: rowRisks.sugar, color: '#45B6FE' },
-                                    r.spo2 && { label: 'SPO₂', value: r.spo2, risk: rowRisks.spo2, color: '#2E7DB8' },
-                                    r.pulse && { label: 'Pulse', value: r.pulse, risk: rowRisks.pulse, color: '#45B6FE' },
-                                    r.temp && { label: 'Temperature', value: r.temp, risk: rowRisks.temp, color: '#2E7DB8' },
-                                    r.resp && { label: 'Respiration', value: r.resp, risk: 'low-risk', color: '#45B6FE' },
-                                    r.weight && { label: 'Weight', value: r.weight, risk: 'low-risk', color: '#2E7DB8' },
-                                    r.urinalysis && { label: 'Urinalysis', value: r.urinalysis, risk: isUrinalysisFlagged(r.urinalysis) ? 'high-risk' : 'low-risk', color: '#2E7DB8' },
-                                  ].filter(Boolean).map((v, vi) => {
-                                    const risk = v.risk || 'low-risk';
-                                    const bg = risk === 'high-risk' ? '#fef2f2' : risk === 'medium-risk' ? '#fffbeb' : '#f0fdf4';
-                                    const border = risk === 'high-risk' ? '#fecaca' : risk === 'medium-risk' ? '#fde68a' : '#bbf7d0';
-                                    const accent = riskColor(risk);
-                                    const valueColor = risk === 'low-risk' ? '#166534' : riskColor(risk);
-                                    return (
-                                    <div key={vi} style={{
-                                      padding: '8px 14px', borderRadius: 2, minWidth: 100,
-                                      background: bg,
-                                      border: `1px solid ${border}`,
-                                      borderLeft: `3px solid ${accent}`,
-                                    }}>
-                                      <div style={{ fontSize: 9.5, fontWeight: 700, textTransform: 'uppercase', color: 'var(--kh-text-muted)', marginBottom: 2 }}>{v.label}</div>
-                                      <div style={{ fontSize: 15, fontWeight: 800, color: valueColor }}>{v.value}</div>
-                                    </div>
-                                    );
-                                  })}
-                                </div>
-                                {r.notes && (
-                                  <div style={{ fontSize: 12, color: 'var(--kh-text-muted)', marginTop: 4 }}>
-                                    <span style={{ fontWeight: 700 }}>Notes:</span> {r.notes}
-                                  </div>
-                                )}
-                                <div className="d-flex justify-content-end mt-2">
+                            <div className="patient-vitals-record-card__menu-wrap">
+                              <button
+                                type="button"
+                                className="patient-vitals-record-card__menu-btn"
+                                aria-label="Record actions"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setVitalCardMenuId((current) => (current === r.id ? null : r.id));
+                                }}
+                              >
+                                <FiMoreHorizontal size={16} />
+                              </button>
+                              {vitalCardMenuId === r.id && (
+                                <div
+                                  className="patient-vitals-record-card__menu"
+                                  onClick={(event) => event.stopPropagation()}
+                                >
+                                  <button type="button" onClick={() => { setVitalCardMenuId(null); startEditVital(r); }}>
+                                    <FiEdit2 size={13} /> Edit
+                                  </button>
                                   <button
                                     type="button"
-                                    onClick={(e) => { e.stopPropagation(); startEditVital(r); }}
-                                    style={{
-                                      display: 'inline-flex', alignItems: 'center', gap: 6,
-                                      background: '#2E7DB8', border: '1px solid #2E7DB8',
-                                      color: '#fff', cursor: 'pointer',
-                                      padding: '7px 14px', borderRadius: 4,
-                                      fontSize: 12, fontWeight: 700, letterSpacing: '0.3px',
-                                    }}
+                                    className="patient-vitals-record-card__menu-danger"
+                                    disabled={deletingVitalId === r.id || savingVital}
+                                    onClick={() => { setVitalCardMenuId(null); deleteVitalRecord(r.id); }}
                                   >
-                                    <FiEdit2 size={13} /> Edit Record
+                                    <FiTrash2 size={13} /> Delete
                                   </button>
                                 </div>
-                              </div>
-                            </td>
-                          </tr>
-                        )}
-                      </Fragment>
+                              )}
+                            </div>
+                          </div>
+                          <div className="patient-vitals-record-card__divider" aria-hidden />
+                          <div className="patient-vitals-record-card__body">
+                            <div className="patient-vitals-record-card__copy">
+                              <h4>{buildVitalCardTitle(r)}</h4>
+                              <p>{formatVitalRelativeTime(r.date, r.time)}</p>
+                            </div>
+                            <button
+                              type="button"
+                              className={`patient-vitals-record-card__view-btn${isViewing ? ' is-active' : ''}`}
+                              onClick={() => setExpandedVital(isViewing ? null : r.id)}
+                            >
+                              View result
+                            </button>
+                          </div>
+                        </article>
                       );
                     })}
+                  </Fragment>
+                ))}
 
-                    {/* Admission vitals row (always last) */}
-                    <tr style={{
-                      background: vitalRecords.length % 2 === 0 ? 'transparent' : '#fafbfc',
-                      borderBottom: '1px solid #f3f4f6',
-                    }}>
-                      <td style={{ padding: '10px 12px' }}>
-                        <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--kh-text)' }}>{p.enrolled}</div>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 2, background: '#F0F7FE', color: '#45B6FE', border: '1px solid #A8D8FC', marginTop: 2 }}>ADMISSION</div>
-                      </td>
-                      <td style={{ padding: '10px 12px' }}>
-                        <span style={{ fontSize: 12.5, fontWeight: 700, color: admissionRiskByField.bp === 'low-risk' ? 'var(--kh-text)' : riskColor(admissionRiskByField.bp) }}>{p.vitals.bp}</span>
-                      </td>
-                      <td style={{ padding: '10px 12px' }}>
-                        <span style={{ fontSize: 12.5, fontWeight: 700, color: admissionRiskByField.sugar === 'low-risk' ? 'var(--kh-text)' : riskColor(admissionRiskByField.sugar) }}>{p.vitals.sugar}</span>
-                      </td>
-                      <td style={{ padding: '10px 12px' }}>
-                        <span style={{ fontSize: 12.5, fontWeight: 700, color: admissionRiskByField.spo2 === 'low-risk' ? 'var(--kh-text)' : riskColor(admissionRiskByField.spo2) }}>{p.vitals.spo2}</span>
-                      </td>
-                      <td style={{ padding: '10px 12px' }}>
-                        <span style={{ fontSize: 12.5, fontWeight: 700, color: admissionRiskByField.pulse === 'low-risk' ? 'var(--kh-text)' : riskColor(admissionRiskByField.pulse) }}>{p.vitals.pulse}</span>
-                      </td>
-                      <td style={{ padding: '10px 12px' }}>
-                        <span style={{ fontSize: 12.5, fontWeight: 700, color: admissionRiskByField.temp === 'low-risk' ? 'var(--kh-text)' : riskColor(admissionRiskByField.temp) }}>{p.vitals.temp}</span>
-                      </td>
-                      <td style={{ padding: '10px 12px' }}>
-                        <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--kh-text)' }}>{p.vitals.resp}</span>
-                      </td>
-                      <td style={{ padding: '10px 12px' }}>
-                        <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--kh-text)' }}>{p.vitals.weight}</span>
-                      </td>
-                      <td style={{ padding: '10px 12px', fontSize: 12, color: 'var(--kh-text-muted)', fontWeight: 500 }}>{vitalRecorderDisplayName(p.nurse) || '—'}</td>
-                      <td style={{ padding: '10px 12px' }}>
-                        <span style={{ fontSize: 10, fontWeight: 700, color: '#45B6FE' }}>Baseline</span>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
+                {hasAdmissionBaselineVitals && (
+                  <>
+                    <div className="patient-vitals-records__section-head patient-vitals-records__section-head--full">
+                      <span className="patient-vitals-records__section-label">Admission baseline</span>
+                      <span className="patient-vitals-records__section-line" aria-hidden />
+                    </div>
+                    <article className="patient-vitals-record-card">
+                      <div className="patient-vitals-record-card__header">
+                        <div className="patient-vitals-record-card__recorder">
+                          <span className="patient-vitals-record-card__recorder-icon" aria-hidden>
+                            <FiUser size={13} />
+                          </span>
+                          <span>{vitalRecorderDisplayName(p.nurse) || '—'}</span>
+                        </div>
+                      </div>
+                      <div className="patient-vitals-record-card__divider" aria-hidden />
+                      <div className="patient-vitals-record-card__body">
+                        <div className="patient-vitals-record-card__copy">
+                          <h4>Admission Baseline Vitals</h4>
+                          <p>{formatVitalRelativeTime(p.enrolled, '')}</p>
+                        </div>
+                        <button
+                          type="button"
+                          className={`patient-vitals-record-card__view-btn${expandedVital === 'admission' ? ' is-active' : ''}`}
+                          onClick={() => setExpandedVital(expandedVital === 'admission' ? null : 'admission')}
+                        >
+                          View result
+                        </button>
+                      </div>
+                    </article>
+                  </>
+                )}
               </div>
+
+              {groupedVitalRecords.length === 0 && !hasAdmissionBaselineVitals && (
+                <div className="patient-vitals-records__empty">
+                  <FiActivity size={28} aria-hidden />
+                  <p>No vital records yet. Add the first reading to start tracking this patient.</p>
+                  <button
+                    type="button"
+                    className="patient-vitals-mega-modal__add-btn"
+                    onClick={() => { setEditingVitalId(null); setShowVitalForm(true); }}
+                  >
+                    <FiPlus size={14} /> Add Vital Record
+                  </button>
+                </div>
+              )}
             </div>
+
           </div>
+
+            {expandedVital && (
+              <div
+                className="patient-vitals-detail-overlay"
+                onClick={() => setExpandedVital(null)}
+              >
+                <div
+                  className="patient-vitals-detail-panel"
+                  onClick={(event) => event.stopPropagation()}
+                  role="dialog"
+                  aria-label="Vital record details"
+                >
+                  {(() => {
+                    const isAdmission = expandedVital === 'admission';
+                    const r = isAdmission
+                      ? {
+                        id: 'admission',
+                        date: p.enrolled,
+                        time: '',
+                        bp: p.vitals.bp,
+                        sugar: p.vitals.sugar,
+                        spo2: p.vitals.spo2,
+                        pulse: p.vitals.pulse,
+                        temp: p.vitals.temp,
+                        resp: p.vitals.resp,
+                        weight: p.vitals.weight,
+                        urinalysis: p.vitals.urinalysis,
+                        recordedBy: p.nurse,
+                        notes: '',
+                      }
+                      : vitalRecords.find((item) => item.id === expandedVital);
+                    if (!r) return null;
+                    const rowRisks = getVitalFieldRisksFromRow(r);
+                    const detailTitle = isAdmission ? 'Admission Baseline Vitals' : buildVitalCardTitle(r);
+                    return (
+                      <>
+                        <div className="patient-vitals-detail-panel__header">
+                          <div>
+                            <span className="patient-vitals-detail-panel__eyebrow">
+                              {isAdmission ? 'Admission baseline' : 'Vital record'}
+                            </span>
+                            <h4>{detailTitle}</h4>
+                            <p>
+                              {vitalRecorderDisplayName(r.recordedBy) || '—'}
+                              {' · '}
+                              {formatVitalRelativeTime(r.date, r.time)}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            className="patient-vitals-detail-panel__close"
+                            onClick={() => setExpandedVital(null)}
+                            aria-label="Close details"
+                          >
+                            <FiX size={16} />
+                          </button>
+                        </div>
+                        <div className="patient-vitals-detail-panel__metrics">
+                          {[
+                            r.bp && { label: 'Blood Pressure', value: r.bp, risk: rowRisks.bp },
+                            r.sugar && { label: 'Blood Sugar', value: r.sugar, risk: rowRisks.sugar },
+                            r.spo2 && { label: 'SPO₂', value: r.spo2, risk: rowRisks.spo2 },
+                            r.pulse && { label: 'Pulse', value: r.pulse, risk: rowRisks.pulse },
+                            r.temp && { label: 'Temperature', value: r.temp, risk: rowRisks.temp },
+                            r.resp && { label: 'Respiration', value: r.resp, risk: 'low-risk' },
+                            r.weight && { label: 'Weight', value: r.weight, risk: 'low-risk' },
+                            r.urinalysis && {
+                              label: 'Urinalysis',
+                              value: r.urinalysis,
+                              risk: isUrinalysisFlagged(r.urinalysis) ? 'high-risk' : 'low-risk',
+                            },
+                          ].filter(Boolean).map((metric) => {
+                            const risk = metric.risk || 'low-risk';
+                            return (
+                              <div
+                                key={metric.label}
+                                className={`patient-vitals-detail-panel__metric patient-vitals-detail-panel__metric--${risk}`}
+                              >
+                                <span>{metric.label}</span>
+                                <strong style={{ color: risk === 'low-risk' ? '#166534' : riskColor(risk) }}>
+                                  {metric.value}
+                                </strong>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {r.notes && (
+                          <div className="patient-vitals-detail-panel__notes">
+                            <span>Notes</span>
+                            <p>{r.notes}</p>
+                          </div>
+                        )}
+                        {!isAdmission && (
+                          <div className="patient-vitals-detail-panel__footer">
+                            <button
+                              type="button"
+                              className="patient-vitals-detail-panel__edit-btn"
+                              onClick={() => { setExpandedVital(null); startEditVital(r); }}
+                            >
+                              <FiEdit2 size={14} /> Edit Record
+                            </button>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
+              </div>
+            )}
+
         </div>
         </div>
       )}
