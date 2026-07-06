@@ -110,9 +110,10 @@ export default function Sidebar({
 
   const renderNavItem = (item) => {
     if (item.children?.length) {
+      const visibleChildren = item.children;
       const Icon = item.icon;
       const isOpen = isCollapsed ? collapsedFlyout === item.id : openGroups[item.id];
-      const isActive = item.children.some((child) => pathname === child.to || pathname.startsWith(`${child.to}/`));
+      const isActive = visibleChildren.some((child) => pathname === child.to || pathname.startsWith(`${child.to}/`));
 
       return (
         <div key={item.id || item.label} className="sidebar-nav-group">
@@ -133,7 +134,7 @@ export default function Sidebar({
 
           {isOpen && !isCollapsed && (
             <div className="sidebar-submenu">
-              {item.children.map((child) => {
+              {visibleChildren.map((child) => {
                 const ChildIcon = child.icon;
                 return (
                   <NavLink
@@ -155,7 +156,7 @@ export default function Sidebar({
           {isOpen && isCollapsed && (
             <div className="sidebar-flyout" role="menu">
               <div className="sidebar-flyout__title">{item.label}</div>
-              {item.children.map((child) => {
+              {visibleChildren.map((child) => {
                 const ChildIcon = child.icon;
                 return (
                   <NavLink

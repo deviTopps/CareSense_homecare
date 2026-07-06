@@ -12,6 +12,7 @@ import {
   FiFileText,
 } from '../icons/hugeicons-feather';
 import { API_BASE } from '../api';
+import { logSessionEvent } from '../hipaa/auditLog';
 import { BRAND_LOGO_SRC } from '../constants/brandAssets';
 import './Auth.css';
 
@@ -93,6 +94,7 @@ export default function Auth({ onLogin }) {
       if (!data.token) throw new Error('Sign-in succeeded but no token was returned. Please contact support.');
       localStorage.setItem('token', data.token);
       localStorage.setItem('user', JSON.stringify(data.user ?? {}));
+      logSessionEvent('login', { email: loginForm.email.trim() });
       if (loginForm.remember) {
         localStorage.setItem('auth.rememberEmail', loginForm.email.trim());
       } else {

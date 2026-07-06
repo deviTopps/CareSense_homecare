@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiCheckCircle, FiAlertCircle, FiXCircle, FiMapPin, FiX, FiSearch, FiChevronLeft, FiChevronRight, FiChevronsLeft, FiChevronsRight } from '../icons/hugeicons-feather';
+import { FiCheckCircle, FiAlertCircle, FiXCircle, FiMapPin, FiX, FiSearch, FiChevronLeft, FiChevronRight, FiChevronsLeft, FiChevronsRight, FiRefreshCw, FiUsers, FiFilter } from '../icons/hugeicons-feather';
 import { getUser, getToken } from '../api';
 import {
   clockInAttendance,
@@ -8,6 +8,8 @@ import {
   attendanceSummaryFromDailyResponse,
   fetchAllNursesAttendanceRecords,
   getAttendanceColumnValues,
+  isCompletedAttendanceTableRow,
+  isOpenAttendanceTableRow,
   mapAttendanceRecordToTableRow,
   pickAttendanceField,
   resolveNurseIdForAttendance,
@@ -502,13 +504,11 @@ function buildNursesAttendanceQuery(dateYYYYMMDD, selectedYear) {
 }
 
 function isCompletedAttendanceRow(row) {
-  if (!row) return false;
-  if (row._daySummary) return true;
-  const dur = coerceNonNegativeMinutes(row.durationMinutesFromApi);
-  if (dur != null && dur > 0) return true;
-  if (!row.clockIn) return false;
-  const clockOut = row.clockOut;
-  return clockOut != null && String(clockOut).trim() !== '' && clockOut !== '—';
+  return isCompletedAttendanceTableRow(row);
+}
+
+function isOpenAttendanceRow(row) {
+  return isOpenAttendanceTableRow(row);
 }
 
 function isDisplayableAttendanceRow(row) {
@@ -555,6 +555,7 @@ const statusIcon = {
   verified: <FiCheckCircle size={14} style={{ color: '#45B6FE' }} />,
   flagged: <FiAlertCircle size={14} style={{ color: '#ea580c' }} />,
   missed: <FiXCircle size={14} style={{ color: '#dc2626' }} />,
+  open: <FiAlertCircle size={14} style={{ color: '#2563eb' }} />,
 };
 
 function isSyntheticClientRowId(id) {
@@ -598,7 +599,9 @@ export default function Attendance() {
   );
   const [selected, setSelected] = useState(null);
   const [statusFilter, setStatusFilter] = useState('All');
+  const [completionFilter, setCompletionFilter] = useState('All');
   const [nurseFilter, setNurseFilter] = useState('All Nurses');
+  const [searchQuery, setSearchQuery] = useState('');
   const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [selectedYear, setSelectedYear] = useState('');
   const [page, setPage] = useState(1);
@@ -679,16 +682,36 @@ export default function Attendance() {
     return ['', ...Array.from(ySet).sort().reverse()];
   }, [allRecords, listMeta]);
 
-  /* Client filters — date is applied via API reload, not here (avoids hiding loaded rows). */
+  /* Client filters */
   const filtered = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
     return allRecords.filter((r) => {
       if (statusFilter === 'Verified' && r.status !== 'verified') return false;
       if (statusFilter === 'Flagged' && r.status !== 'flagged') return false;
       if (statusFilter === 'Missed' && r.status !== 'missed') return false;
       if (nurseFilter !== 'All Nurses' && r.nurse !== nurseFilter) return false;
+      if (completionFilter === 'Completed' && !isCompletedAttendanceRow(r)) return false;
+      if (completionFilter === 'Open' && !isOpenAttendanceRow(r)) return false;
+      if (q) {
+        const haystack = [r.nurse, r.patient, r.patientName, r.patientServed, r.patientRegistration]
+          .map((v) => String(v || '').toLowerCase());
+        if (!haystack.some((v) => v.includes(q))) return false;
+      }
       return true;
     });
-  }, [statusFilter, nurseFilter, allRecords]);
+  }, [statusFilter, completionFilter, nurseFilter, searchQuery, allRecords]);
+
+  const stats = useMemo(() => {
+    const base = filtered;
+    return {
+      total: base.length,
+      nurses: new Set(base.map((r) => r.nurse).filter(Boolean)).size,
+      verified: base.filter((r) => r.status === 'verified').length,
+      flagged: base.filter((r) => r.status === 'flagged').length,
+      missed: base.filter((r) => r.status === 'missed').length,
+      open: base.filter((r) => isOpenAttendanceRow(r)).length,
+    };
+  }, [filtered]);
 
   const onUnauthorized = useCallback(() => {
     navigate('/login', { replace: true });
@@ -723,6 +746,7 @@ export default function Attendance() {
       setListMeta({
         ...attendanceSummaryFromDailyResponse(summaryBody, { date: loadedDate, month: query.month }),
         parsedSessionCount: sessions.length,
+        openSessionCount: tableRows.filter((r) => isOpenAttendanceTableRow(r)).length,
         nurseCount: nurseNames.size || nursesFetched,
         month: query.month,
         loadDate: loadedDate,
@@ -878,14 +902,19 @@ export default function Attendance() {
   const paged = filtered.slice((page - 1) * perPage, page * perPage);
 
   const resetFilters = () => {
-    setStatusFilter('All'); setNurseFilter('All Nurses');
-    setSelectedDate(''); setSelectedYear('');
+    setStatusFilter('All');
+    setCompletionFilter('All');
+    setNurseFilter('All Nurses');
+    setSearchQuery('');
+    setSelectedYear('');
     setPage(1);
   };
 
-  const hasFilters = statusFilter !== 'All' || nurseFilter !== 'All Nurses' || selectedDate || selectedYear;
-  const userDisplayName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.email || 'user';
-  const onShift = Boolean(displayOpenAttendanceId);
+  const hasFilters = statusFilter !== 'All'
+    || completionFilter !== 'All'
+    || nurseFilter !== 'All Nurses'
+    || Boolean(searchQuery.trim())
+    || selectedYear;
 
   const periodLabel = useMemo(() => {
     if (selectedDate) return selectedDate;
@@ -899,124 +928,142 @@ export default function Attendance() {
   const statusTagClass = (status) => {
     if (status === 'verified') return 'attendance-status-tag attendance-status-tag--verified';
     if (status === 'flagged') return 'attendance-status-tag attendance-status-tag--flagged';
+    if (status === 'open') return 'attendance-status-tag attendance-status-tag--open';
     return 'attendance-status-tag attendance-status-tag--missed';
   };
 
   return (
     <div className="page-wrapper attendance-page">
 
-      <section className="attendance-shift">
-        <div className="attendance-shift__top">
-          <div>
-            <h2 className="attendance-shift__title">Today&apos;s shift</h2>
-            <p className="attendance-shift__meta">Signed in as {userDisplayName}</p>
-            {onShift && (
-              <span className="attendance-shift__badge">
-                <span className="attendance-shift__badge-dot" aria-hidden />
-                On shift — remember to clock out when you finish
-              </span>
-            )}
-            {!nurseIdResolved && user && (
-              <p className="attendance-shift__meta" style={{ marginTop: 8, color: '#b45309' }}>
-                No nurse ID on this account — you can view all nurses&apos; attendance below, but clock in/out requires an ID from your administrator.
-              </p>
-            )}
-          </div>
-          <div className="attendance-shift__actions">
-            <button
-              type="button"
-              className="attendance-btn attendance-btn--in"
-              onClick={handleClockIn}
-              disabled={clockInLoading || clockOutLoading}
-            >
-              {clockInLoading ? 'Submitting…' : 'Clock in'}
-            </button>
-            <button
-              type="button"
-              className="attendance-btn attendance-btn--out"
-              onClick={handleClockOut}
-              disabled={clockInLoading || clockOutLoading}
-            >
-              {clockOutLoading ? 'Submitting…' : 'Clock out'}
-            </button>
-          </div>
-        </div>
-        {sessionError && <div className="attendance-alert attendance-alert--error">{sessionError}</div>}
-        {sessionSuccess && <div className="attendance-alert attendance-alert--success">{sessionSuccess}</div>}
-      </section>
-
-      <section className="attendance-records kh-card attendance-table-card">
-        <div className="attendance-records__head">
-          <h3>All nurses — attendance records</h3>
-          <span className="attendance-records__count">
-            {listLoading ? 'Loading…' : `${filtered.length} record${filtered.length === 1 ? '' : 's'}`}
-            {!listLoading && listMeta?.nurseCount != null && (
-              <span style={{ marginLeft: 6 }}>· {listMeta.nurseCount} nurse{listMeta.nurseCount === 1 ? '' : 's'}</span>
-            )}
-            {!listLoading && (
-              <span style={{ marginLeft: 6 }}>· {periodLabel}</span>
-            )}
-          </span>
-        </div>
-        {listError && <div className="attendance-alert--warn">{listError}</div>}
-        {!listLoading && !listError && filtered.length === 0 && attendanceRecords.length === 0 && (
-          <p className="attendance-records__hint">
-            {listMeta?.parsedSessionCount > 0
-              ? `Found ${listMeta.parsedSessionCount} session(s) in the API but could not map them to table rows.`
-              : `No attendance records for ${listMeta?.periodLabel || periodLabel}.${listMeta?.nursesFetched ? ` Checked ${listMeta.nursesFetched} nurse(s) via daily API.` : ''}`}
-            {hasFilters ? ' Try clearing Year/Date filters.' : ' Change the visit date above or confirm nurses have clock-in/out visits for that day.'}
+      <div className="attendance-hero">
+        <div>
+          <div className="patients-kicker">Field operations</div>
+          <h2 className="patients-title">Attendance</h2>
+          <p className="patients-subtitle">
+            Track nurse clock-ins, visit times, and GPS verification for {periodLabel}.
           </p>
-        )}
-        {!listLoading && !listError && attendanceRecords.length > 0 && filtered.length === 0 && (
-          <p className="attendance-records__hint">
-            {attendanceRecords.length} record{attendanceRecords.length === 1 ? '' : 's'} loaded for {periodLabel} but hidden by filters.
-            {hasFilters ? ' Clear Year/Date, Nurse, or Status filters to see them.' : ''}
-          </p>
-        )}
+        </div>
+        <div className="patients-hero-actions">
+          <button
+            type="button"
+            className="patients-toolbar-btn"
+            onClick={reloadAttendanceLists}
+            disabled={listLoading}
+          >
+            <FiRefreshCw size={15} />
+            <span>{listLoading ? 'Refreshing…' : 'Refresh'}</span>
+          </button>
+        </div>
+      </div>
 
-        <div className="attendance-filters">
-          <div className="attendance-field">
-            <label>Nurse</label>
-            <select value={nurseFilter} onChange={(e) => { setNurseFilter(e.target.value); setPage(1); }}>
-              {nursesList.map((n) => <option key={n} value={n}>{n}</option>)}
-            </select>
-          </div>
-          <div className="attendance-field">
-            <label>Visit date</label>
+      <div className="attendance-stats">
+        <div className="attendance-stat">
+          <span className="attendance-stat__label">Visits</span>
+          <strong className="attendance-stat__value">{listLoading ? '—' : stats.total}</strong>
+        </div>
+        <div className="attendance-stat">
+          <span className="attendance-stat__label">Nurses</span>
+          <strong className="attendance-stat__value">{listLoading ? '—' : stats.nurses}</strong>
+        </div>
+        <div className="attendance-stat attendance-stat--verified">
+          <span className="attendance-stat__label">Verified</span>
+          <strong className="attendance-stat__value">{listLoading ? '—' : stats.verified}</strong>
+        </div>
+        <div className="attendance-stat attendance-stat--flagged">
+          <span className="attendance-stat__label">Flagged</span>
+          <strong className="attendance-stat__value">{listLoading ? '—' : stats.flagged}</strong>
+        </div>
+        <div className="attendance-stat attendance-stat--missed">
+          <span className="attendance-stat__label">Missed</span>
+          <strong className="attendance-stat__value">{listLoading ? '—' : stats.missed}</strong>
+        </div>
+        <div className="attendance-stat attendance-stat--open">
+          <span className="attendance-stat__label">Open</span>
+          <strong className="attendance-stat__value">{listLoading ? '—' : stats.open}</strong>
+        </div>
+      </div>
+
+      <section className="attendance-board kh-card">
+        <div className="attendance-toolbar">
+          <div className="attendance-toolbar__search">
+            <FiSearch size={15} aria-hidden />
             <input
-              type="date"
-              value={selectedDate || listMeta?.loadDate || ''}
-              onChange={(e) => {
-                setSelectedDate(e.target.value);
-                setSelectedYear('');
-                setPage(1);
-              }}
+              type="search"
+              placeholder="Search nurse or patient…"
+              value={searchQuery}
+              onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
+              aria-label="Search attendance records"
             />
+            {searchQuery && (
+              <button type="button" className="attendance-toolbar__clear-search" onClick={() => setSearchQuery('')} aria-label="Clear search">
+                <FiX size={14} />
+              </button>
+            )}
           </div>
-          <span className="attendance-filters__or">or</span>
-          <div className="attendance-field">
-            <label>Year</label>
-            <select
-              value={selectedYear}
-              onChange={(e) => {
-                setSelectedYear(e.target.value);
-                setSelectedDate('');
-                setPage(1);
-              }}
-            >
-              <option value="">All years</option>
-              {years.filter(Boolean).map((y) => <option key={y} value={y}>{y}</option>)}
-            </select>
+
+          <div className="attendance-toolbar__filters">
+            <div className="attendance-field attendance-field--inline">
+              <label htmlFor="attendance-date">Date</label>
+              <input
+                id="attendance-date"
+                type="date"
+                value={selectedDate || listMeta?.loadDate || ''}
+                onChange={(e) => {
+                  setSelectedDate(e.target.value);
+                  setSelectedYear('');
+                  setPage(1);
+                }}
+              />
+            </div>
+            <div className="attendance-field attendance-field--inline">
+              <label htmlFor="attendance-nurse">Nurse</label>
+              <select id="attendance-nurse" value={nurseFilter} onChange={(e) => { setNurseFilter(e.target.value); setPage(1); }}>
+                {nursesList.map((n) => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </div>
+            <div className="attendance-field attendance-field--inline">
+              <label htmlFor="attendance-year">Year</label>
+              <select
+                id="attendance-year"
+                value={selectedYear}
+                onChange={(e) => {
+                  setSelectedYear(e.target.value);
+                  setSelectedDate('');
+                  setPage(1);
+                }}
+              >
+                <option value="">All years</option>
+                {years.filter(Boolean).map((y) => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </div>
           </div>
-          <div className="attendance-field" style={{ marginLeft: 'auto' }}>
-            <label>Status</label>
-            <div className="attendance-status-pills">
+        </div>
+
+        <div className="attendance-toolbar attendance-toolbar--secondary">
+          <div className="attendance-filter-group">
+            <span className="attendance-filter-group__label"><FiFilter size={12} /> Status</span>
+            <div className="attendance-segment">
               {['All', 'Verified', 'Flagged', 'Missed'].map((f) => (
                 <button
                   key={f}
                   type="button"
-                  className={statusFilter === f ? 'is-active' : ''}
+                  className={`attendance-segment__btn${statusFilter === f ? ' is-active' : ''}`}
                   onClick={() => { setStatusFilter(f); setPage(1); }}
+                >
+                  {f}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="attendance-filter-group">
+            <span className="attendance-filter-group__label"><FiUsers size={12} /> Shift</span>
+            <div className="attendance-segment">
+              {['All', 'Completed', 'Open'].map((f) => (
+                <button
+                  key={f}
+                  type="button"
+                  className={`attendance-segment__btn${completionFilter === f ? ' is-active' : ''}`}
+                  onClick={() => { setCompletionFilter(f); setPage(1); }}
                 >
                   {f}
                 </button>
@@ -1025,120 +1072,146 @@ export default function Attendance() {
           </div>
           {hasFilters && (
             <button type="button" className="attendance-clear-btn" onClick={resetFilters}>
-              <FiX size={13} /> Clear
+              <FiX size={13} /> Clear filters
             </button>
           )}
+          <span className="attendance-toolbar__count">
+            {listLoading ? 'Loading…' : `${filtered.length} record${filtered.length === 1 ? '' : 's'}`}
+          </span>
         </div>
 
-        <div className="attendance-layout">
-          <div className="attendance-layout__main kh-card" style={{ padding: 0, overflow: 'hidden' }}>
-            {filtered.length === 0 ? (
-              <div className="attendance-empty">
-                <span className="attendance-empty__icon" aria-hidden>
-                  <FiSearch size={32} />
-                </span>
-                <div className="attendance-empty__title">No records found</div>
-                <p style={{ fontSize: 12.5, marginTop: 4, marginBottom: 0 }}>
-                  {attendanceRecords.length > 0
-                    ? `${attendanceRecords.length} visit(s) loaded for ${periodLabel} but hidden by Nurse or Status filters. Click Clear.`
-                    : `No visits for ${periodLabel}. Pick a date above (e.g. 2026-05-25) and wait for loads to finish.`}
-                </p>
-              </div>
-            ) : (
-              <>
-                <div className="attendance-table-wrap">
-                  <table className="attendance-table">
-                    <thead>
-                      <tr>
-                        {['#', 'Date', 'Nurse', 'Patient served', 'Clock in time', 'Clock out time', 'Duration', 'GPS'].map((h) => (
-                          <th key={h}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {paged.map((r, idx) => {
-                        const cols = getAttendanceColumnValues(r);
-                        return (
-                          <tr
-                            key={r.id}
-                            className={selected?.id === r.id ? 'is-selected' : ''}
-                            onClick={() => setSelected(r)}
-                          >
-                            <td className="col-num">{(page - 1) * perPage + idx + 1}</td>
-                            <td>{r.date}</td>
-                            <td>{r.nurse}</td>
-                            <td className="attendance-col-patient">
-                              <span className="attendance-col-patient__name">{cols.patientServed}</span>
-                              {r.patientRegistration && (
-                                <span className="attendance-col-patient__meta">
-                                  Reg: {r.patientRegistration}
-                                </span>
-                              )}
-                            </td>
-                            <td className="attendance-col-clock attendance-col-clock--in">
-                              {cols.clockIn}
-                            </td>
-                            <td className="attendance-col-clock attendance-col-clock--out">
-                              {cols.clockOut}
-                            </td>
-                            <td className="attendance-col-duration">
-                              {String(r.duration || '').trim() || formatAttendanceDuration(r)}
-                            </td>
-                            <td className="attendance-col-gps">
-                              <span className="attendance-col-gps__text">{cols.gps}</span>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-                <div className="attendance-pagination">
-                  <span className="attendance-pagination__info">
-                    {(page - 1) * perPage + 1}–{Math.min(page * perPage, filtered.length)} of {filtered.length}
-                  </span>
-                  <div className="attendance-pagination__nav">
-                    <button type="button" className="attendance-page-btn" onClick={() => setPage(1)} disabled={page === 1}><FiChevronsLeft size={14} /></button>
-                    <button type="button" className="attendance-page-btn" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}><FiChevronLeft size={14} /></button>
-                    {Array.from({ length: totalPages }, (_, i) => i + 1)
-                      .filter((p) => p === 1 || p === totalPages || Math.abs(p - page) <= 1)
-                      .map((p, idx, arr) => {
-                        const els = [];
-                        if (idx > 0 && p - arr[idx - 1] > 1) {
-                          els.push(<span key={`e-${p}`} style={{ padding: '5px 4px', fontSize: 12, color: '#9ca3af' }}>…</span>);
-                        }
-                        els.push(
-                          <button
-                            key={p}
-                            type="button"
-                            className={`attendance-page-btn${page === p ? ' is-active' : ''}`}
-                            onClick={() => setPage(p)}
-                          >
-                            {p}
-                          </button>,
-                        );
-                        return els;
-                      })}
-                    <button type="button" className="attendance-page-btn" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}><FiChevronRight size={14} /></button>
-                    <button type="button" className="attendance-page-btn" onClick={() => setPage(totalPages)} disabled={page === totalPages}><FiChevronsRight size={14} /></button>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
+        {listError && <div className="attendance-alert--warn">{listError}</div>}
+        {!listLoading && !listError && filtered.length === 0 && attendanceRecords.length === 0 && (
+          <p className="attendance-board__hint">
+            {listMeta?.parsedSessionCount > 0
+              ? `Found ${listMeta.parsedSessionCount} session(s) in the API but could not map them to table rows.`
+              : `No attendance records for ${listMeta?.periodLabel || periodLabel}.`}
+            {hasFilters ? ' Try clearing filters.' : ' Change the visit date or confirm nurses have visits for that day.'}
+          </p>
+        )}
+        {!listLoading && !listError && attendanceRecords.length > 0 && filtered.length === 0 && (
+          <p className="attendance-board__hint">
+            {attendanceRecords.length} record{attendanceRecords.length === 1 ? '' : 's'} loaded for {periodLabel} but hidden by filters.
+          </p>
+        )}
 
-          {selected && (
-            <aside className="attendance-detail kh-card">
-              <div className="attendance-detail__inner">
-                <div className="attendance-detail__head">
-                  <h4>Visit details</h4>
-                  <button type="button" className="attendance-detail__close" onClick={() => setSelected(null)} aria-label="Close">
-                    <FiX size={14} />
-                  </button>
+        <div className="attendance-table-shell">
+          {filtered.length === 0 ? (
+            <div className="attendance-empty">
+              <span className="attendance-empty__icon" aria-hidden>
+                <FiSearch size={32} />
+              </span>
+              <div className="attendance-empty__title">No records found</div>
+              <p>
+                {attendanceRecords.length > 0
+                  ? `${attendanceRecords.length} visit(s) loaded for ${periodLabel} but hidden by filters.`
+                  : `No visits for ${periodLabel}. Pick a date above and wait for data to load.`}
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="attendance-table-wrap">
+                <table className="attendance-table">
+                  <thead>
+                    <tr>
+                      {['#', 'Date', 'Nurse', 'Patient', 'Clock in', 'Clock out', 'Duration', 'Status', 'GPS'].map((h) => (
+                        <th key={h}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paged.map((r, idx) => {
+                      const cols = getAttendanceColumnValues(r);
+                      return (
+                        <tr
+                          key={r.id}
+                          className={selected?.id === r.id ? 'is-selected' : ''}
+                          onClick={() => setSelected(r)}
+                        >
+                          <td className="col-num">{(page - 1) * perPage + idx + 1}</td>
+                          <td className="attendance-col-date">{r.date}</td>
+                          <td className="attendance-col-nurse">{r.nurse}</td>
+                          <td className="attendance-col-patient">
+                            <span className="attendance-col-patient__name">{cols.patientServed}</span>
+                            {r.patientRegistration && (
+                              <span className="attendance-col-patient__meta">Reg: {r.patientRegistration}</span>
+                            )}
+                          </td>
+                          <td className="attendance-col-clock attendance-col-clock--in">{cols.clockIn}</td>
+                          <td className="attendance-col-clock attendance-col-clock--out">{cols.clockOut}</td>
+                          <td className="attendance-col-duration">
+                            {String(r.duration || '').trim() || formatAttendanceDuration(r)}
+                          </td>
+                          <td>
+                            <span className={statusTagClass(r.status)}>{r.status}</span>
+                          </td>
+                          <td className="attendance-col-gps">
+                            <span className="attendance-col-gps__text">{cols.gps}</span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <div className="attendance-pagination">
+                <span className="attendance-pagination__info">
+                  {(page - 1) * perPage + 1}–{Math.min(page * perPage, filtered.length)} of {filtered.length}
+                </span>
+                <div className="attendance-pagination__nav">
+                  <button type="button" className="attendance-page-btn" onClick={() => setPage(1)} disabled={page === 1}><FiChevronsLeft size={14} /></button>
+                  <button type="button" className="attendance-page-btn" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}><FiChevronLeft size={14} /></button>
+                  {Array.from({ length: totalPages }, (_, i) => i + 1)
+                    .filter((p) => p === 1 || p === totalPages || Math.abs(p - page) <= 1)
+                    .map((p, idx, arr) => {
+                      const els = [];
+                      if (idx > 0 && p - arr[idx - 1] > 1) {
+                        els.push(<span key={`e-${p}`} className="attendance-pagination__ellipsis">…</span>);
+                      }
+                      els.push(
+                        <button
+                          key={p}
+                          type="button"
+                          className={`attendance-page-btn${page === p ? ' is-active' : ''}`}
+                          onClick={() => setPage(p)}
+                        >
+                          {p}
+                        </button>,
+                      );
+                      return els;
+                    })}
+                  <button type="button" className="attendance-page-btn" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}><FiChevronRight size={14} /></button>
+                  <button type="button" className="attendance-page-btn" onClick={() => setPage(totalPages)} disabled={page === totalPages}><FiChevronsRight size={14} /></button>
                 </div>
+              </div>
+            </>
+          )}
+        </div>
+      </section>
+
+      {selected && (
+        <>
+          <button type="button" className="attendance-drawer-backdrop" onClick={() => setSelected(null)} aria-label="Close details" />
+          <aside className="attendance-drawer kh-card" role="dialog" aria-label="Visit details">
+            <div className="attendance-detail__inner">
+              <div className="attendance-detail__head">
+                <div>
+                  <p className="attendance-detail__kicker">Visit details</p>
+                  <h4>{selected.patientName || selected.patient || 'Patient visit'}</h4>
+                </div>
+                <button type="button" className="attendance-detail__close" onClick={() => setSelected(null)} aria-label="Close">
+                  <FiX size={16} />
+                </button>
+              </div>
+
+              <div className="attendance-detail__status">
+                {statusIcon[selected.status]}
+                <span className={statusTagClass(selected.status)}>{selected.status}</span>
+              </div>
+
+              <div className="attendance-detail__grid">
                 {[
                   { label: 'Nurse', value: selected.nurse },
-                  { label: 'Patient', value: selected.patientName || selected.patient },
                   { label: 'Patient ID', value: selected.patientId || '—' },
                   { label: 'Date', value: selected.date },
                   { label: 'Duration', value: formatAttendanceDuration(selected) },
@@ -1148,46 +1221,38 @@ export default function Attendance() {
                     <p>{item.value}</p>
                   </div>
                 ))}
-                <div className="attendance-timeline">
-                  <div className="attendance-timeline__grid">
-                    <div className="attendance-timeline__cell">
-                      <span>Clock in time</span>
-                      <strong>{selected.clockInTimeLabel || selected.clockIn || '—'}</strong>
-                    </div>
-                    <div className="attendance-timeline__cell">
-                      <span>Clock out time</span>
-                      <strong>{selected.clockOutTimeLabel || selected.clockOut || '—'}</strong>
-                    </div>
+              </div>
+
+              <div className="attendance-timeline">
+                <div className="attendance-timeline__grid">
+                  <div className="attendance-timeline__cell">
+                    <span>Clock in</span>
+                    <strong>{selected.clockInTimeLabel || selected.clockIn || '—'}</strong>
                   </div>
-                  <div className="attendance-timeline__cell" style={{ marginTop: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span>Duration</span>
-                    <strong>{formatAttendanceDuration(selected)}</strong>
+                  <div className="attendance-timeline__cell">
+                    <span>Clock out</span>
+                    <strong>{selected.clockOutTimeLabel || selected.clockOut || '—'}</strong>
                   </div>
-                </div>
-                {(selected.gpsIn || selected.gpsOut || selected.gps) && (
-                  <div className="attendance-timeline" style={{ marginTop: 12 }}>
-                    <div className="attendance-detail__row">
-                      <label><FiMapPin size={11} style={{ marginRight: 4 }} />GPS</label>
-                      <AttendanceGpsCell
-                        gpsIn={selected.gpsIn}
-                        gpsOut={selected.gpsOut}
-                        gps={selected.gps}
-                        distance={selected.distance}
-                        locationIn={selected.locationIn}
-                        locationOut={selected.locationOut}
-                      />
-                    </div>
-                  </div>
-                )}
-                <div className="d-flex align-items-center gap-2" style={{ marginTop: 14 }}>
-                  {statusIcon[selected.status]}
-                  <span className={statusTagClass(selected.status)}>{selected.status}</span>
                 </div>
               </div>
-            </aside>
-          )}
-        </div>
-      </section>
+
+              {(selected.gpsIn || selected.gpsOut || selected.gps) && (
+                <div className="attendance-detail__gps">
+                  <label><FiMapPin size={12} /> GPS</label>
+                  <AttendanceGpsCell
+                    gpsIn={selected.gpsIn}
+                    gpsOut={selected.gpsOut}
+                    gps={selected.gps}
+                    distance={selected.distance}
+                    locationIn={selected.locationIn}
+                    locationOut={selected.locationOut}
+                  />
+                </div>
+              )}
+            </div>
+          </aside>
+        </>
+      )}
     </div>
   );
 }

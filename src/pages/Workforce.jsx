@@ -23,7 +23,9 @@ import {
   FiMoreHorizontal,
   FiLock,
 } from '../icons/hugeicons-feather';
-import { apiFetch, isTokenValid, createPlatformUser, fetchAuthUsers, updatePlatformUser, deletePlatformUser, changePlatformUserPassword } from '../api';
+import { apiFetch, isTokenValid, createPlatformUser, fetchAuthUsers, updatePlatformUser, deletePlatformUser, changePlatformUserPassword, getUser } from '../api';
+import { hasPermission } from '../hipaa/permissions';
+import { logAuditEvent } from '../hipaa/auditLog';
 import { resolveStoredMediaUrl } from '../utils/resolveStoredMediaUrl';
 import TablePageLoader from '../components/TablePageLoader';
 import DataTableHeader, { HospitalStatus } from '../components/DataTableHeader';
@@ -331,6 +333,8 @@ const initialFormState = {
 export default function Workforce() {
   const navigate = useNavigate();
   const location = useLocation();
+  const sessionUser = getUser();
+  const canManageUsers = hasPermission(sessionUser, 'MANAGE_USERS');
   const [searchParams, setSearchParams] = useSearchParams();
   const processedContinueIdRef = useRef('');
   const [search, setSearch] = useState('');
@@ -764,6 +768,10 @@ export default function Workforce() {
   const setAddUserField = (key, v) => setAddUserForm((prev) => ({ ...prev, [key]: v }));
 
   const handleAddUser = async () => {
+    if (!canManageUsers) {
+      setAddUserError('You do not have permission to manage users.');
+      return;
+    }
     setAddUserError('');
     const { firstName, lastName, email, phone, role, password, confirmPassword } = addUserForm;
     const fn = firstName.trim();
@@ -785,12 +793,14 @@ export default function Workforce() {
         const text = await res.text();
         const data = text ? JSON.parse(text) : {};
         if (!res.ok) throw new Error(data.error || data.message || 'Could not update user.');
+        logAuditEvent({ action: 'user_updated', resourceType: 'user', resourceId: editingPlatformUserId, metadata: { role } });
         setAddUserSuccess({ name: `${fn} ${ln}`.trim(), updated: true });
       } else {
         const res = await createPlatformUser({ firstName: fn, lastName: ln, email: em, phone: ph, role, password });
         const text = await res.text();
         const data = text ? JSON.parse(text) : {};
         if (!res.ok) throw new Error(data.error || data.message || 'Could not add user.');
+        logAuditEvent({ action: 'user_created', resourceType: 'user', resourceId: em, metadata: { role } });
         setAddUserSuccess({ name: `${fn} ${ln}`.trim() });
         if (isStaffRole(role)) {
           setFilter('Staff');
@@ -1592,10 +1602,12 @@ export default function Workforce() {
               <FiDownload size={15} />
               <span>Export</span>
             </button>
+            {canManageUsers && (
             <button type="button" className="patients-toolbar-btn" onClick={() => setShowAddUserModal(true)}>
               <FiUserPlus size={15} />
               <span>Add New User</span>
             </button>
+            )}
             <button type="button" className="patients-cta-btn" onClick={() => setShowModal(true)}>
               <span className="patients-cta-btn__icon"><FiPlus size={16} /></span>
               <span>Register Nurse</span>

@@ -577,17 +577,197 @@ function flattenDaysCalendarAttendanceResponse(root) {
   return enrichSessionsWithNurseMeta(root, sessions);
 }
 
+const OPEN_SESSION_COLLECTION_KEYS = [
+  'openSessions',
+  'openSessionRecords',
+  'activeSessions',
+  'activeSessionRecords',
+  'incompleteSessions',
+  'pendingSessions',
+  'ongoingSessions',
+  'currentSessions',
+  'unclosedSessions',
+  'clockInSessions',
+];
+
+const OPEN_SESSION_OBJECT_KEYS = [
+  'openSession',
+  'activeSession',
+  'currentSession',
+  'pendingSession',
+  'ongoingSession',
+  'unclosedSession',
+  'currentClockIn',
+  'activeClockIn',
+  'openClockIn',
+];
+
+function normalizeAttendanceStatusToken(value) {
+  return String(value || '').trim().toLowerCase().replace(/[\s_]+/g, '-');
+}
+
+function attendanceSessionHasClockIn(item) {
+  if (!item || typeof item !== 'object') return false;
+  return Boolean(
+    pickAttendanceField(item, 'in')
+    || item.clockInTime
+    || item.clockInDisplay,
+  );
+}
+
 /** True when API item has both clock-in and clock-out timestamps. */
 export function isCompletedAttendanceSession(item) {
   if (!item || typeof item !== 'object') return false;
   if (item._daySummary) return true;
+
+  const status = normalizeAttendanceStatusToken(item.status || item.sessionStatus);
+  if (['clocked-out', 'completed', 'closed', 'finished', 'verified'].includes(status)) {
+    return attendanceSessionHasClockIn(item) || Boolean(pickAttendanceField(item, 'out'));
+  }
+
   const clockIn = pickAttendanceField(item, 'in');
   const clockOut = pickAttendanceField(item, 'out');
   if (clockIn != null && clockIn !== '' && clockOut != null && String(clockOut).trim() !== '') {
     return true;
   }
+
   const dur = item.durationMinutes ?? item.duration_minutes ?? item.totalDurationMinutes;
   return dur != null && Number(dur) > 0;
+}
+
+/** True when API item is clocked in but not yet clocked out. */
+export function isOpenAttendanceSession(item) {
+  if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
+  if (item._daySummary) return false;
+  if (isCompletedAttendanceSession(item)) return false;
+
+  const status = normalizeAttendanceStatusToken(item.status || item.sessionStatus);
+  if (['clocked-in', 'open', 'active', 'in-progress', 'ongoing', 'pending'].includes(status)) {
+    return attendanceSessionHasClockIn(item) || Boolean(item.id || item.attendanceId || item._id);
+  }
+  if (['clocked-out', 'completed', 'closed', 'finished'].includes(status)) return false;
+
+  return attendanceSessionHasClockIn(item);
+}
+
+function tableRowHasClockOut(row) {
+  const clockOut = row?.clockOutTimeLabel ?? row?.clockOut;
+  return clockOut != null && String(clockOut).trim() !== '' && clockOut !== '—';
+}
+
+function tableRowHasClockIn(row) {
+  const clockIn = row?.clockInTimeLabel ?? row?.clockIn;
+  return clockIn != null && String(clockIn).trim() !== '' && clockIn !== '—';
+}
+
+/** True when a mapped table row represents a completed visit. */
+export function isCompletedAttendanceTableRow(row) {
+  if (!row || typeof row !== 'object') return false;
+  if (row._daySummary) return true;
+  if (row._isOpenSession) return false;
+
+  const status = normalizeAttendanceStatusToken(row.status);
+  if (['open', 'clocked-in', 'active', 'in-progress', 'ongoing', 'pending'].includes(status)) {
+    return false;
+  }
+
+  if (tableRowHasClockOut(row)) return true;
+
+  if (['clocked-out', 'completed', 'closed', 'finished'].includes(status)) {
+    return tableRowHasClockIn(row);
+  }
+
+  const dur = row.durationMinutesFromApi ?? row.durationMinutes ?? row.duration_minutes;
+  return dur != null && Number(dur) > 0;
+}
+
+/** True when a mapped table row represents an open (incomplete) visit. */
+export function isOpenAttendanceTableRow(row) {
+  if (!row || typeof row !== 'object') return false;
+  if (row._daySummary) return false;
+  if (row._isOpenSession) return true;
+
+  const status = normalizeAttendanceStatusToken(row.status);
+  if (['open', 'clocked-in', 'active', 'in-progress', 'ongoing', 'pending'].includes(status)) {
+    return true;
+  }
+  if (['clocked-out', 'completed', 'closed', 'finished', 'verified'].includes(status)) {
+    return false;
+  }
+
+  if (isCompletedAttendanceTableRow(row)) return false;
+  return tableRowHasClockIn(row) && !tableRowHasClockOut(row);
+}
+
+/**
+ * Pull open / active sessions from attendance API envelopes
+ * (e.g. openSession, activeSession, or incomplete rows in records[]).
+ *
+ * @param {unknown} json
+ * @returns {Record<string, unknown>[]}
+ */
+export function extractOpenSessionsFromAttendanceRoot(json) {
+  const roots = [];
+  const pushRoot = (value) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return;
+    roots.push(unwrapAttendanceApiPayload(value));
+  };
+
+  pushRoot(json);
+  if (json && typeof json === 'object') {
+    pushRoot(json.data);
+    pushRoot(json.payload);
+    pushRoot(json.result);
+  }
+
+  const out = [];
+  const seen = new Set();
+
+  const addSession = (record, root, nurseMeta) => {
+    if (!isOpenAttendanceSession(record)) return;
+    const normalized = normalizeAttendanceRecord(record, {
+      date: record?.date,
+      visitDate: record?.date || record?.visitDate,
+      nurse: record?.nurse ?? nurseMeta ?? root?.nurse,
+      _isOpenSession: true,
+    });
+    const key = [
+      normalized.id,
+      normalized._id,
+      normalized.attendanceId,
+      normalized.nurseId,
+      pickAttendanceField(normalized, 'in'),
+    ].map((v) => String(v ?? '').trim()).filter(Boolean).join('|');
+    if (key && seen.has(key)) return;
+    if (key) seen.add(key);
+    out.push(normalized);
+  };
+
+  for (const root of roots) {
+    const nurseMeta = root.nurse && typeof root.nurse === 'object' ? root.nurse : {};
+
+    for (const key of OPEN_SESSION_OBJECT_KEYS) {
+      const val = root[key];
+      if (val && typeof val === 'object' && !Array.isArray(val)) {
+        addSession(val, root, nurseMeta);
+      }
+    }
+
+    for (const key of OPEN_SESSION_COLLECTION_KEYS) {
+      const val = root[key];
+      if (Array.isArray(val)) {
+        val.forEach((record) => addSession(record, root, nurseMeta));
+      }
+    }
+
+    if (Array.isArray(root.records)) {
+      root.records
+        .filter(isOpenAttendanceSession)
+        .forEach((record) => addSession(record, root, nurseMeta));
+    }
+  }
+
+  return enrichSessionsWithNurseMeta(json && typeof json === 'object' ? json : {}, out);
 }
 
 function unwrapAttendanceTimeValue(val) {
@@ -919,6 +1099,66 @@ export async function fetchNursesDirectory(onUnauthorized) {
 
 const ATTENDANCE_FETCH_CONCURRENCY = 6;
 
+async function fetchNurseOpenAttendancePayload(nurseId, onUnauthorized) {
+  const id = encodeURIComponent(String(nurseId).trim());
+  if (!id) return null;
+
+  const paths = [
+    `/attendance/nurse/${id}/open-session`,
+    `/attendance/nurse/${id}/open`,
+    `/attendance/nurse/${id}/active`,
+    `/attendance/nurse/${id}/current`,
+  ];
+
+  for (const path of paths) {
+    try {
+      const res = await apiFetch(path, { method: 'GET' }, onUnauthorized);
+      if (!res.ok) continue;
+      const text = await res.text();
+      if (!text) return {};
+      try {
+        return JSON.parse(text);
+      } catch {
+        return { message: text };
+      }
+    } catch {
+      /* try next path */
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Load open (clocked-in, not clocked-out) sessions for one nurse from the server.
+ *
+ * @param {string} nurseId
+ * @param {() => void} [onUnauthorized]
+ * @returns {Promise<Record<string, unknown>[]>}
+ */
+export async function fetchOpenAttendanceSessionsForNurse(nurseId, onUnauthorized) {
+  const id = String(nurseId || '').trim();
+  if (!id) return [];
+
+  const payloads = [];
+  try {
+    const undatedDaily = await fetchNurseDailyAttendance(id, {}, onUnauthorized);
+    payloads.push(undatedDaily);
+  } catch {
+    /* optional */
+  }
+
+  const openPayload = await fetchNurseOpenAttendancePayload(id, onUnauthorized);
+  if (openPayload) payloads.push(openPayload);
+
+  const merged = [];
+  for (const payload of payloads) {
+    merged.push(...extractOpenSessionsFromAttendanceRoot(payload));
+  }
+
+  return dedupeAttendanceSessions(merged);
+}
+
 /**
  * Load all nurses' attendance: monthly bundle, then per-nurse daily as fallback.
  *
@@ -957,25 +1197,43 @@ export async function fetchAllNursesAttendanceRecords(query = {}, onUnauthorized
   for (let i = 0; i < ids.length; i += ATTENDANCE_FETCH_CONCURRENCY) {
     const chunk = ids.slice(i, i + ATTENDANCE_FETCH_CONCURRENCY);
     const results = await Promise.allSettled(
-      chunk.map((nurseId) => fetchNurseDailyAttendance(nurseId, dailyQuery, onUnauthorized)),
+      chunk.map(async (nurseId) => {
+        const datedBody = await fetchNurseDailyAttendance(nurseId, dailyQuery, onUnauthorized);
+        let openSessions = [];
+        try {
+          openSessions = await fetchOpenAttendanceSessionsForNurse(nurseId, onUnauthorized);
+        } catch {
+          openSessions = extractOpenSessionsFromAttendanceRoot(datedBody);
+        }
+        return { nurseId, datedBody, openSessions };
+      }),
     );
     for (let j = 0; j < results.length; j += 1) {
       const result = results[j];
       if (result.status !== 'fulfilled') continue;
-      lastDailyBody = result.value;
-      persistNurseIdFromAttendanceResponse(result.value, chunk[j]);
+      const { nurseId, datedBody, openSessions } = result.value;
+      lastDailyBody = datedBody;
+      persistNurseIdFromAttendanceResponse(datedBody, nurseId);
       const nurseMeta = nurses.find(
-        (n) => collectNurseUuidIdsFromRecord(n).includes(chunk[j])
-          || resolveNurseApiIdFromNurseRecord(n) === chunk[j],
+        (n) => collectNurseUuidIdsFromRecord(n).includes(nurseId)
+          || resolveNurseApiIdFromNurseRecord(n) === nurseId,
       ) || {};
-      const flat = flattenNurseDailyAttendanceResponse(result.value);
+      const flat = flattenNurseDailyAttendanceResponse(datedBody);
       aggregated.push(
         ...flat.map((session) => ({
           ...session,
-          nurseId: session.nurseId ?? chunk[j],
+          nurseId: session.nurseId ?? nurseId,
           nurseName: session.nurseName
             ?? [nurseMeta.firstName, nurseMeta.lastName].filter(Boolean).join(' ').trim()
             ?? nurseMeta.name,
+        })),
+        ...openSessions.map((session) => ({
+          ...session,
+          nurseId: session.nurseId ?? nurseId,
+          nurseName: session.nurseName
+            ?? [nurseMeta.firstName, nurseMeta.lastName].filter(Boolean).join(' ').trim()
+            ?? nurseMeta.name,
+          _isOpenSession: true,
         })),
       );
     }
@@ -1071,6 +1329,7 @@ function flattenNurseDailyRecordsPayload(root) {
     const base = normalizeAttendanceRecord(record, {
       date: record?.date,
       nurse: record?.nurse ?? nurseMeta,
+      _isOpenSession: isOpenAttendanceSession(record),
     });
     if (!base.nurseName && nurseMeta) {
       const name = [nurseMeta.firstName, nurseMeta.lastName].filter(Boolean).join(' ').trim();
@@ -1079,7 +1338,10 @@ function flattenNurseDailyRecordsPayload(root) {
     return base;
   });
 
-  return enrichSessionsWithNurseMeta({ nurse: nurseMeta, ...root }, sessions);
+  const openExtras = extractOpenSessionsFromAttendanceRoot(root);
+  const merged = dedupeAttendanceSessions([...sessions, ...openExtras]);
+
+  return enrichSessionsWithNurseMeta({ nurse: nurseMeta, ...root }, merged);
 }
 
 function formatPatientDisplayName(patientObj) {
@@ -1166,11 +1428,14 @@ function parseGpsFromRecord(record) {
 
 function resolveAttendanceStatus(record) {
   if (!record || typeof record !== 'object') return 'verified';
+  if (record._isOpenSession || isOpenAttendanceSession(record)) return 'open';
   if (record.flaggedForReview === true) return 'flagged';
-  const raw = String(record.status || '').toLowerCase();
+  const raw = normalizeAttendanceStatusToken(record.status);
   if (raw === 'missed') return 'missed';
   if (raw === 'flagged') return 'flagged';
+  if (raw === 'open' || raw === 'clocked-in' || raw === 'active' || raw === 'in-progress') return 'open';
   if (raw === 'clocked-out' || raw === 'completed' || raw === 'verified') return 'verified';
+  if (isOpenAttendanceSession(record)) return 'open';
   return 'verified';
 }
 
@@ -1263,6 +1528,7 @@ export function mapAttendanceRecordToTableRow(record) {
     status: resolveAttendanceStatus(record),
     region: '—',
     _fromDailyApi: true,
+    _isOpenSession: Boolean(record._isOpenSession) || isOpenAttendanceSession(record),
   };
 }
 

@@ -1,7 +1,11 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { isTokenValid, clearAuth, getUser } from './api';
+import HipaaRouteGuard from './components/HipaaRouteGuard';
+import HipaaSessionWarning from './components/HipaaSessionWarning';
+import { HIPAA_SESSION } from './hipaa/config';
+import { logSessionEvent } from './hipaa/auditLog';
 import Sidebar from './components/Sidebar';
 import Topbar from './components/Topbar';
 import useTheme from './hooks/useTheme';
@@ -31,11 +35,15 @@ import TargetedGuide from './components/TargetedGuide';
 
 /* ── Protected Route wrapper ── */
 function ProtectedRoute({ isAuthenticated, children }) {
+  const location = useLocation();
+  const user = getUser();
   if (!isAuthenticated) return <Navigate to="/login" replace />;
-  return children;
+  return (
+    <HipaaRouteGuard user={user} pathname={location.pathname}>
+      {children}
+    </HipaaRouteGuard>
+  );
 }
-
-const INACTIVITY_LOGOUT_MS = 3 * 60 * 1000;
 
 function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -53,16 +61,16 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(() => isTokenValid());
   const navigate = useNavigate();
   const location = useLocation();
-  const inactivityTimeoutRef = useRef(null);
+  const [sessionWarningKey, setSessionWarningKey] = useState(0);
 
-  // Periodically check token validity (every 60s)
+  // Periodically check token validity
   useEffect(() => {
     const interval = setInterval(() => {
       if (isAuthenticated && !isTokenValid()) {
         clearAuth();
         setIsAuthenticated(false);
       }
-    }, 60_000);
+    }, HIPAA_SESSION.TOKEN_CHECK_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [isAuthenticated]);
 
@@ -87,44 +95,10 @@ function App() {
     navigate('/login', { replace: true });
   }, [navigate]);
 
-  useEffect(() => {
-    if (!isAuthenticated || typeof window === 'undefined') {
-      if (inactivityTimeoutRef.current) {
-        window.clearTimeout(inactivityTimeoutRef.current);
-        inactivityTimeoutRef.current = null;
-      }
-      return undefined;
-    }
-
-    const resetInactivityTimer = () => {
-      if (inactivityTimeoutRef.current) {
-        window.clearTimeout(inactivityTimeoutRef.current);
-      }
-
-      inactivityTimeoutRef.current = window.setTimeout(() => {
-        handleLogout();
-      }, INACTIVITY_LOGOUT_MS);
-    };
-
-    const activityEvents = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'click'];
-
-    activityEvents.forEach((eventName) => {
-      window.addEventListener(eventName, resetInactivityTimer, true);
-    });
-
-    resetInactivityTimer();
-
-    return () => {
-      activityEvents.forEach((eventName) => {
-        window.removeEventListener(eventName, resetInactivityTimer, true);
-      });
-
-      if (inactivityTimeoutRef.current) {
-        window.clearTimeout(inactivityTimeoutRef.current);
-        inactivityTimeoutRef.current = null;
-      }
-    };
-  }, [isAuthenticated, handleLogout]);
+  const handleStaySignedIn = useCallback(() => {
+    setSessionWarningKey((k) => k + 1);
+    logSessionEvent('session_extended', { reason: 'user_activity' });
+  }, []);
 
   const user = getUser();
   const { theme, toggleTheme, isDark } = useTheme();
@@ -173,6 +147,13 @@ function App() {
   );
 
   return (
+    <>
+      <HipaaSessionWarning
+        key={sessionWarningKey}
+        active={isAuthenticated}
+        onStaySignedIn={handleStaySignedIn}
+        onLogout={handleLogout}
+      />
     <Routes>
       {/* Public route */}
       <Route path="/login" element={
@@ -274,6 +255,7 @@ function App() {
       {/* 404 catch-all — redirect to dashboard if logged in, else login */}
       <Route path="*" element={<Navigate to={isAuthenticated ? '/dashboard' : '/'} replace />} />
     </Routes>
+    </>
   );
 }
 

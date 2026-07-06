@@ -1,6 +1,11 @@
+import { clearAuthStorage } from './hipaa/phiStorage';
+import { logPhiApiAccess, logSessionEvent } from './hipaa/auditLog';
+
 const API_BASE = 'https://care-sense-backend.onrender.com/api';
 
 export { API_BASE };
+
+const IS_DEV = import.meta.env.DEV;
 
 /**
  * Helper: get the stored auth token.
@@ -37,11 +42,11 @@ export function isTokenValid() {
 }
 
 /**
- * Clear all auth data from storage.
+ * Clear all auth data from storage and purge PHI caches (HIPAA).
  */
 export function clearAuth() {
-  localStorage.removeItem('token');
-  localStorage.removeItem('user');
+  logSessionEvent('logout', { reason: 'explicit_or_expired' });
+  clearAuthStorage();
 }
 
 /**
@@ -67,10 +72,8 @@ export async function apiFetch(path, options = {}, onUnauthorized) {
   const requestUrl = `${API_BASE}${normalizedPath}`;
   const requestOptions = { ...restOptions, headers };
 
-  if (!quiet) {
+  if (IS_DEV && !quiet) {
     console.log('[apiFetch] →', requestOptions.method || 'GET', requestUrl);
-    console.log('[apiFetch] headers:', JSON.stringify(headers));
-    if (restOptions.body) console.log('[apiFetch] body:', restOptions.body);
   }
 
   let res;
@@ -102,6 +105,8 @@ export async function apiFetch(path, options = {}, onUnauthorized) {
     if (onUnauthorized) onUnauthorized();
     throw new Error('Session expired. Please log in again.');
   }
+
+  logPhiApiAccess(requestOptions.method || 'GET', normalizedPath, res.status);
 
   return res;
 }
