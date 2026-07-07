@@ -3,6 +3,9 @@ import { apiFetch, getToken, getUser } from '../api';
 /** Session key for nurse UUID returned by GET /attendance/nurse/:id/daily */
 export const ATTENDANCE_NURSE_ID_KEY = 'attendanceNurseId';
 
+const ATTENDANCE_GET_OPTIONS = { quiet: true, extendedRetry: true };
+const ATTENDANCE_FETCH_CONCURRENCY = 12;
+
 function isUuidV4ish(value) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '').trim());
 }
@@ -1053,7 +1056,7 @@ export async function fetchNursesMonthlyAttendance(query = {}, onUnauthorized) {
   }
   const path = `/attendance/nurses/monthly?${q.toString()}`;
 
-  const res = await apiFetch(path, { method: 'GET' }, onUnauthorized);
+  const res = await apiFetch(path, { method: 'GET', ...ATTENDANCE_GET_OPTIONS }, onUnauthorized);
   const text = await res.text();
   let data = {};
   if (text) {
@@ -1097,7 +1100,23 @@ export async function fetchNursesDirectory(onUnauthorized) {
   return [];
 }
 
-const ATTENDANCE_FETCH_CONCURRENCY = 6;
+function collectOpenSessionsFromBodies(...payloads) {
+  const merged = [];
+  for (const payload of payloads) {
+    if (payload) merged.push(...extractOpenSessionsFromAttendanceRoot(payload));
+  }
+  return dedupeAttendanceSessions(merged);
+}
+
+function enrichSessionsWithNurseMetaForId(sessions, nurseId, nurseMeta) {
+  return sessions.map((session) => ({
+    ...session,
+    nurseId: session.nurseId ?? nurseId,
+    nurseName: session.nurseName
+      ?? [nurseMeta.firstName, nurseMeta.lastName].filter(Boolean).join(' ').trim()
+      ?? nurseMeta.name,
+  }));
+}
 
 async function fetchNurseOpenAttendancePayload(nurseId, onUnauthorized) {
   const id = encodeURIComponent(String(nurseId).trim());
@@ -1112,7 +1131,7 @@ async function fetchNurseOpenAttendancePayload(nurseId, onUnauthorized) {
 
   for (const path of paths) {
     try {
-      const res = await apiFetch(path, { method: 'GET' }, onUnauthorized);
+      const res = await apiFetch(path, { method: 'GET', ...ATTENDANCE_GET_OPTIONS }, onUnauthorized);
       if (!res.ok) continue;
       const text = await res.text();
       if (!text) return {};
@@ -1164,8 +1183,10 @@ export async function fetchOpenAttendanceSessionsForNurse(nurseId, onUnauthorize
  *
  * @param {{ month?: string, date?: string }} query
  * @param {() => void} [onUnauthorized]
+ * @param {{ onProgress?: (value: number) => void, onChunk?: (sessions: unknown[], meta: { completedNurses: number, totalNurses: number }) => void }} [callbacks]
  */
-export async function fetchAllNursesAttendanceRecords(query = {}, onUnauthorized) {
+export async function fetchAllNursesAttendanceRecords(query = {}, onUnauthorized, callbacks = {}) {
+  const { onProgress, onChunk } = callbacks;
   const month = query.month != null ? String(query.month).trim() : '';
   let date = query.date != null ? String(query.date).trim() : '';
   if (!date) {
@@ -1183,6 +1204,8 @@ export async function fetchAllNursesAttendanceRecords(query = {}, onUnauthorized
   }
   const dailyQuery = { date };
 
+  onProgress?.(4);
+
   let nurses = [];
   try {
     nurses = await fetchNursesDirectory(onUnauthorized);
@@ -1191,23 +1214,31 @@ export async function fetchAllNursesAttendanceRecords(query = {}, onUnauthorized
   }
 
   const ids = collectNurseIdsForDailyAttendanceFetch(nurses, getUser());
+  const totalNurses = ids.length;
+  onProgress?.(8);
+
+  const monthlyPromise = fetchNursesMonthlyAttendance(
+    { month: month || date.slice(0, 7) },
+    onUnauthorized,
+  ).catch(() => null);
 
   const aggregated = [];
   let lastDailyBody = null;
+  let completedNurses = 0;
+
   for (let i = 0; i < ids.length; i += ATTENDANCE_FETCH_CONCURRENCY) {
     const chunk = ids.slice(i, i + ATTENDANCE_FETCH_CONCURRENCY);
     const results = await Promise.allSettled(
       chunk.map(async (nurseId) => {
-        const datedBody = await fetchNurseDailyAttendance(nurseId, dailyQuery, onUnauthorized);
-        let openSessions = [];
-        try {
-          openSessions = await fetchOpenAttendanceSessionsForNurse(nurseId, onUnauthorized);
-        } catch {
-          openSessions = extractOpenSessionsFromAttendanceRoot(datedBody);
-        }
+        const [datedBody, openPayload] = await Promise.all([
+          fetchNurseDailyAttendance(nurseId, dailyQuery, onUnauthorized),
+          fetchNurseOpenAttendancePayload(nurseId, onUnauthorized),
+        ]);
+        const openSessions = collectOpenSessionsFromBodies(datedBody, openPayload);
         return { nurseId, datedBody, openSessions };
       }),
     );
+
     for (let j = 0; j < results.length; j += 1) {
       const result = results[j];
       if (result.status !== 'fulfilled') continue;
@@ -1219,28 +1250,28 @@ export async function fetchAllNursesAttendanceRecords(query = {}, onUnauthorized
           || resolveNurseApiIdFromNurseRecord(n) === nurseId,
       ) || {};
       const flat = flattenNurseDailyAttendanceResponse(datedBody);
-      aggregated.push(
-        ...flat.map((session) => ({
-          ...session,
-          nurseId: session.nurseId ?? nurseId,
-          nurseName: session.nurseName
-            ?? [nurseMeta.firstName, nurseMeta.lastName].filter(Boolean).join(' ').trim()
-            ?? nurseMeta.name,
-        })),
-        ...openSessions.map((session) => ({
-          ...session,
-          nurseId: session.nurseId ?? nurseId,
-          nurseName: session.nurseName
-            ?? [nurseMeta.firstName, nurseMeta.lastName].filter(Boolean).join(' ').trim()
-            ?? nurseMeta.name,
-          _isOpenSession: true,
-        })),
-      );
+      const chunkSessions = [
+        ...enrichSessionsWithNurseMetaForId(flat, nurseId, nurseMeta),
+        ...enrichSessionsWithNurseMetaForId(
+          openSessions.map((session) => ({ ...session, _isOpenSession: true })),
+          nurseId,
+          nurseMeta,
+        ),
+      ];
+      aggregated.push(...chunkSessions);
+      completedNurses += 1;
+      if (totalNurses > 0) {
+        onProgress?.(Math.min(94, 10 + Math.round((completedNurses / totalNurses) * 84)));
+      }
+      if (onChunk && chunkSessions.length > 0) {
+        onChunk(chunkSessions, { completedNurses, totalNurses });
+      }
     }
   }
 
-  const sessions = dedupeAttendanceSessions(aggregated);
+  let sessions = dedupeAttendanceSessions(aggregated);
   if (sessions.length > 0) {
+    onProgress?.(98);
     return {
       sessions,
       source: 'daily',
@@ -1252,9 +1283,10 @@ export async function fetchAllNursesAttendanceRecords(query = {}, onUnauthorized
 
   let monthlyBody = null;
   try {
-    monthlyBody = await fetchNursesMonthlyAttendance({ month: month || date.slice(0, 7) }, onUnauthorized);
+    monthlyBody = await monthlyPromise;
     const monthlySessions = flattenNursesMonthlyAttendanceResponse(monthlyBody);
     if (monthlySessions.length > 0) {
+      onProgress?.(98);
       return {
         sessions: monthlySessions,
         source: 'monthly',
@@ -1267,6 +1299,7 @@ export async function fetchAllNursesAttendanceRecords(query = {}, onUnauthorized
     monthlyBody = null;
   }
 
+  onProgress?.(98);
   return {
     sessions: [],
     source: 'daily',
@@ -1294,7 +1327,7 @@ export async function fetchNurseMonthlyAttendance(nurseId, query, onUnauthorized
   q.set('month', month);
   const path = `/attendance/nurse/${id}/monthly?${q.toString()}`;
 
-  const res = await apiFetch(path, { method: 'GET' }, onUnauthorized);
+  const res = await apiFetch(path, { method: 'GET', ...ATTENDANCE_GET_OPTIONS }, onUnauthorized);
   const text = await res.text();
   let data = {};
   if (text) {
@@ -1667,7 +1700,7 @@ export async function fetchNurseDailyAttendance(nurseId, query = {}, onUnauthori
       return `/attendance/nurse/${encodeURIComponent(rawId)}/daily${qs ? `?${qs}` : ''}`;
     })();
 
-  const res = await apiFetch(path, { method: 'GET' }, onUnauthorized);
+  const res = await apiFetch(path, { method: 'GET', ...ATTENDANCE_GET_OPTIONS }, onUnauthorized);
   const text = await res.text();
   let parsed = {};
   if (text) {

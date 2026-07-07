@@ -58,7 +58,8 @@ export function clearAuth() {
  */
 export async function apiFetch(path, options = {}, onUnauthorized) {
   const quiet = Boolean(options.quiet);
-  const { quiet: _quiet, ...restOptions } = options || {};
+  const extendedRetry = Boolean(options.extendedRetry);
+  const { quiet: _quiet, extendedRetry: _extendedRetry, ...restOptions } = options || {};
   const token = getToken();
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
   // Don't set Content-Type for FormData — browser sets it with the correct boundary
@@ -77,7 +78,9 @@ export async function apiFetch(path, options = {}, onUnauthorized) {
   }
 
   let res;
-  const delays = [2000, 5000, 8000]; // Render free tier can take 10-30s to wake
+  const delays = extendedRetry
+    ? [2000, 5000, 8000, 12000, 15000, 20000]
+    : [2000, 5000, 8000]; // Render free tier can take 10-30s to wake
   let lastError;
   for (let attempt = 0; attempt <= delays.length; attempt++) {
     try {
@@ -97,7 +100,7 @@ export async function apiFetch(path, options = {}, onUnauthorized) {
     if (msg.toLowerCase().includes('cors') || msg.toLowerCase().includes('blocked')) {
       throw new Error('Request blocked by CORS policy. Check the server CORS configuration.');
     }
-    throw new Error(`Cannot reach the server after 3 attempts. The server may be starting up — please wait a moment and try again. (${msg})`);
+    throw new Error(`Cannot reach the server after ${delays.length + 1} attempts. The server may be starting up — please wait a moment and try again. (${msg})`);
   }
 
   if (res.status === 401) {

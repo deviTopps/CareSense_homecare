@@ -394,6 +394,37 @@
 /* ── Table ── */
 .attendance-table-shell {
   min-height: 280px;
+  position: relative;
+}
+
+.attendance-table-shell .reports-table-loader--panel {
+  min-height: 320px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 20px;
+}
+
+.attendance-board__loading-bar {
+  position: relative;
+  height: 3px;
+  background: #e8edf3;
+  overflow: hidden;
+}
+
+.attendance-board__loading-bar-fill {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #45b6fe, #2e7db8);
+  transition: width 0.25s ease;
+}
+
+.attendance-board__loading-bar-label {
+  display: block;
+  padding: 8px 16px 0;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--kh-text-muted, #64748b);
 }
 
 .attendance-table-wrap {

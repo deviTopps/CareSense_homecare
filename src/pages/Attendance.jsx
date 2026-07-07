@@ -1,7 +1,9 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiCheckCircle, FiAlertCircle, FiXCircle, FiMapPin, FiX, FiSearch, FiChevronLeft, FiChevronRight, FiChevronsLeft, FiChevronsRight, FiRefreshCw, FiUsers, FiFilter } from '../icons/hugeicons-feather';
+import { FiCheckCircle, FiAlertCircle, FiXCircle, FiMapPin, FiX, FiSearch, FiChevronLeft, FiChevronRight, FiChevronsLeft, FiChevronsRight, FiRefreshCw, FiUsers, FiFilter, FiClock } from '../icons/hugeicons-feather';
 import { getUser, getToken } from '../api';
+import { TablePageLoaderPanel } from '../components/TablePageLoader';
+import { useLoadProgress } from '../hooks/useLoadProgress';
 import {
   clockInAttendance,
   clockOutAttendance,
@@ -533,6 +535,27 @@ function sortRecordsByDateDesc(rows) {
   });
 }
 
+function mapSessionsToTableRows(sessions, user) {
+  const u = user || getUser();
+  return sortRecordsByDateDesc(
+    sessions
+      .map((item) => {
+        const mapped = mapAttendanceRecordToTableRow(
+          item && typeof item === 'object' ? item : null,
+        );
+        return mapped || attendanceRowFromApiResponse(item, u);
+      })
+      .filter(Boolean),
+  );
+}
+
+function mergeAttendanceRows(existing, incoming) {
+  const map = new Map();
+  for (const row of existing) map.set(row.id, row);
+  for (const row of incoming) map.set(row.id, row);
+  return sortRecordsByDateDesc(Array.from(map.values()));
+}
+
 function readGeoPosition() {
   return new Promise((resolve, reject) => {
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
@@ -615,10 +638,13 @@ export default function Attendance() {
   const [activeAttendanceId, setActiveAttendanceId] = useState(null);
 
   const [attendanceRecords, setAttendanceRecords] = useState([]);
-  const [listLoading, setListLoading] = useState(false);
+  const [listLoading, setListLoading] = useState(true);
+  const [loadStatus, setLoadStatus] = useState('');
   const [listError, setListError] = useState('');
   const [listMeta, setListMeta] = useState(null);
   const lastMonthlyQueryRef = useRef(null);
+  const loadRequestRef = useRef(0);
+  const { progress: loadProgress, setProgressTarget, finishProgress } = useLoadProgress(listLoading, { finishDelay: 280 });
 
   const serverRecords = attendanceRecords;
 
@@ -718,8 +744,12 @@ export default function Attendance() {
   }, [navigate]);
 
   const loadAllNursesAttendance = useCallback(async (dateYYYYMMDD, year) => {
+    const requestId = loadRequestRef.current + 1;
+    loadRequestRef.current = requestId;
     setListLoading(true);
     setListError('');
+    setLoadStatus('Connecting to server…');
+    setProgressTarget(4);
     const query = buildNursesAttendanceQuery(dateYYYYMMDD, year);
     try {
       const {
@@ -731,17 +761,29 @@ export default function Attendance() {
       } = await fetchAllNursesAttendanceRecords(
         { month: query.month, date: query.date },
         onUnauthorized,
+        {
+          onProgress: (value) => {
+            if (loadRequestRef.current !== requestId) return;
+            setProgressTarget(value);
+          },
+          onChunk: (chunkSessions, { completedNurses, totalNurses }) => {
+            if (loadRequestRef.current !== requestId) return;
+            const chunkRows = mapSessionsToTableRows(chunkSessions);
+            if (!chunkRows.length) return;
+            setAttendanceRecords((prev) => mergeAttendanceRows(prev, chunkRows));
+            setLoadStatus(
+              totalNurses > 0
+                ? `Loaded ${completedNurses} of ${totalNurses} nurses…`
+                : 'Loading attendance records…',
+            );
+          },
+        },
       );
-      const u = getUser();
-      const rows = sessions.map((item) => {
-        const mapped = mapAttendanceRecordToTableRow(
-          item && typeof item === 'object' ? item : null,
-        );
-        return mapped || attendanceRowFromApiResponse(item, u);
-      });
-      const tableRows = rows.filter(Boolean);
-      setAttendanceRecords(sortRecordsByDateDesc(tableRows));
-      const nurseNames = new Set(rows.map((r) => r.nurse).filter(Boolean));
+      if (loadRequestRef.current !== requestId) return;
+
+      const tableRows = mapSessionsToTableRows(sessions);
+      setAttendanceRecords(tableRows);
+      const nurseNames = new Set(tableRows.map((r) => r.nurse).filter(Boolean));
       const summaryBody = dailyBody || {};
       setListMeta({
         ...attendanceSummaryFromDailyResponse(summaryBody, { date: loadedDate, month: query.month }),
@@ -754,6 +796,7 @@ export default function Attendance() {
         nursesFetched,
       });
       lastMonthlyQueryRef.current = query;
+      setLoadStatus('');
       if (!sessions.length && typeof console !== 'undefined' && console.warn) {
         console.warn('[Attendance] No sessions after monthly + per-nurse daily fetch', {
           query,
@@ -762,13 +805,16 @@ export default function Attendance() {
         });
       }
     } catch (e) {
+      if (loadRequestRef.current !== requestId) return;
       setListError(e.message || 'Could not load nurses attendance.');
-      setAttendanceRecords([]);
+      setAttendanceRecords((prev) => (prev.length > 0 ? prev : []));
       setListMeta(null);
+      setLoadStatus('');
     } finally {
-      setListLoading(false);
+      if (loadRequestRef.current !== requestId) return;
+      finishProgress(() => setListLoading(false));
     }
-  }, [onUnauthorized]);
+  }, [onUnauthorized, setProgressTarget, finishProgress]);
 
   const reloadAttendanceLists = useCallback(() => {
     void loadAllNursesAttendance(selectedDate, selectedYear);
@@ -1096,7 +1142,18 @@ export default function Attendance() {
         )}
 
         <div className="attendance-table-shell">
-          {filtered.length === 0 ? (
+          {listLoading && attendanceRecords.length === 0 ? (
+            <TablePageLoaderPanel
+              progress={loadProgress}
+              title="Loading attendance"
+              subtitle={loadStatus || `Fetching visits, clock times, and open sessions for ${periodLabel}…`}
+              icon={FiClock}
+              skeletonRows={6}
+              skeletonColumns={9}
+              showSkeleton
+              ariaLabel="Loading attendance records"
+            />
+          ) : filtered.length === 0 ? (
             <div className="attendance-empty">
               <span className="attendance-empty__icon" aria-hidden>
                 <FiSearch size={32} />
@@ -1110,6 +1167,14 @@ export default function Attendance() {
             </div>
           ) : (
             <>
+              {listLoading && (
+                <div className="attendance-board__loading-bar" role="status" aria-live="polite">
+                  <span className="attendance-board__loading-bar-fill" style={{ width: `${loadProgress}%` }} />
+                  <span className="attendance-board__loading-bar-label">
+                    {loadStatus || 'Refreshing attendance…'}
+                  </span>
+                </div>
+              )}
               <div className="attendance-table-wrap">
                 <table className="attendance-table">
                   <thead>
