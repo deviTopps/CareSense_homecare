@@ -1,15 +1,15 @@
 import { useEffect, useState } from 'react';
 import LandingHeader from '../components/landing/LandingHeader';
 import LandingHero from '../components/landing/LandingHero';
+import LandingTrust from '../components/landing/LandingTrust';
 import LandingStats from '../components/landing/LandingStats';
-import LandingProblemSolution from '../components/landing/LandingProblemSolution';
 import LandingHowItWorks from '../components/landing/LandingHowItWorks';
 import LandingReasons from '../components/landing/LandingReasons';
+import LandingAudience from '../components/landing/LandingAudience';
+import LandingSecurity from '../components/landing/LandingSecurity';
 import LandingTestimonials from '../components/landing/LandingTestimonials';
 import LandingPricing from '../components/landing/LandingPricing';
 import LandingFaq from '../components/landing/LandingFaq';
-import LandingComparison from '../components/landing/LandingComparison';
-import LandingCta from '../components/landing/LandingCta';
 import LandingMobileApp from '../components/landing/LandingMobileApp';
 import LandingFinalCta from '../components/landing/LandingFinalCta';
 import LandingFooter from '../components/landing/LandingFooter';
@@ -48,13 +48,13 @@ export default function LandingPage() {
     localStorage.setItem(
       COOKIE_CONSENT_KEY,
       JSON.stringify({
-      consent,
-      preferences: {
-        analytics: Boolean(preferences?.analytics),
-        marketing: Boolean(preferences?.marketing),
-        necessary: true,
-      },
-      savedAt: new Date().toISOString(),
+        consent,
+        preferences: {
+          analytics: Boolean(preferences?.analytics),
+          marketing: Boolean(preferences?.marketing),
+          necessary: true,
+        },
+        savedAt: new Date().toISOString(),
       }),
     );
     setCookiePrefs({
@@ -73,19 +73,18 @@ export default function LandingPage() {
 
       <LandingHeader navOpen={navOpen} setNavOpen={setNavOpen} />
 
-      <div className="cs-lp__intro">
-        <LandingHero />
-        <LandingStats />
-      </div>
+      <LandingHero />
+      <LandingTrust />
+      <LandingStats />
 
       <main id="main-content" className="cs-page-main" tabIndex={-1}>
-        <LandingProblemSolution />
-        <LandingHowItWorks />
         <LandingReasons />
-        <LandingComparison />
-        <LandingTestimonials />
-        <LandingPricing />
+        <LandingHowItWorks />
+        <LandingAudience />
+        <LandingSecurity />
         <LandingMobileApp />
+        <LandingPricing />
+        <LandingTestimonials />
         <LandingFaq />
         <LandingFinalCta />
       </main>

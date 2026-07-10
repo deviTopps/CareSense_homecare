@@ -1,4 +1,5 @@
-import { FiArrowRight } from '../../icons/hugeicons-feather';
+import LandingButton from './LandingButton';
+import LandingReveal from './LandingReveal';
 import { FINAL_CTA_CONTENT } from '../../data/landingContent';
 
 export default function LandingFinalCta() {
@@ -7,19 +8,20 @@ export default function LandingFinalCta() {
   return (
     <section className="cs-final-cta" aria-label="Get started">
       <div className="cs-container cs-final-cta__inner">
-        <h2 className="cs-final-cta__title">{title}</h2>
-        <p className="cs-final-cta__subtitle">{subtitle}</p>
-        <div className="cs-final-cta__actions">
-          <a href={primaryCta.href} className="cs-btn cs-btn--primary cs-btn--lg">
-            {primaryCta.label}
-            <FiArrowRight size={16} strokeWidth={2} aria-hidden />
-          </a>
-          {secondaryCta ? (
-            <a href={secondaryCta.href} className="cs-btn cs-btn--ghost cs-btn--lg">
-              {secondaryCta.label}
-            </a>
-          ) : null}
-        </div>
+        <LandingReveal>
+          <h2 className="cs-final-cta__title">{title}</h2>
+          <p className="cs-final-cta__subtitle">{subtitle}</p>
+          <div className="cs-final-cta__actions">
+            <LandingButton href={primaryCta.href} size="lg" showArrow>
+              {primaryCta.label}
+            </LandingButton>
+            {secondaryCta ? (
+              <LandingButton href={secondaryCta.href} variant="ghost" size="lg" className="cs-btn--on-dark">
+                {secondaryCta.label}
+              </LandingButton>
+            ) : null}
+          </div>
+        </LandingReveal>
       </div>
     </section>
   );

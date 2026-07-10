@@ -1,56 +1,113 @@
-import { Link } from 'react-router-dom';
-import { FiArrowRight } from '../../icons/hugeicons-feather';
+import { motion, useReducedMotion } from 'motion/react';
+import { CalendarDays, MapPin, FileText } from 'lucide-react';
+import LandingButton from './LandingButton';
 import { HERO_CONTENT } from '../../data/landingContent';
+import { Badge } from '@/components/ui/badge';
+
+const HIGHLIGHT_ICONS = [CalendarDays, MapPin, FileText];
 
 export default function LandingHero() {
-  const { badge, title, titleAccent, subtitle, primaryCta, secondaryCta, trustLine } = HERO_CONTENT;
+  const { brand, title, titleAccent, subtitle, primaryCta, secondaryCta, highlights } = HERO_CONTENT;
   const titleParts = title.split(titleAccent);
+  const reduceMotion = useReducedMotion();
+
+  const rise = (delay = 0) =>
+    reduceMotion
+      ? {}
+      : {
+          initial: { opacity: 0, y: 18 },
+          animate: { opacity: 1, y: 0 },
+          transition: { duration: 0.55, delay, ease: [0.22, 1, 0.36, 1] },
+        };
 
   return (
-    <section className="cs-hero cs-hero115" id="home" aria-labelledby="hero-title">
-      <div className="cs-hero115__pattern" aria-hidden>
-        <span className="cs-hero115__pattern-grid" />
-        <span className="cs-hero115__pattern-dots" />
-        <span className="cs-hero115__pattern-glow" />
+    <section className="cs-hero" id="home" aria-labelledby="hero-title">
+      <div className="cs-hero__atmosphere" aria-hidden>
+        <span className="cs-hero__orb cs-hero__orb--a" />
+        <span className="cs-hero__orb cs-hero__orb--b" />
+        <span className="cs-hero__orb cs-hero__orb--c" />
+        <span className="cs-hero__grid" />
       </div>
 
-      <div className="cs-container cs-hero115__container">
-        <div className="cs-hero115__stack">
-          <div className="cs-hero115__copy">
-            {badge ? <span className="cs-hero115__badge">{badge}</span> : null}
+      <div className="cs-container cs-hero__inner">
+        <div className="cs-hero__copy">
+          <motion.div {...rise(0)}>
+            <Badge className="cs-hero__badge border-0 bg-primary/15 text-primary hover:bg-primary/20 rounded-full px-4 py-1.5 text-sm font-semibold tracking-wide uppercase">
+              {brand}
+            </Badge>
+          </motion.div>
 
-            <h1 id="hero-title" className="cs-hero115__title">
-              {titleParts[0]}
-              <span className="cs-hero115__title-accent">{titleAccent}</span>
-              {titleParts[1] || ''}
-            </h1>
+          <motion.h1 id="hero-title" className="cs-hero__title" {...rise(0.06)}>
+            {titleParts[0]}
+            <span className="cs-hero__title-accent">{titleAccent}</span>
+            {titleParts[1] || ''}
+          </motion.h1>
 
-            <p className="cs-hero115__description">{subtitle}</p>
+          <motion.p className="cs-hero__lede" {...rise(0.12)}>
+            {subtitle}
+          </motion.p>
 
-            <div className="cs-hero115__cta">
-              <a href={primaryCta.href} className="cs-btn cs-btn--primary cs-hero115__btn">
-                {primaryCta.label}
-                <FiArrowRight size={16} strokeWidth={2} aria-hidden />
-              </a>
-              {secondaryCta ? (
-                <Link to={secondaryCta.href} className="cs-btn cs-btn--ghost cs-hero115__btn">
-                  {secondaryCta.label}
-                </Link>
-              ) : null}
-            </div>
+          <motion.div className="cs-hero__cta" {...rise(0.18)}>
+            <LandingButton href={primaryCta.href} size="lg" showArrow className="cs-hero__btn">
+              {primaryCta.label}
+            </LandingButton>
+            {secondaryCta ? (
+              <LandingButton to={secondaryCta.href} variant="ghost" size="lg" className="cs-hero__btn">
+                {secondaryCta.label}
+              </LandingButton>
+            ) : null}
+          </motion.div>
 
-            {trustLine ? <p className="cs-hero115__trust">{trustLine}</p> : null}
-          </div>
-
-          <img
-            src="/mockups/HomePage.png"
-            alt="CareSense dashboard showing visits and patient overview"
-            className="cs-hero115__img"
-            width={1200}
-            height={675}
-            loading="eager"
-          />
+          {highlights?.length ? (
+            <motion.ul className="cs-hero__highlights" {...rise(0.24)}>
+              {highlights.map((item, index) => {
+                const Icon = HIGHLIGHT_ICONS[index] || CalendarDays;
+                return (
+                  <li key={item} className="cs-hero__highlight">
+                    <Icon className="size-4" aria-hidden />
+                    <span>{item}</span>
+                  </li>
+                );
+              })}
+            </motion.ul>
+          ) : null}
         </div>
+
+        <motion.div
+          className="cs-hero__visual"
+          {...(reduceMotion
+            ? {}
+            : {
+                initial: { opacity: 0, y: 28, scale: 0.98 },
+                animate: { opacity: 1, y: 0, scale: 1 },
+                transition: { duration: 0.7, delay: 0.28, ease: [0.22, 1, 0.36, 1] },
+              })}
+        >
+          <div className="cs-hero__glow" aria-hidden />
+          <div className="cs-device" role="img" aria-label="CareSense dashboard in a browser window">
+            <div className="cs-device__chrome">
+              <div className="cs-device__dots" aria-hidden>
+                <span className="cs-device__dot cs-device__dot--red" />
+                <span className="cs-device__dot cs-device__dot--yellow" />
+                <span className="cs-device__dot cs-device__dot--green" />
+              </div>
+              <div className="cs-device__address">
+                <span className="cs-device__lock" aria-hidden />
+                <span className="cs-device__url">caresense.health</span>
+              </div>
+            </div>
+            <div className="cs-device__screen">
+              <img
+                src="/mockups/HomePage.png"
+                alt="CareSense dashboard showing visits and patient overview"
+                className="cs-hero__img"
+                width={1400}
+                height={800}
+                loading="eager"
+              />
+            </div>
+          </div>
+        </motion.div>
       </div>
     </section>
   );

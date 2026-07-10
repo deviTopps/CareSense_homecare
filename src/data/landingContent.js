@@ -6,33 +6,36 @@ export const LANDING_PHONE = '+233 535614493';
 export const LANDING_PHONE_HREF = 'tel:+233535614493';
 
 export const LANDING_NAV = [
-  { id: 'home', label: 'Home', href: '#home' },
   { id: 'features', label: 'Features', href: '#features' },
+  { id: 'how-it-works', label: 'How it works', href: '#how-it-works' },
+  { id: 'security', label: 'Security', href: '#security' },
   { id: 'pricing', label: 'Pricing', href: '#pricing' },
 ];
 
-export const LANDING_NAV_CTA = { label: 'Sign In', href: '/login' };
+export const LANDING_NAV_CTA = { label: 'Sign in', href: '/login' };
+export const LANDING_NAV_PRIMARY = { label: 'Start free', href: '/login' };
 
 export const HERO_CONTENT = {
-  badge: 'Homecare operations platform',
-  title: 'Run your agency with clarity, not chaos',
-  titleAccent: 'clarity',
+  brand: 'CareSense',
+  title: 'Run your homecare agency with calm clarity',
+  titleAccent: 'calm clarity',
   subtitle:
-    'CareSense unifies patients, nurses, visits, and billing-ready reports into one calm workspace so your team spends less time on admin and more time on care.',
-  primaryCta: { label: 'Get started free', href: '/login' },
+    'Patients, nurses, visits, and billing in one workspace—so your team spends less time on admin and more time on care.',
+  primaryCta: { label: 'Start free', href: '/login' },
   secondaryCta: { label: 'Book a demo', href: '/book-demo' },
-  trustLine: 'No credit card required. Free plan available.',
+  highlights: ['Smart scheduling', 'GPS visit verification', 'Billing-ready reports'],
 };
 
 export const STATS_CONTENT = [
-  { value: '81', label: 'Patients managed' },
-  { value: '150', label: 'Nurses onboarded' },
+  { value: '81+', label: 'Patients managed' },
+  { value: '150+', label: 'Nurses onboarded' },
   { value: '40%', label: 'Less admin time' },
-  { value: '24/7', label: 'Always-on support' },
+  { value: '24/7', label: 'Support available' },
 ];
 
 export const TRUSTED_BY = {
-  label: 'Trusted by leading care organisations',
+  label: 'Built for modern homecare agencies',
+  items: ['Agency owners', 'Care coordinators', 'Field nurses', 'Billing teams'],
 };
 
 export const PROBLEM_SOLUTION_CONTENT = {
@@ -63,36 +66,35 @@ export const PROBLEM_SOLUTION_CONTENT = {
 
 export const HOW_IT_WORKS_CONTENT = {
   eyebrow: 'How it works',
-  title: 'Up and running in three simple steps',
+  title: 'Live in three steps',
   steps: [
     {
       number: '01',
       title: 'Set up your agency',
-      body: 'Create your account, add your agency details, and configure your care regions in minutes.',
+      body: 'Create your account, add agency details, and configure your care regions.',
     },
     {
       number: '02',
       title: 'Onboard your team',
-      body: 'Invite nurses, assign roles, and upload credentials. Your workforce is organised from day one.',
+      body: 'Invite nurses, assign roles, and upload credentials in one place.',
     },
     {
       number: '03',
-      title: 'Manage & deliver care',
-      body: 'Schedule visits, track attendance, document outcomes, and generate billing-ready reports — all in one place.',
+      title: 'Run day-to-day care',
+      body: 'Schedule visits, track attendance, document outcomes, and export billing reports.',
     },
   ],
 };
 
 export const FEATURES_CONTENT = {
-  eyebrow: 'Platform',
-  title: 'Everything your homecare team needs',
-  subtitle:
-    'Replace scattered spreadsheets and phone calls with workflows designed for nurses, coordinators, and billing.',
+  eyebrow: 'Features',
+  title: 'Everything in one place',
+  subtitle: 'Replace spreadsheets, WhatsApp threads, and paper charts with one clear workflow.',
   items: [
     {
       icon: 'patients',
       title: 'Patient management',
-      body: 'Central profiles, care plans, and clinical history so every visit starts with full context.',
+      body: 'Profiles, care plans, and clinical history so every visit starts with full context.',
     },
     {
       icon: 'nurses',
@@ -101,28 +103,75 @@ export const FEATURES_CONTENT = {
     },
     {
       icon: 'schedule',
-      title: 'Smart & fast scheduling',
-      body: 'Match the right caregiver with the right patient instantly. View real-time availability, manage shift swaps, and reduce travel time with geographic routing.',
+      title: 'Smart scheduling',
+      body: 'Match caregivers to patients quickly. See availability and manage shifts in one view.',
     },
     {
       icon: 'security',
-      title: 'Bulletproof compliance & EVV',
-      body: 'Stay audit-ready 24/7. Our built-in Electronic Visit Verification (EVV) tracks locations, timestamps, and care notes securely and effortlessly.',
+      title: 'Compliance & EVV',
+      body: 'GPS clock-in, timestamps, and visit notes that keep you audit-ready.',
     },
     {
       icon: 'visits',
-      title: 'Caregiver & client portals',
-      body: 'Keep everyone in the loop. Caregivers can access schedules and log notes on the go, while families get peace of mind through real-time updates.',
+      title: 'Caregiver portal',
+      body: 'Field staff view schedules, log notes, and sync updates from the mobile app.',
     },
     {
       icon: 'reports',
-      title: 'Automated billing & payroll',
-      body: 'Say goodbye to manual tracking. CareSense automatically matches clock-ins to billing codes and payroll hours, cutting your admin time in half.',
+      title: 'Billing & payroll',
+      body: 'Match visits to billing and payroll hours automatically—less manual tracking.',
     },
   ],
 };
 
 export const REASONS_CONTENT = FEATURES_CONTENT;
+
+export const AUDIENCE_CONTENT = {
+  eyebrow: 'Who it’s for',
+  title: 'Built for every role on your care team',
+  items: [
+    {
+      title: 'Agency owners',
+      body: 'See operations at a glance—census, staffing, and billing readiness without chasing updates.',
+    },
+    {
+      title: 'Care coordinators',
+      body: 'Schedule visits, assign nurses, and keep documentation moving without phone tag.',
+    },
+    {
+      title: 'Nurses & caregivers',
+      body: 'Get today’s schedule, clock in with GPS, and log care notes from the field.',
+    },
+    {
+      title: 'Billing & admin',
+      body: 'Pull visit-backed reports and payroll hours without rebuilding spreadsheets each month.',
+    },
+  ],
+};
+
+export const SECURITY_CONTENT = {
+  eyebrow: 'Security',
+  title: 'Healthcare-ready by design',
+  subtitle: 'Protect patient data and stay ready for audits without slowing your team down.',
+  items: [
+    {
+      title: 'Role-based access',
+      body: 'Give each role only the access they need—owners, coordinators, nurses, and billing.',
+    },
+    {
+      title: 'Audit-friendly records',
+      body: 'Visit logs, timestamps, and documentation stay organised for reviews and compliance checks.',
+    },
+    {
+      title: 'Electronic Visit Verification',
+      body: 'GPS clock-in and clock-out create a clear trail for every visit in the field.',
+    },
+    {
+      title: 'Secure authentication',
+      body: 'Protected sign-in and session controls help keep agency and patient data safe.',
+    },
+  ],
+};
 
 export const TESTIMONIALS_CONTENT = {
   eyebrow: 'What customers say',
@@ -216,27 +265,27 @@ export const COMPARISON_CONTENT = {
 };
 
 export const MOBILE_APP_CONTENT = {
-  eyebrow: 'For Nurses & Caregivers',
-  title: 'The CareSense Nurse & Caregiver App',
-  subtitle: 'Point-of-Care Power, Right in Their Pocket.',
+  eyebrow: 'Mobile app',
+  title: 'Built for nurses in the field',
+  subtitle: 'Schedules, EVV, and care notes on the go.',
   description:
-    'Give your field staff the ultimate tool to succeed. Our lightweight, HIPAA-compliant mobile app is custom-built for nurses and caregivers, ensuring they have everything they need to provide top-tier care without the paperwork burden.',
+    'A lightweight app for caregivers—document visits, clock in with GPS, and stay synced with the agency dashboard.',
   features: [
     {
-      title: 'Offline Care Logging',
-      text: 'Nurses can document care plans, fill out clinical assessments, and capture signatures even in areas with zero cell service. The app syncs automatically once connection is restored.',
+      title: 'Offline care logging',
+      text: 'Document assessments and capture signatures without signal. Sync when you’re back online.',
     },
     {
-      title: 'Instant Schedule & Route Updates',
-      text: 'No more text threads or missed shifts. Caregivers view their daily schedule, receive real-time updates, and get turn-by-turn GPS routing to their next patient.',
+      title: 'Schedule & routes',
+      text: 'See today’s visits, get updates in real time, and navigate to the next patient.',
     },
     {
-      title: 'One-Tap EVV Compliance',
-      text: 'Clocking in and out automatically logs geographic verification and timestamps, completely automating your Electronic Visit Verification mandate.',
+      title: 'One-tap EVV',
+      text: 'Clock in and out with geographic verification and timestamps built in.',
     },
     {
-      title: 'Secure Shift Notes & Chat',
-      text: 'Nurses can safely log patient vitals, upload secure photo documentation, and chat instantly with the agency office or the care coordination team.',
+      title: 'Secure notes',
+      text: 'Log vitals, upload photos, and message the care coordination team safely.',
     },
   ],
   playStore: {
@@ -248,9 +297,9 @@ export const MOBILE_APP_CONTENT = {
 };
 
 export const FINAL_CTA_CONTENT = {
-  title: 'Ready to transform your homecare operations?',
-  subtitle: 'Join agencies already using CareSense to deliver better care with less admin.',
-  primaryCta: { label: 'Get started free', href: '/login' },
+  title: 'Start running your agency in one place',
+  subtitle: 'Set up CareSense, invite your team, and replace the admin chaos.',
+  primaryCta: { label: 'Start free', href: '/login' },
   secondaryCta: { label: 'Talk to sales', href: LANDING_PHONE_HREF },
 };
 
@@ -295,7 +344,7 @@ export const FAQ_CONTENT = {
       id: 'faq-pricing',
       question: 'How does pricing work?',
       answer:
-        'We offer Starter, Standard, and Premium plans with monthly or yearly billing. You can start on the free Starter plan and upgrade as your agency grows. See the Pricing section for details.',
+        'Pricing is simple: GH₵50 per patient per month, plus a one-time setup and training fee. See the Pricing section for a full breakdown.',
     },
     {
       id: 'faq-get-started',
@@ -320,10 +369,11 @@ export const FAQ_CONTENT = {
 
 export const FOOTER_LINKS = [
   { label: 'Features', href: '#features' },
+  { label: 'How it works', href: '#how-it-works' },
+  { label: 'Security', href: '#security' },
   { label: 'Pricing', href: '#pricing' },
   { label: 'Mobile app', href: '#mobile-app' },
   { label: 'FAQ', href: '#faq' },
   { label: 'Privacy', href: '/privacy' },
-  { label: 'Terms', href: '#' },
   { label: 'Sign In', href: '/login' },
 ];
