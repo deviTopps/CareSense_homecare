@@ -20,7 +20,7 @@ export const HERO_CONTENT = {
   title: 'Run your homecare agency with calm clarity',
   titleAccent: 'calm clarity',
   subtitle:
-    'Patients, nurses, visits, and billing in one workspace—so your team spends less time on admin and more time on care.',
+    'An operations platform that brings patients, nurses, visits, scheduling, and clinical safety monitoring into one workspace for agencies and the care teams behind them',
   primaryCta: { label: 'Start free', href: '/login' },
   secondaryCta: { label: 'Book a demo', href: '/book-demo' },
   highlights: ['Smart scheduling', 'GPS visit verification', 'Billing-ready reports'],
@@ -129,22 +129,32 @@ export const REASONS_CONTENT = FEATURES_CONTENT;
 export const AUDIENCE_CONTENT = {
   eyebrow: 'Who it’s for',
   title: 'Built for every role on your care team',
+  subtitle:
+    'One platform that keeps owners, coordinators, nurses, and admin working from the same live picture of care.',
   items: [
     {
+      id: 'owners',
       title: 'Agency owners',
       body: 'See operations at a glance—census, staffing, and billing readiness without chasing updates.',
+      accent: 'featured',
     },
     {
+      id: 'coordinators',
       title: 'Care coordinators',
       body: 'Schedule visits, assign nurses, and keep documentation moving without phone tag.',
+      accent: 'default',
     },
     {
+      id: 'nurses',
       title: 'Nurses & caregivers',
       body: 'Get today’s schedule, clock in with GPS, and log care notes from the field.',
+      accent: 'default',
     },
     {
+      id: 'billing',
       title: 'Billing & admin',
       body: 'Pull visit-backed reports and payroll hours without rebuilding spreadsheets each month.',
+      accent: 'default',
     },
   ],
 };
@@ -265,35 +275,19 @@ export const COMPARISON_CONTENT = {
 };
 
 export const MOBILE_APP_CONTENT = {
-  eyebrow: 'Mobile app',
-  title: 'Built for nurses in the field',
-  subtitle: 'Schedules, EVV, and care notes on the go.',
+  badge: 'Available on iOS & Android',
+  title: 'Record every field activity as it happens',
   description:
-    'A lightweight app for caregivers—document visits, clock in with GPS, and stay synced with the agency dashboard.',
-  features: [
-    {
-      title: 'Offline care logging',
-      text: 'Document assessments and capture signatures without signal. Sync when you’re back online.',
-    },
-    {
-      title: 'Schedule & routes',
-      text: 'See today’s visits, get updates in real time, and navigate to the next patient.',
-    },
-    {
-      title: 'One-tap EVV',
-      text: 'Clock in and out with geographic verification and timestamps built in.',
-    },
-    {
-      title: 'Secure notes',
-      text: 'Log vitals, upload photos, and message the care coordination team safely.',
-    },
-  ],
+    'Nurses clock in, log care tasks, capture notes and photos, and sync each visit back to the agency — all in one simple app.',
   playStore: {
     href: 'https://play.google.com/store',
-    badgeSrc: GOOGLE_PLAY_BADGE_SRC,
     label: 'Get it on Google Play',
   },
-  mockupSrc: NURSE1_MOCKUP_SRC,
+  appStore: {
+    href: 'https://apps.apple.com',
+    label: 'Download on the App Store',
+  },
+  mockupSrc: '/mockups/Momo.png',
 };
 
 export const FINAL_CTA_CONTENT = {

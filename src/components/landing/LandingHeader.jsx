@@ -1,13 +1,11 @@
 import { useEffect, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { Menu, Phone, X } from 'lucide-react';
+import { Menu, X } from 'lucide-react';
 import { BRAND_LOGO_SRC } from '../../constants/brandAssets';
 import {
   LANDING_NAV,
   LANDING_NAV_CTA,
   LANDING_NAV_PRIMARY,
-  LANDING_PHONE,
-  LANDING_PHONE_HREF,
 } from '../../data/landingContent';
 import LandingButton from './LandingButton';
 import { Button } from '@/components/ui/button';
@@ -51,10 +49,6 @@ export default function LandingHeader({ navOpen, setNavOpen, onNavClick }) {
           </nav>
 
           <div className="cs-header__actions">
-            <a href={LANDING_PHONE_HREF} className="cs-header__phone" aria-label={`Call ${LANDING_PHONE}`}>
-              <Phone className="size-4" aria-hidden />
-              <span>{LANDING_PHONE}</span>
-            </a>
             <LandingButton href={LANDING_NAV_CTA.href} variant="ghost" size="sm" className="cs-header__signin">
               {LANDING_NAV_CTA.label}
             </LandingButton>
@@ -101,10 +95,6 @@ export default function LandingHeader({ navOpen, setNavOpen, onNavClick }) {
               </ul>
 
               <div className="cs-header__drawer-actions">
-                <a href={LANDING_PHONE_HREF} className="cs-header__drawer-phone" onClick={closeNav}>
-                  <Phone className="size-4" aria-hidden />
-                  {LANDING_PHONE}
-                </a>
                 <LandingButton href={LANDING_NAV_CTA.href} variant="ghost" fullWidth onClick={closeNav}>
                   {LANDING_NAV_CTA.label}
                 </LandingButton>
