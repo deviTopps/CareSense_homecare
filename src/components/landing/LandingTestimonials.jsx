@@ -1,105 +1,91 @@
-import { useEffect, useState } from 'react';
-import { FiChevronLeft, FiChevronRight } from '../../icons/hugeicons-feather';
+import { Heart, Star } from 'lucide-react';
 import { TESTIMONIALS_CONTENT } from '../../data/landingContent';
-import LandingSection from './LandingSection';
-
-function getVisibleCount() {
-  if (typeof window === 'undefined') return 3;
-  if (window.matchMedia('(max-width: 767px)').matches) return 1;
-  if (window.matchMedia('(max-width: 1024px)').matches) return 2;
-  return 3;
-}
+import LandingButton from './LandingButton';
+import LandingReveal, { LandingStagger, LandingStaggerItem } from './LandingReveal';
 
 function getInitials(name) {
   return name
     .split(' ')
-    .map((n) => n[0])
+    .filter(Boolean)
+    .map((part) => part[0])
     .join('')
     .slice(0, 2)
     .toUpperCase();
 }
 
 export default function LandingTestimonials() {
-  const { eyebrow, title, items } = TESTIMONIALS_CONTENT;
-  const [index, setIndex] = useState(0);
-  const [visibleCount, setVisibleCount] = useState(getVisibleCount);
-
-  useEffect(() => {
-    const onResize = () => setVisibleCount(getVisibleCount());
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
-
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      setIndex((i) => (i + 1) % items.length);
-    }, 3000);
-
-    return () => window.clearInterval(timer);
-  }, [items.length]);
-
-  const visible = [];
-  for (let i = 0; i < visibleCount; i += 1) {
-    visible.push(items[(index + i) % items.length]);
-  }
-
-  const nav = (
-    <div className="cs-testimonials__nav">
-      <button
-        type="button"
-        className="cs-testimonials__arrow"
-        onClick={() => setIndex((i) => (i - 1 + items.length) % items.length)}
-        aria-label="Previous testimonials"
-      >
-        <FiChevronLeft size={18} />
-      </button>
-      <button
-        type="button"
-        className="cs-testimonials__arrow"
-        onClick={() => setIndex((i) => (i + 1) % items.length)}
-        aria-label="Next testimonials"
-      >
-        <FiChevronRight size={18} />
-      </button>
-    </div>
-  );
+  const { badge, title, subtitle, items, ctaLabel, ctaHref } = TESTIMONIALS_CONTENT;
 
   return (
-    <LandingSection
-      id="testimonials"
-      eyebrow={eyebrow}
-      title={title}
-      variant="muted"
-      headerAlign="start"
-      headerAside={nav}
-    >
-      <div
-        key={index}
-        className="cs-testimonials__grid"
-        role="region"
-        aria-label="Client testimonials"
-        aria-live="polite"
-      >
-        {visible.map((t) => (
-          <article key={`${t.name}-${t.role}`} className="cs-testimonial-card">
-            <div className="cs-testimonial-card__stars" aria-label="5 out of 5 stars">
-              ★★★★★
-            </div>
-            <blockquote className="cs-testimonial-card__quote">
-              <p>&ldquo;{t.quote}&rdquo;</p>
-            </blockquote>
-            <footer className="cs-testimonial-card__author">
-              <span className="cs-testimonial-card__avatar" aria-hidden>
-                {getInitials(t.name)}
-              </span>
-              <div>
-                <cite className="cs-testimonial-card__name">{t.name}</cite>
-                <span className="cs-testimonial-card__role">{t.role}</span>
-              </div>
-            </footer>
-          </article>
-        ))}
+    <section className="cs-testimonials" id="testimonials" aria-labelledby="testimonials-heading">
+      <div className="cs-testimonials__glows" aria-hidden>
+        <span className="cs-testimonials__glow cs-testimonials__glow--a" />
+        <span className="cs-testimonials__glow cs-testimonials__glow--b" />
+        <span className="cs-testimonials__glow cs-testimonials__glow--c" />
       </div>
-    </LandingSection>
+
+      <div className="cs-container">
+        <LandingReveal className="cs-testimonials__intro">
+          <span className="cs-testimonials__badge">
+            <span className="cs-testimonials__badge-icon" aria-hidden>
+              <Heart size={11} fill="currentColor" />
+            </span>
+            {badge}
+          </span>
+          <h2 id="testimonials-heading" className="cs-testimonials__title">
+            {title}
+          </h2>
+          <p className="cs-testimonials__subtitle">{subtitle}</p>
+        </LandingReveal>
+
+        <LandingStagger className="cs-testimonials__grid" stagger={0.05}>
+          {items.map((item) => (
+            <LandingStaggerItem key={`${item.name}-${item.role}`}>
+              <article className="cs-testimonial-card">
+                <header className="cs-testimonial-card__header">
+                  <span className="cs-testimonial-card__avatar" aria-hidden>
+                    {getInitials(item.name)}
+                  </span>
+                  <div className="cs-testimonial-card__identity">
+                    <h3 className="cs-testimonial-card__name">{item.name}</h3>
+                    <p className="cs-testimonial-card__role">{item.role}</p>
+                  </div>
+                </header>
+
+                <div className="cs-testimonial-card__stars" aria-label="5 out of 5 stars">
+                  {Array.from({ length: 5 }).map((_, index) => (
+                    <Star
+                      key={index}
+                      className="cs-testimonial-card__star"
+                      size={14}
+                      fill="currentColor"
+                      aria-hidden
+                    />
+                  ))}
+                </div>
+
+                <blockquote className="cs-testimonial-card__quote">
+                  <p>&ldquo;{item.quote}&rdquo;</p>
+                </blockquote>
+
+                {item.rankTag ? (
+                  <p className="cs-testimonial-card__rank">{item.rankTag}</p>
+                ) : null}
+
+                <a href={item.caseStudyHref || ctaHref} className="cs-testimonial-card__study">
+                  Case Study
+                </a>
+              </article>
+            </LandingStaggerItem>
+          ))}
+        </LandingStagger>
+
+        <LandingReveal className="cs-testimonials__cta-wrap" delay={0.1}>
+          <LandingButton href={ctaHref} className="cs-testimonials__cta">
+            {ctaLabel}
+          </LandingButton>
+        </LandingReveal>
+      </div>
+    </section>
   );
 }

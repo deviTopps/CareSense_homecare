@@ -29,8 +29,24 @@ export default defineConfig({
       ignored: ['**/node_modules/**', '**/.git/**', '**/dist/**'],
     },
   },
-  optimizeDeps: {
-    force: true,
+  build: {
+    target: 'es2020',
+    cssCodeSplit: true,
+    sourcemap: false,
+    chunkSizeWarningLimit: 900,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return;
+          if (id.includes('react-router') || id.includes('/react/') || id.includes('/react-dom/')) {
+            return 'react';
+          }
+          if (id.includes('motion')) return 'motion';
+          if (id.includes('recharts')) return 'charts';
+          if (id.includes('jspdf') || id.includes('html2canvas')) return 'pdf';
+        },
+      },
+    },
   },
   clearScreen: false,
 })

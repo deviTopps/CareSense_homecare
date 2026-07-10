@@ -76,6 +76,25 @@ export function FeatureIcon({ name }) {
           <path d="M9 12l2 2 4-4" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       );
+    case 'alerts':
+      return (
+        <svg {...iconProps}>
+          <path
+            d="M12 4l8 14H4L12 4z"
+            stroke="currentColor"
+            strokeWidth="1.75"
+            strokeLinejoin="round"
+          />
+          <path d="M12 10v4M12 16.5h.01" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+        </svg>
+      );
+    case 'records':
+      return (
+        <svg {...iconProps}>
+          <rect x="5" y="3" width="14" height="18" rx="2" stroke="currentColor" strokeWidth="1.75" />
+          <path d="M9 8h6M9 12h6M9 16h4" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+        </svg>
+      );
     default:
       return null;
   }

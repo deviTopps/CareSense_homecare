@@ -1,24 +1,32 @@
 import { TRUSTED_BY } from '../../data/landingContent';
-import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
+import LandingReveal, { LandingStagger, LandingStaggerItem } from './LandingReveal';
 
 export default function LandingTrust() {
-  const { label, items } = TRUSTED_BY;
+  const { eyebrow, label, lead, items } = TRUSTED_BY;
 
   return (
-    <section className="cs-trust" aria-label="Who CareSense is built for">
+    <section className="cs-trust" aria-labelledby="trust-heading">
+      <div className="cs-trust__atmosphere" aria-hidden />
+
       <div className="cs-container">
-        <div className="flex flex-col items-center gap-4 py-2 text-center">
-          <p className="text-base font-semibold text-muted-foreground">{label}</p>
-          <div className="flex flex-wrap justify-center gap-2">
-            {items.map((item) => (
-              <Badge key={item} variant="secondary" className="rounded-full px-4 py-1.5 text-base font-semibold">
-                {item}
-              </Badge>
-            ))}
-          </div>
-        </div>
-        <Separator className="mt-5" />
+        <LandingReveal className="cs-trust__intro">
+          {eyebrow ? <p className="cs-trust__eyebrow">{eyebrow}</p> : null}
+          <h2 id="trust-heading" className="cs-trust__title">
+            {label}
+          </h2>
+          {lead ? <p className="cs-trust__lead">{lead}</p> : null}
+        </LandingReveal>
+
+        <LandingStagger className="cs-trust__roles" stagger={0.08} as="ul">
+          {items.map((item) => (
+            <LandingStaggerItem key={item} as="li" className="cs-trust__role">
+              <a href="#audience" className="cs-trust__role-link">
+                <span className="cs-trust__role-mark" aria-hidden />
+                <span className="cs-trust__role-name">{item}</span>
+              </a>
+            </LandingStaggerItem>
+          ))}
+        </LandingStagger>
       </div>
     </section>
   );

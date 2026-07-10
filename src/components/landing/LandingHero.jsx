@@ -32,7 +32,18 @@ export default function LandingHero() {
       <div className="cs-container cs-hero__inner">
         <div className="cs-hero__copy">
           <motion.div {...rise(0)}>
-            <Badge className="cs-hero__badge border-0 bg-primary/15 text-primary hover:bg-primary/20 rounded-full px-4 py-1.5 text-sm font-semibold tracking-wide uppercase">
+            <Badge className="cs-hero__badge border-0 bg-primary/15 text-primary hover:bg-primary/20 rounded-full px-4 py-1.5 text-sm font-semibold tracking-wide">
+              <span className="cs-hero__flag" aria-hidden>
+                <svg viewBox="0 0 36 24" width="22" height="15" role="img">
+                  <rect width="36" height="8" y="0" fill="#CE1126" />
+                  <rect width="36" height="8" y="8" fill="#FCD116" />
+                  <rect width="36" height="8" y="16" fill="#006B3F" />
+                  <polygon
+                    points="18,9.2 18.9,11.8 21.7,11.8 19.4,13.4 20.3,16 18,14.4 15.7,16 16.6,13.4 14.3,11.8 17.1,11.8"
+                    fill="#000"
+                  />
+                </svg>
+              </span>
               {brand}
             </Badge>
           </motion.div>
@@ -98,11 +109,13 @@ export default function LandingHero() {
             </div>
             <div className="cs-device__screen">
               <img
-                src="/mockups/HomePage.png"
+                src="/mockups/optimized/HomePage.jpg"
                 alt="CareSense dashboard showing visits and patient overview"
                 className="cs-hero__img"
-                width={1400}
-                height={800}
+                width={1200}
+                height={750}
+                decoding="async"
+                fetchPriority="high"
                 loading="eager"
               />
             </div>

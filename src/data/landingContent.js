@@ -16,14 +16,14 @@ export const LANDING_NAV_CTA = { label: 'Sign in', href: '/login' };
 export const LANDING_NAV_PRIMARY = { label: 'Start free', href: '/login' };
 
 export const HERO_CONTENT = {
-  brand: 'CareSense',
+  brand: 'Trusted By Homecare Agencies In Ghana',
   title: 'Run your homecare agency with calm clarity',
   titleAccent: 'calm clarity',
   subtitle:
     'An operations platform that brings patients, nurses, visits, scheduling, and clinical safety monitoring into one workspace for agencies and the care teams behind them',
   primaryCta: { label: 'Start free', href: '/login' },
   secondaryCta: { label: 'Book a demo', href: '/book-demo' },
-  highlights: ['Smart scheduling', 'GPS visit verification', 'Billing-ready reports'],
+  highlights: ['Smart scheduling', 'GPS visit verification', 'Billing ready reports'],
 };
 
 export const STATS_CONTENT = [
@@ -34,7 +34,9 @@ export const STATS_CONTENT = [
 ];
 
 export const TRUSTED_BY = {
+  eyebrow: 'Built for the whole team',
   label: 'Built for modern homecare agencies',
+  lead: 'From the office to the field, every role stays connected on one platform.',
   items: ['Agency owners', 'Care coordinators', 'Field nurses', 'Billing teams'],
 };
 
@@ -80,7 +82,7 @@ export const HOW_IT_WORKS_CONTENT = {
     },
     {
       number: '03',
-      title: 'Run day-to-day care',
+      title: 'Run day to day care',
       body: 'Schedule visits, track attendance, document outcomes, and export billing reports.',
     },
   ],
@@ -109,7 +111,7 @@ export const FEATURES_CONTENT = {
     {
       icon: 'security',
       title: 'Compliance & EVV',
-      body: 'GPS clock-in, timestamps, and visit notes that keep you audit-ready.',
+      body: 'GPS clock in, timestamps, and visit notes that keep you audit ready.',
     },
     {
       icon: 'visits',
@@ -119,7 +121,17 @@ export const FEATURES_CONTENT = {
     {
       icon: 'reports',
       title: 'Billing & payroll',
-      body: 'Match visits to billing and payroll hours automatically—less manual tracking.',
+      body: 'Match visits to billing and payroll hours automatically, with less manual tracking.',
+    },
+    {
+      icon: 'alerts',
+      title: 'Clinical Red Flags Alerts',
+      body: 'Get notified when vitals or visit notes signal risk, so your team can act before issues escalate.',
+    },
+    {
+      icon: 'records',
+      title: 'Automated Medical Records Generation',
+      body: 'Turn visit activity into clear medical records without rebuilding charts by hand after every shift.',
     },
   ],
 };
@@ -135,8 +147,9 @@ export const AUDIENCE_CONTENT = {
     {
       id: 'owners',
       title: 'Agency owners',
-      body: 'See operations at a glance—census, staffing, and billing readiness without chasing updates.',
+      body: 'See operations at a glance, including census, staffing, and billing readiness without chasing updates.',
       accent: 'featured',
+      imageSrc: '/images/optimized/audience-agency.jpg',
     },
     {
       id: 'coordinators',
@@ -153,7 +166,7 @@ export const AUDIENCE_CONTENT = {
     {
       id: 'billing',
       title: 'Billing & admin',
-      body: 'Pull visit-backed reports and payroll hours without rebuilding spreadsheets each month.',
+      body: 'Pull visit backed reports and payroll hours without rebuilding spreadsheets each month.',
       accent: 'default',
     },
   ],
@@ -161,94 +174,145 @@ export const AUDIENCE_CONTENT = {
 
 export const SECURITY_CONTENT = {
   eyebrow: 'Security',
-  title: 'Healthcare-ready by design',
+  title: 'Healthcare ready by design',
   subtitle: 'Protect patient data and stay ready for audits without slowing your team down.',
   items: [
     {
-      title: 'Role-based access',
-      body: 'Give each role only the access they need—owners, coordinators, nurses, and billing.',
+      title: 'Role based access',
+      body: 'Give each role only the access they need, including owners, coordinators, nurses, and billing.',
     },
     {
-      title: 'Audit-friendly records',
+      title: 'Audit friendly records',
       body: 'Visit logs, timestamps, and documentation stay organised for reviews and compliance checks.',
     },
     {
       title: 'Electronic Visit Verification',
-      body: 'GPS clock-in and clock-out create a clear trail for every visit in the field.',
+      body: 'GPS clock in and clock out create a clear trail for every visit in the field.',
     },
     {
       title: 'Secure authentication',
-      body: 'Protected sign-in and session controls help keep agency and patient data safe.',
+      body: 'Protected sign in and session controls help keep agency and patient data safe.',
     },
   ],
 };
 
 export const TESTIMONIALS_CONTENT = {
-  eyebrow: 'What customers say',
-  title: 'Trusted by homecare leaders',
+  badge: 'Testimonials',
+  title: "Our Client's Feedback",
+  subtitle: 'See how CareSense is helping agencies grow',
+  ctaLabel: 'More Case Studies',
+  ctaHref: '/book-demo',
   items: [
     {
       name: 'Mark Thompson',
       role: 'Clinic Administrator',
-      quote:
-        'CareSense gave us one place for patients, nurses, and visits. Our monthly reports are ready in a fraction of the time.',
+      quote: 'CareSense ranked our ops with clearer visit control.',
+      rankTag: 'Faster monthly reporting',
+      caseStudyHref: '/book-demo',
     },
     {
       name: 'Dr. Emily Davis',
       role: 'Medical Director',
-      quote:
-        'The platform is straightforward for non-technical staff. Training was smooth and our team adopted it quickly.',
+      quote: 'CareSense made training simple for our whole team!',
+      rankTag: 'Smooth staff onboarding',
+      caseStudyHref: '/book-demo',
     },
     {
       name: 'Sandra Johnson',
       role: 'Director of Nursing',
-      quote:
-        'Scheduling and nurse assignments are finally predictable. We have visibility without endless phone calls.',
+      quote: 'CareSense made nurse scheduling finally predictable.',
+      rankTag: 'Reliable field coverage',
+      caseStudyHref: '/book-demo',
     },
     {
       name: 'Marcus Adeyemi',
       role: 'Operations Lead',
-      quote:
-        'From onboarding to reporting, everything feels built for real homecare teams — not generic hospital software.',
+      quote: 'CareSense feels built for real homecare teams.',
+      rankTag: 'One shared workspace',
+      caseStudyHref: '/book-demo',
+    },
+    {
+      name: 'Ama Mensah',
+      role: 'Agency Owner',
+      quote: 'CareSense cut our admin chase across every visit.',
+      rankTag: 'Less paperwork chaos',
+      caseStudyHref: '/book-demo',
+    },
+    {
+      name: 'Kwesi Boateng',
+      role: 'Care Coordinator',
+      quote: 'CareSense keeps every nurse visit visible in one place.',
+      rankTag: 'Live visit visibility',
+      caseStudyHref: '/book-demo',
     },
   ],
 };
 
 export const PRICING_CONTENT = {
-  heading: 'Simple, transparent pricing',
-  description: 'One plan. No tiers. No hidden fees. Just pay per patient.',
-  perPatient: {
-    price: 'GH₵50',
-    unit: 'per patient / month',
-    description: 'Full platform access for every patient on your roster. Scale up or down as your census changes.',
-    buttonText: 'Get started',
-    buttonUrl: '/login',
-    features: [
-      'Unlimited nurse & staff accounts',
-      'Smart scheduling & geographic routing',
-      'GPS clock-in & Electronic Visit Verification',
-      'Caregiver & family portals',
-      'Visit documentation & care plans',
-      'Automated billing & payroll reports',
-      'Compliance-ready audit trails',
-      'Priority support',
-    ],
+  title: 'Select a Plan',
+  ctaLabel: 'Get started',
+  ctaHref: '/login',
+  billing: {
+    monthly: 'Monthly',
+    yearly: 'Yearly',
+    discountBadge: '20% OFF',
+    yearlyDiscount: 0.2,
   },
-  setup: {
-    price: 'GH₵5,000',
-    label: 'One-time setup & training',
-    description: 'We configure your agency, import your data, and train your team — so you launch with confidence.',
-    includes: [
-      'Full platform configuration',
-      'Patient & staff data migration',
-      'On-site or virtual team training',
-      'Dedicated onboarding manager',
-    ],
+  stepper: {
+    label: 'Patients',
+    subLabel: 'Starting at 10 patients',
+    min: 10,
+    step: 1,
+    defaultValue: 10,
   },
-  example: {
-    label: 'Example',
-    text: '20 patients = GH₵1,000/month + GH₵5,000 one-time setup',
-  },
+  plans: [
+    {
+      id: 'setup',
+      name: 'Initial Setup Cost',
+      subtitle: 'One time cost',
+      monthlyPrice: 5000,
+      currency: 'GH₵',
+      unitLabel: 'One time',
+      billingType: 'oneTime',
+      features: [
+        'Full platform configuration',
+        'Patient and staff data migration',
+        'On site or virtual team training',
+      ],
+    },
+    {
+      id: 'standard',
+      name: 'Standard',
+      subtitle: 'For growing agencies',
+      monthlyPrice: 50,
+      currency: 'GH₵',
+      unitLabel: 'Patient | Month',
+      defaultSelected: true,
+      features: [
+        'Unlimited nurse and staff accounts',
+        'GPS clock in and Electronic Visit Verification',
+        'Billing and payroll reports',
+        'Clinical Red Flags Alerts',
+        'Automated Medical Records Generation',
+      ],
+    },
+    {
+      id: 'advanced',
+      name: 'Advanced',
+      subtitle: 'For large agencies',
+      monthlyPrice: 65,
+      currency: 'GH₵',
+      unitLabel: 'Patient | Month',
+      features: [
+        'Everything in Standard',
+        'Clinical Red Flags Alerts',
+        'Automated Medical Records Generation',
+        'Priority support',
+        'Dedicated onboarding manager',
+      ],
+    },
+  ],
+  setupNote: 'Setup is a one time cost. Plans are billed per patient.',
 };
 
 export const COMPARISON_CONTENT = {
@@ -259,7 +323,7 @@ export const COMPARISON_CONTENT = {
     {
       feature: 'Scheduling',
       oldWay: 'Hours of phone tags and spreadsheets',
-      newWay: 'Drag-and-drop matching in seconds',
+      newWay: 'Drag and drop matching in seconds',
     },
     {
       feature: 'Field Documentation',
@@ -269,7 +333,7 @@ export const COMPARISON_CONTENT = {
     {
       feature: 'Compliance & EVV',
       oldWay: 'Missing paperwork and audit anxiety',
-      newWay: 'Secure, real-time digital logging',
+      newWay: 'Secure, real time digital logging',
     },
   ],
 };
@@ -278,21 +342,23 @@ export const MOBILE_APP_CONTENT = {
   badge: 'Available on iOS & Android',
   title: 'Record every field activity as it happens',
   description:
-    'Nurses clock in, log care tasks, capture notes and photos, and sync each visit back to the agency — all in one simple app.',
+    'Nurses clock in, log care tasks, capture notes and photos, and sync each visit back to the agency, all in one simple app.',
   playStore: {
-    href: 'https://play.google.com/store',
+    href: 'https://play.google.com/store/apps/details?id=caresense.health',
     label: 'Get it on Google Play',
   },
   appStore: {
     href: 'https://apps.apple.com',
     label: 'Download on the App Store',
   },
-  mockupSrc: '/mockups/Momo.png',
+  mockupSrc: '/mockups/optimized/Momo.png',
 };
 
 export const FINAL_CTA_CONTENT = {
+  badge: 'Ready when you are',
   title: 'Start running your agency in one place',
   subtitle: 'Set up CareSense, invite your team, and replace the admin chaos.',
+  highlights: ['Live in days', 'Per patient pricing', 'Setup support included'],
   primaryCta: { label: 'Start free', href: '/login' },
   secondaryCta: { label: 'Talk to sales', href: LANDING_PHONE_HREF },
 };
@@ -307,7 +373,7 @@ export const CTA_CONTENT = {
     label: 'Download on the App Store',
   },
   playStore: {
-    href: 'https://play.google.com/store',
+    href: 'https://play.google.com/store/apps/details?id=caresense.health',
     badgeSrc: GOOGLE_PLAY_BADGE_SRC,
     label: 'Get it on Google Play',
   },
@@ -320,13 +386,13 @@ export const FAQ_CONTENT = {
       id: 'faq-what-is-caresense',
       question: 'What is CareSense?',
       answer:
-        'CareSense is a homecare operations platform that brings patients, nurses, visits, scheduling, and billing-ready reports into one workspace for agencies and care teams.',
+        'CareSense is a homecare operations platform that brings patients, nurses, visits, scheduling, and billing ready reports into one workspace for agencies and care teams.',
     },
     {
       id: 'faq-who-is-it-for',
       question: 'Who is CareSense for?',
       answer:
-        'CareSense is built for homecare agencies, coordinators, nurses in the field, and back-office teams who need one place to manage visits, documentation, and reporting.',
+        'CareSense is built for homecare agencies, coordinators, nurses in the field, and back office teams who need one place to manage visits, documentation, and reporting.',
     },
     {
       id: 'faq-mobile-app',
@@ -338,7 +404,7 @@ export const FAQ_CONTENT = {
       id: 'faq-pricing',
       question: 'How does pricing work?',
       answer:
-        'Pricing is simple: GH₵50 per patient per month, plus a one-time setup and training fee. See the Pricing section for a full breakdown.',
+        'Choose Standard or Advanced based on your agency size, plus a one time Initial Setup Cost of GH₵5,000. Billing is per patient, with Monthly or Yearly options. See the Pricing section for details.',
     },
     {
       id: 'faq-get-started',
@@ -350,7 +416,7 @@ export const FAQ_CONTENT = {
       id: 'faq-data-security',
       question: 'Is my data secure?',
       answer:
-        'CareSense uses role-based access, audit-friendly records, and secure authentication to help agencies meet compliance needs. Contact us if you need details for your security review.',
+        'CareSense uses role based access, audit friendly records, and secure authentication to help agencies meet compliance needs. Contact us if you need details for your security review.',
     },
     {
       id: 'faq-support',
@@ -359,6 +425,60 @@ export const FAQ_CONTENT = {
         'Starter plans include email support. Standard and Premium plans include priority or dedicated support options. Reach us at +233 535614493 or through your account dashboard.',
     },
   ],
+};
+
+export const FOOTER_CONTENT = {
+  banner: {
+    title: 'Let CareSense take the busywork off your team’s plate',
+    subtitle:
+      'From scheduling and documents to visit notes and reports, automate the tasks your team should not be doing manually.',
+    cta: { label: 'Start free', href: '/login' },
+  },
+  brand: {
+    description:
+      'CareSense helps homecare agencies run patients, nurses, visits, and reporting in one clear workspace.',
+    social: [
+      { id: 'facebook', label: 'Facebook', href: 'https://facebook.com' },
+      { id: 'linkedin', label: 'LinkedIn', href: 'https://linkedin.com' },
+      { id: 'instagram', label: 'Instagram', href: 'https://instagram.com' },
+      { id: 'telegram', label: 'Telegram', href: 'https://t.me' },
+    ],
+  },
+  columns: [
+    {
+      title: 'Company',
+      links: [
+        { label: 'Home', href: '#home' },
+        { label: 'About us', href: '#audience' },
+        { label: 'Pricing', href: '#pricing' },
+        { label: 'FAQ', href: '#faq' },
+        { label: 'Book a demo', href: '/book-demo' },
+      ],
+    },
+    {
+      title: 'Product',
+      links: [
+        { label: 'Features', href: '#features' },
+        { label: 'How it works', href: '#how-it-works' },
+        { label: 'Security', href: '#security' },
+        { label: 'Mobile app', href: '#mobile-app' },
+        { label: 'Contact', href: LANDING_PHONE_HREF },
+      ],
+    },
+  ],
+  newsletter: {
+    title: 'Newsletter',
+    description: 'Get tips, product updates, and insights on running a smarter homecare agency.',
+    placeholder: 'Email address',
+    buttonLabel: 'Subscribe',
+  },
+  legal: [
+    { label: 'Privacy Policy', href: '/privacy' },
+    { label: 'Terms of Service', href: '/privacy' },
+    { label: 'Security', href: '#security' },
+    { label: 'Cookie', href: '#cookie' },
+  ],
+  copyright: 'Data Leap Technologies Inc. All rights reserved.',
 };
 
 export const FOOTER_LINKS = [

@@ -34,15 +34,17 @@ export default function LandingReveal({
   );
 }
 
-export function LandingStagger({ children, className = '', stagger = 0.06 }) {
+export function LandingStagger({ children, className = '', stagger = 0.06, as = 'div' }) {
   const reduceMotion = useReducedMotion();
+  const Component = motion[as] || motion.div;
 
   if (reduceMotion) {
-    return <div className={className}>{children}</div>;
+    const Tag = as === 'ul' || as === 'ol' || as === 'section' ? as : 'div';
+    return <Tag className={className}>{children}</Tag>;
   }
 
   return (
-    <motion.div
+    <Component
       className={className}
       initial="hidden"
       whileInView="show"
@@ -55,7 +57,7 @@ export function LandingStagger({ children, className = '', stagger = 0.06 }) {
       }}
     >
       {children}
-    </motion.div>
+    </Component>
   );
 }
 

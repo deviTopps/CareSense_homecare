@@ -1,20 +1,24 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import LandingHeader from '../components/landing/LandingHeader';
 import LandingHero from '../components/landing/LandingHero';
 import LandingTrust from '../components/landing/LandingTrust';
 import LandingStats from '../components/landing/LandingStats';
-import LandingHowItWorks from '../components/landing/LandingHowItWorks';
-import LandingReasons from '../components/landing/LandingReasons';
-import LandingAudience from '../components/landing/LandingAudience';
-import LandingSecurity from '../components/landing/LandingSecurity';
-import LandingTestimonials from '../components/landing/LandingTestimonials';
-import LandingPricing from '../components/landing/LandingPricing';
-import LandingFaq from '../components/landing/LandingFaq';
-import LandingMobileApp from '../components/landing/LandingMobileApp';
-import LandingFinalCta from '../components/landing/LandingFinalCta';
-import LandingFooter from '../components/landing/LandingFooter';
 import LandingCookieBanner, { COOKIE_CONSENT_KEY } from '../components/landing/LandingCookieBanner';
 import './LandingPage.css';
+
+const LandingReasons = lazy(() => import('../components/landing/LandingReasons'));
+const LandingHowItWorks = lazy(() => import('../components/landing/LandingHowItWorks'));
+const LandingAudience = lazy(() => import('../components/landing/LandingAudience'));
+const LandingSecurity = lazy(() => import('../components/landing/LandingSecurity'));
+const LandingMobileApp = lazy(() => import('../components/landing/LandingMobileApp'));
+const LandingPricing = lazy(() => import('../components/landing/LandingPricing'));
+const LandingTestimonials = lazy(() => import('../components/landing/LandingTestimonials'));
+const LandingFaq = lazy(() => import('../components/landing/LandingFaq'));
+const LandingFooter = lazy(() => import('../components/landing/LandingFooter'));
+
+function SectionFallback() {
+  return <div className="cs-section-fallback" aria-hidden />;
+}
 
 export default function LandingPage() {
   const [navOpen, setNavOpen] = useState(false);
@@ -78,18 +82,21 @@ export default function LandingPage() {
       <LandingStats />
 
       <main id="main-content" className="cs-page-main" tabIndex={-1}>
-        <LandingReasons />
-        <LandingHowItWorks />
-        <LandingAudience />
-        <LandingSecurity />
-        <LandingMobileApp />
-        <LandingPricing />
-        <LandingTestimonials />
-        <LandingFaq />
-        <LandingFinalCta />
+        <Suspense fallback={<SectionFallback />}>
+          <LandingReasons />
+          <LandingHowItWorks />
+          <LandingAudience />
+          <LandingSecurity />
+          <LandingMobileApp />
+          <LandingPricing />
+          <LandingTestimonials />
+          <LandingFaq />
+        </Suspense>
       </main>
 
-      <LandingFooter />
+      <Suspense fallback={null}>
+        <LandingFooter />
+      </Suspense>
 
       <LandingCookieBanner
         show={showCookieBanner}

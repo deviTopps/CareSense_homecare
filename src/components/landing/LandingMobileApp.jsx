@@ -73,6 +73,9 @@ export default function LandingMobileApp() {
               alt="CareSense nurse app for recording field visit activities"
               className="cs-mobile-app__phone-img"
               loading="lazy"
+              decoding="async"
+              width={450}
+              height={900}
               animate={
                 reduceMotion
                   ? undefined

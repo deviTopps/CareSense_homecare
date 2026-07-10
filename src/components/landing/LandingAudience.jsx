@@ -30,16 +30,26 @@ export default function LandingAudience() {
 
         <LandingStagger className="cs-audience__mosaic" stagger={0.07}>
           <LandingStaggerItem className="cs-audience__featured">
-            <article className="cs-audience__panel cs-audience__panel--featured">
-              <div className="cs-audience__panel-top">
-                <span className="cs-audience__icon" aria-hidden>
-                  <FeaturedIcon strokeWidth={1.75} />
-                </span>
-                <span className="cs-audience__index">01</span>
+            <article
+              className="cs-audience__panel cs-audience__panel--featured"
+              style={
+                featured.imageSrc
+                  ? { '--audience-featured-image': `url(${featured.imageSrc})` }
+                  : undefined
+              }
+            >
+              <div className="cs-audience__panel-media" aria-hidden />
+              <div className="cs-audience__panel-content">
+                <div className="cs-audience__panel-top">
+                  <span className="cs-audience__icon" aria-hidden>
+                    <FeaturedIcon strokeWidth={1.75} />
+                  </span>
+                  <span className="cs-audience__index">01</span>
+                </div>
+                <h3 className="cs-audience__role">{featured.title}</h3>
+                <p className="cs-audience__copy">{featured.body}</p>
+                <span className="cs-audience__tag">Leadership view</span>
               </div>
-              <h3 className="cs-audience__role">{featured.title}</h3>
-              <p className="cs-audience__copy">{featured.body}</p>
-              <span className="cs-audience__tag">Leadership view</span>
             </article>
           </LandingStaggerItem>
 
