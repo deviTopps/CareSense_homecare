@@ -1,18 +1,20 @@
 import { useEffect, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { Menu, X } from 'lucide-react';
+import { Menu, Moon, Sun, X } from 'lucide-react';
 import { BRAND_LOGO_SRC } from '../../constants/brandAssets';
 import {
   LANDING_NAV,
   LANDING_NAV_CTA,
   LANDING_NAV_PRIMARY,
 } from '../../data/landingContent';
+import useTheme from '../../hooks/useTheme';
 import LandingButton from './LandingButton';
 import { Button } from '@/components/ui/button';
 
 export default function LandingHeader({ navOpen, setNavOpen, onNavClick }) {
   const reduceMotion = useReducedMotion();
   const [scrolled, setScrolled] = useState(false);
+  const { isDark, toggleTheme } = useTheme();
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 12);
@@ -49,6 +51,15 @@ export default function LandingHeader({ navOpen, setNavOpen, onNavClick }) {
           </nav>
 
           <div className="cs-header__actions">
+            <button
+              type="button"
+              className="cs-header__theme-btn"
+              onClick={toggleTheme}
+              aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+              title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+            >
+              {isDark ? <Sun className="size-4" aria-hidden /> : <Moon className="size-4" aria-hidden />}
+            </button>
             <LandingButton href={LANDING_NAV_CTA.href} variant="ghost" size="sm" className="cs-header__signin">
               {LANDING_NAV_CTA.label}
             </LandingButton>
@@ -57,18 +68,29 @@ export default function LandingHeader({ navOpen, setNavOpen, onNavClick }) {
             </LandingButton>
           </div>
 
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            className="cs-header__menu-btn"
-            aria-expanded={navOpen}
-            aria-controls="landing-mobile-nav"
-            aria-label={navOpen ? 'Close menu' : 'Open menu'}
-            onClick={() => setNavOpen((o) => !o)}
-          >
-            {navOpen ? <X className="size-5" /> : <Menu className="size-5" />}
-          </Button>
+          <div className="cs-header__mobile-tools">
+            <button
+              type="button"
+              className="cs-header__theme-btn"
+              onClick={toggleTheme}
+              aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+              title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+            >
+              {isDark ? <Sun className="size-4" aria-hidden /> : <Moon className="size-4" aria-hidden />}
+            </button>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="cs-header__menu-btn"
+              aria-expanded={navOpen}
+              aria-controls="landing-mobile-nav"
+              aria-label={navOpen ? 'Close menu' : 'Open menu'}
+              onClick={() => setNavOpen((o) => !o)}
+            >
+              {navOpen ? <X className="size-5" /> : <Menu className="size-5" />}
+            </Button>
+          </div>
         </div>
       </div>
 

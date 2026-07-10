@@ -15,6 +15,24 @@
       <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Sora:wght@500;600;700&display=swap" rel="stylesheet">
     </noscript>
     <title>CareSense Homecare Service Solutions</title>
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem('kh-theme');
+          var theme =
+            stored === 'dark' || stored === 'light'
+              ? stored
+              : window.matchMedia('(prefers-color-scheme: dark)').matches
+                ? 'dark'
+                : 'light';
+          document.documentElement.setAttribute('data-theme', theme);
+          document.documentElement.classList.toggle('dark', theme === 'dark');
+        } catch (e) {
+          document.documentElement.setAttribute('data-theme', 'light');
+          document.documentElement.classList.remove('dark');
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
