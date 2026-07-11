@@ -109,11 +109,11 @@ export default function LandingHero() {
             </div>
             <div className="cs-device__screen">
               <img
-                src="/mockups/optimized/HomePage.jpg"
+                src="/mockups/optimized/HomePage.webp"
                 alt="CareSense dashboard showing visits and patient overview"
                 className="cs-hero__img"
                 width={1200}
-                height={750}
+                height={593}
                 decoding="async"
                 fetchPriority="high"
                 loading="eager"
