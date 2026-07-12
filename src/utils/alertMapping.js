@@ -93,6 +93,45 @@ export function patientDisplayName(a) {
   return 'Unknown patient';
 }
 
+/** Resolve assigned nurse display name from common alert payload shapes. */
+export function nurseDisplayName(a) {
+  const o = a && typeof a === 'object' ? a : {};
+  const dataObj = o.data && typeof o.data === 'object' ? o.data : null;
+
+  const topString = coerceNonEmptyStr(pickFirst(o, [
+    'nurseName', 'nurse_name', 'assignedNurseName', 'assigned_nurse_name',
+    'assigneeName', 'assignee_name', 'caregiverName', 'caregiver_name',
+  ]));
+  if (topString) return topString;
+
+  const candidates = [
+    o.nurse,
+    o.assignedNurse,
+    o.assigned_nurse,
+    o.assignee,
+    o.assignedTo,
+    o.assigned_to,
+    o.caregiver,
+    dataObj?.nurse,
+    dataObj?.assignedNurse,
+    dataObj?.assigned_nurse,
+    dataObj?.assignee,
+  ];
+
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string') {
+      const s = coerceNonEmptyStr(candidate);
+      if (s && s !== '—' && !s.startsWith('[object ')) return s;
+    }
+    if (candidate && typeof candidate === 'object') {
+      const n = nameFromPersonObject(candidate);
+      if (n) return n;
+    }
+  }
+
+  return '';
+}
+
 export function patientIdFrom(a) {
   const o = a && typeof a === 'object' ? a : {};
   const fromPerson = (obj) => {
@@ -503,7 +542,7 @@ export function mapAlertToCase(raw, index) {
   const caseStatus = normalizeCaseStatus(pickFirst(a, ['caseStatus', 'case_status', 'status', 'state']));
   const flaggedBy = String(pickFirst(a, ['flaggedBy', 'flagged_by', 'createdBy', 'created_by', 'reportedBy', 'source']) || '—');
   const flaggedDate = formatAlertDate(pickFirst(a, ['flaggedDate', 'flagged_date', 'createdAt', 'created_at', 'updatedAt', 'raisedAt'])) || '—';
-  const nurse = String(pickFirst(a, ['nurse', 'nurseName', 'nurse_name', 'assignedNurse', 'assigned_to']) || flaggedBy);
+  const nurse = nurseDisplayName(a) || (flaggedBy !== '—' ? flaggedBy : '') || 'Unassigned';
   const region = String(pickFirst(a, ['region', 'location', 'area', 'address']) || '—');
   const phone = String(pickFirst(a, ['phone', 'phoneNumber', 'phone_number', 'contact']) || '—');
   const dataObj = a.data && typeof a.data === 'object' ? a.data : null;
@@ -540,7 +579,7 @@ export function mapAlertToCase(raw, index) {
     reason,
     flaggedBy,
     flaggedDate,
-    nurse: nurse || '—',
+    nurse: nurse,
     region: region || '—',
     phone: phone || '—',
     diagnosis,

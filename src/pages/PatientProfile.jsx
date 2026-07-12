@@ -29,7 +29,9 @@ import {
   resolvePatientMutationId,
 } from '../utils/patients';
 import { TablePageLoaderPanel } from '../components/TablePageLoader';
+import { useLoadProgress } from '../hooks/useLoadProgress';
 import PatientBillingTab from '../components/PatientBillingTab';
+import PatientRelationsTab from '../components/PatientRelationsTab';
 import { resolvePatientBillingRouteId } from '../utils/patientBilling';
 import { invalidateMedicalReportsCache } from '../utils/medicalReports';
 import { findAdmissionDraftForPatient } from '../utils/admissionDrafts';
@@ -398,6 +400,7 @@ const TABS = [
   { key: 'notes', label: 'Notes' },
   { key: 'incidents', label: 'Incidents' },
   { key: 'careplan', label: 'Care plan' },
+  { key: 'relations', label: 'Patient Relation' },
   { key: 'billing', label: 'Billing' },
   { key: 'checkliststatus', label: 'Daily care' },
 ];
@@ -4770,6 +4773,7 @@ export default function PatientProfile() {
   const [apiPatientRaw, setApiPatientRaw] = useState(null);
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileError, setProfileError] = useState('');
+  const { progress: profileLoadProgress } = useLoadProgress(profileLoading);
   const [photoUploading, setPhotoUploading] = useState(false);
   const [photoUploadError, setPhotoUploadError] = useState('');
   const [photoUploadSuccess, setPhotoUploadSuccess] = useState('');
@@ -8204,10 +8208,10 @@ export default function PatientProfile() {
   if (profileLoading && !p) {
     return (
       <div className="page-wrapper patient-profile-page patient-profile-page--loading">
-        <div className="patient-profile-page__spinner" aria-hidden />
-        <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: 'var(--kh-text-muted)' }}>
-          Loading patient profile…
-        </p>
+        <TablePageLoaderPanel
+          progress={profileLoadProgress}
+          ariaLabel="Loading patient profile"
+        />
       </div>
     );
   }
@@ -8870,7 +8874,7 @@ export default function PatientProfile() {
                       className={`pp-pharm-flag-chip pp-pharm-flag-chip--${flag.status === 'alert' ? 'alert' : 'warn'}`}
                     >
                       <span>{flag.label}</span>
-                      {flag.detail && <span style={{ fontSize: 11, opacity: 0.85 }}>{flag.detail}</span>}
+                      {flag.detail && <span className="pp-pharm-flag-chip__detail">{flag.detail}</span>}
                     </li>
                   ))}
                 </ul>
@@ -11130,9 +11134,6 @@ export default function PatientProfile() {
               {notesLoading && !notesLoaded ? (
                 <TablePageLoaderPanel
                   progress={72}
-                  title="Loading nurse notes"
-                  subtitle="Fetching care records for this patient…"
-                  icon={FiEdit2}
                   ariaLabel="Loading nurse notes"
                 />
               ) : filteredNotes.length === 0 ? (
@@ -12169,6 +12170,15 @@ export default function PatientProfile() {
           )}
           </div>
         </div>
+      )}
+
+      {/* ── Patient Relation Tab ── */}
+      {tab === 'relations' && (
+        <PatientRelationsTab
+          key={`relations-${billingPatientId || effectivePatientId}`}
+          patientId={billingPatientId || p?.patientId || effectivePatientId}
+          patientName={p?.name}
+        />
       )}
 
       {/* ── Billing Tab ── */}

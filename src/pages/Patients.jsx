@@ -2042,11 +2042,9 @@ export default function Patients() {
               {patientsLoading && (
                 <TablePageLoader
                   progress={patientsLoadProgress}
-                  title="Loading patients"
-                  subtitle="Fetching active, deceased, and deactivated patient records…"
                   colSpan={9}
-                  skeletonColumns={9}
-                  icon={FiUser}
+                  simple
+                  ariaLabel="Loading patients"
                 />
               )}
               {!patientsLoading && patientsError && (

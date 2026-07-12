@@ -13,6 +13,8 @@ import { fetchAllPatients } from '../utils/patients';
 import { stashContinueNurseRegistration } from '../utils/nurseRegistrationResume';
 import { extractUrlFromPayload, resolveStoredMediaUrl } from '../utils/resolveStoredMediaUrl';
 import compressImage, { createThumbnailURL } from '../utils/compressImage';
+import { TablePageLoaderPanel } from '../components/TablePageLoader';
+import { useLoadProgress } from '../hooks/useLoadProgress';
 import './NurseProfile.css';
 
 const ROLE_LABELS = {
@@ -41,13 +43,6 @@ const Panel = ({ title, icon, accent, children, action, style }) => (
     </header>
     <div className="np-panel__body">{children}</div>
   </section>
-);
-
-const Spinner = () => (
-  <div className="nurse-profile-spinner">
-    <div className="spinner-border spinner-border-sm" role="status" />
-    <span>Loading nurse profile…</span>
-  </div>
 );
 
 const NP_EDIT_INPUT_CLASS = 'form-control form-control-kh np-edit-input';
@@ -585,6 +580,7 @@ export default function NurseProfile() {
   const [education, setEducation] = useState(null);
   const [supporting, setSupporting] = useState(null);
   const [assignedPatients, setAssignedPatients] = useState([]);
+  const { progress: loadProgress, finishProgress } = useLoadProgress(loading);
 
   // ── Avatar upload ──
   const [avatarUrl, setAvatarUrl] = useState(null);
@@ -594,6 +590,31 @@ export default function NurseProfile() {
   const [editInitialData, setEditInitialData] = useState(null);
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState('');
+  const [nurseStatusConfirm, setNurseStatusConfirm] = useState(null); // { action: 'deactivate' | 'reactivate' }
+  const [nurseStatusConfirmError, setNurseStatusConfirmError] = useState('');
+  const [deactivatingNurse, setDeactivatingNurse] = useState(false);
+  const [deactivateSuccess, setDeactivateSuccess] = useState('');
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [showRegistrationBanner, setShowRegistrationBanner] = useState(true);
+  const moreMenuRef = useRef(null);
+
+  useEffect(() => {
+    if (!showMoreMenu) return undefined;
+    const onPointerDown = (event) => {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(event.target)) {
+        setShowMoreMenu(false);
+      }
+    };
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') setShowMoreMenu(false);
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [showMoreMenu]);
 
   const startEditing = (section, data) => {
     setEditingSection(section);
@@ -625,6 +646,25 @@ export default function NurseProfile() {
     if (uuid) return uuid;
 
     return candidates[0] || '';
+  };
+
+  /** Deactivate/reactivate APIs expect the nurse UUID, e.g. /nurses/:uuid/deactivate */
+  const resolveNurseIdForStatusAction = () => {
+    const isUuid = (value) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '').trim());
+    const candidates = [
+      nurse?.uuid,
+      nurse?.nurseId,
+      nurse?.id,
+      nurseId,
+      nurse?._id,
+    ]
+      .map((value) => String(value || '').trim())
+      .filter(Boolean);
+
+    const uuid = candidates.find(isUuid);
+    if (uuid) return uuid;
+
+    return candidates[0] || resolveNurseIdForUpdate();
   };
 
   const handleSaveSection = async (form) => {
@@ -677,19 +717,6 @@ export default function NurseProfile() {
     }
   };
 
-  const panelEditBtnStyle = {
-    background: 'none',
-    border: '1px solid #e2e8f0',
-    borderRadius: 8,
-    padding: '5px 12px',
-    cursor: 'pointer',
-    fontSize: 12,
-    fontWeight: 600,
-    color: '#45B6FE',
-    display: 'flex',
-    alignItems: 'center',
-    gap: 4,
-  };
   const avatarInputRef = useRef(null);
 
   const uploadNurseDocument = useCallback(async (file, key, { registerEndpoint } = {}) => {
@@ -909,8 +936,27 @@ export default function NurseProfile() {
       }
       const data = await nurseRes.json();
       const personalData = data.personal || data.nurse || data;
+      const statusIdCandidates = [
+        personalData?.uuid,
+        personalData?.nurseId,
+        personalData?.id,
+        data?.uuid,
+        data?.nurseId,
+        data?.id,
+        data?.nurse?.uuid,
+        data?.nurse?.id,
+        nurseId,
+      ]
+        .map((value) => String(value || '').trim())
+        .filter(Boolean);
+      const statusUuid = statusIdCandidates.find((id) => (
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)
+      ));
       // API returns { personal, diversity, education, supportingInfo, documents }
-      setNurse(personalData);
+      setNurse({
+        ...personalData,
+        ...(statusUuid ? { uuid: personalData?.uuid || statusUuid } : {}),
+      });
       setDiversity(data.diversity || null);
       setEducation(data.education || null);
       setSupporting(data.supportingInfo || null);
@@ -1052,14 +1098,23 @@ export default function NurseProfile() {
       setAssignedPatients([]);
       setError(e.message || 'Failed to load');
     } finally {
-      setLoading(false);
+      finishProgress(() => setLoading(false));
     }
-  }, [nurseId]);
+  }, [nurseId, finishProgress]);
 
   useEffect(() => { fetchProfile(); }, [fetchProfile]);
 
   // ── Error / not-found screens ──
-  if (loading) return <div className="page-wrapper"><Spinner /></div>;
+  if (loading) {
+    return (
+      <div className="page-wrapper nurse-profile-page nurse-profile-page--loading">
+        <TablePageLoaderPanel
+          progress={loadProgress}
+          ariaLabel="Loading nurse profile"
+        />
+      </div>
+    );
+  }
 
   if (error === 'not_found') return (
     <div className="page-wrapper text-center py-5">
@@ -1092,7 +1147,6 @@ export default function NurseProfile() {
   const roleLabel = ROLE_LABELS[n.role] || n.role || '—';
   const status = n.status || 'active';
   const initials = fullName !== '—' ? fullName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() : '?';
-  const joinedDate = n.createdAt ? new Date(n.createdAt).toISOString().split('T')[0] : '—';
 
   const hasDiversity = !!diversity;
   const hasEducation = !!education;
@@ -1116,15 +1170,6 @@ export default function NurseProfile() {
 
   // ── Patients assigned to this nurse ──
   const currentPatients = assignedPatients.filter(p => p.status === 'active');
-  const pastPatients = assignedPatients.filter(p => p.status !== 'active');
-  const profileDetails = [
-    { label: 'Gender', value: n.gender || '—' },
-    { label: 'Joined', value: joinedDate },
-    { label: 'Phone', value: n.phone || '—' },
-    { label: 'Address', value: n.address || '—' },
-    { label: 'Citizenship', value: n.citizenship || '—' },
-    { label: 'License', value: n.mmcPinNo || '—' },
-  ];
   const overviewRoster = (currentPatients.length ? currentPatients : assignedPatients).slice(0, 8);
   const docCount = Object.values(kycDocs).filter(Boolean).length;
   const qualCount = education?.qualifications?.filter(q => q?.name || q?.institution)?.length || 0;
@@ -1152,16 +1197,114 @@ export default function NurseProfile() {
     criminal_record_detail: diversity?.criminal_record_detail || '',
   });
 
+  const statusNormalized = String(status || '').toLowerCase();
+  const isNurseDeactivated = statusNormalized.includes('deactiv') || statusNormalized.includes('inactive');
+  const statusLabel = isNurseDeactivated
+    ? 'Deactivated'
+    : (statusNormalized === 'active' ? 'Active' : status);
+  const statusBadgeClass = isNurseDeactivated
+    ? ' np-badge--deactivated'
+    : (statusNormalized === 'active' ? ' np-badge--active' : ' np-badge--pending');
+
+  const closeNurseStatusConfirm = () => {
+    if (deactivatingNurse) return;
+    setNurseStatusConfirm(null);
+    setNurseStatusConfirmError('');
+  };
+
+  const runNurseStatusAction = async (action, successMessage, failureMessage) => {
+    const id = resolveNurseIdForStatusAction();
+    if (!id) {
+      setNurseStatusConfirmError(`Unable to ${action} this nurse because a valid nurse ID was not found.`);
+      return;
+    }
+
+    setDeactivatingNurse(true);
+    setDeactivateSuccess('');
+    setNurseStatusConfirmError('');
+
+    try {
+      const response = await apiFetch(`/nurses/${encodeURIComponent(id)}/${action}`, {
+        method: 'PATCH',
+        quiet: true,
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.message || payload?.error || failureMessage);
+      }
+
+      const nextStatus = action === 'deactivate' ? 'deactivated' : 'active';
+      setNurse((prev) => (prev ? { ...prev, status: nextStatus } : prev));
+      setNurseStatusConfirm(null);
+      setDeactivateSuccess(payload?.message || successMessage);
+    } catch (err) {
+      setNurseStatusConfirmError(err?.message || failureMessage);
+    } finally {
+      setDeactivatingNurse(false);
+    }
+  };
+
+  const confirmNurseStatusAction = async () => {
+    if (!nurseStatusConfirm) return;
+    if (nurseStatusConfirm.action === 'deactivate') {
+      await runNurseStatusAction(
+        'deactivate',
+        'Nurse has been deactivated successfully.',
+        'Unable to deactivate nurse.',
+      );
+      return;
+    }
+    await runNurseStatusAction(
+      'reactivate',
+      'Nurse has been reactivated successfully.',
+      'Unable to reactivate nurse.',
+    );
+  };
+
   /* ── RENDER ── */
   return (
     <div className="page-wrapper nurse-profile-page nurse-profile-page--simple">
 
-      {!isFullyComplete && (
-        <div className="np-alert">
-          <FiClock size={15} style={{ flexShrink: 0 }} />
-          <span>Registration incomplete — {stepsComplete} of 4 steps done.</span>
-          <button type="button" onClick={goContinueRegistration} className="np-alert__btn">
+      {deactivateSuccess && (
+        <div className="np-alert np-alert--success">
+          <FiCheckCircle size={15} style={{ flexShrink: 0 }} />
+          <span>{deactivateSuccess}</span>
+          <button type="button" className="np-alert__btn" onClick={() => setDeactivateSuccess('')}>
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {!isFullyComplete && showRegistrationBanner && (
+        <div className="np-progress-banner" role="status">
+          <div className="np-progress-banner__icon" aria-hidden>
+            <FiClipboard size={18} />
+          </div>
+          <div className="np-progress-banner__body">
+            <div className="np-progress-banner__copy">
+              <strong>Registration incomplete</strong>
+              <span>{stepsComplete} of 4 steps done — finish onboarding to activate the full nurse record.</span>
+            </div>
+            <div className="np-progress-banner__track" aria-hidden>
+              {[1, 2, 3, 4].map((step) => (
+                <span
+                  key={step}
+                  className={`np-progress-banner__step${step <= stepsComplete ? ' is-done' : ''}`}
+                />
+              ))}
+            </div>
+          </div>
+          <button type="button" onClick={goContinueRegistration} className="np-progress-banner__cta">
             Complete registration
+            <FiArrowLeft size={14} style={{ transform: 'rotate(180deg)' }} aria-hidden />
+          </button>
+          <button
+            type="button"
+            className="np-progress-banner__close"
+            aria-label="Dismiss registration banner"
+            onClick={() => setShowRegistrationBanner(false)}
+          >
+            <FiX size={16} strokeWidth={2} />
           </button>
         </div>
       )}
@@ -1173,17 +1316,57 @@ export default function NurseProfile() {
             Nurses
           </button>
           <div className="np-nav__actions">
-            <button
-              type="button"
-              title="Edit profile"
-              className="np-icon-btn"
-              onClick={openPersonalEdit}
-            >
-              <FiEdit2 size={15} />
+            <button type="button" className="np-cta-btn" onClick={openPersonalEdit}>
+              <span className="np-cta-btn__icon"><FiEdit2 size={14} /></span>
+              <span className="np-cta-btn__label">Edit profile</span>
             </button>
             <button type="button" title="Refresh" onClick={fetchProfile} className="np-icon-btn">
               <FiRefreshCw size={15} />
             </button>
+            <div className="np-more" ref={moreMenuRef}>
+              <button
+                type="button"
+                className={`np-icon-btn${showMoreMenu ? ' is-open' : ''}`}
+                aria-expanded={showMoreMenu}
+                aria-haspopup="menu"
+                title="More actions"
+                onClick={() => setShowMoreMenu((v) => !v)}
+              >
+                <FiMoreHorizontal size={16} />
+              </button>
+              {showMoreMenu && (
+                <div className="np-more__menu" role="menu">
+                  {isNurseDeactivated ? (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      disabled={deactivatingNurse}
+                      onClick={() => {
+                        setShowMoreMenu(false);
+                        setNurseStatusConfirmError('');
+                        setNurseStatusConfirm({ action: 'reactivate' });
+                      }}
+                    >
+                      Reactivate nurse
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="is-danger"
+                      disabled={deactivatingNurse}
+                      onClick={() => {
+                        setShowMoreMenu(false);
+                        setNurseStatusConfirmError('');
+                        setNurseStatusConfirm({ action: 'deactivate' });
+                      }}
+                    >
+                      Deactivate nurse
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </nav>
 
@@ -1195,7 +1378,7 @@ export default function NurseProfile() {
             style={{ display: 'none' }}
             onChange={handleAvatarChange}
           />
-          <div className="np-hero__main">
+          <div className="np-hero__identity">
             <div
               className="np-avatar"
               onClick={() => avatarInputRef.current?.click()}
@@ -1213,71 +1396,45 @@ export default function NurseProfile() {
                 Photo
               </span>
             </div>
-            <div>
+            <div className="np-hero__copy">
+              <p className="np-hero__kicker">Nurse profile</p>
               <h1 className="np-hero__name">{fullName}</h1>
-              <p className="np-hero__role">{roleLabel}</p>
+              <p className="np-hero__meta">
+                <span>{roleLabel}</span>
+                {n.phone && n.phone !== '—' ? <span>· {n.phone}</span> : null}
+                {n.email ? <span>· {n.email}</span> : null}
+              </p>
               <div className="np-hero__badges">
-                <span className={`np-badge${status === 'active' ? ' np-badge--active' : ' np-badge--pending'}`}>
-                  {status === 'active' ? 'Active' : status}
-                </span>
+                <span className={`np-badge${statusBadgeClass}`}>{statusLabel}</span>
                 {!isFullyComplete && (
-                  <span className="np-badge np-badge--warn">Step {stepsComplete}/4</span>
+                  <span className="np-badge np-badge--warn">Registration {stepsComplete}/4</span>
                 )}
               </div>
             </div>
           </div>
-          <div className="np-hero__contact">
-            {n.phone && n.phone !== '—' && (
-              <a href={`tel:${n.phone}`} className="np-contact-link">
-                <FiPhone size={14} />
-                {n.phone}
-              </a>
-            )}
-            {n.email && (
-              <a href={`mailto:${n.email}`} className="np-contact-link">
-                <FiMail size={14} />
-                {n.email}
-              </a>
-            )}
-            {n.address && n.address !== '—' && (
-              <span className="np-contact-link" style={{ cursor: 'default' }}>
-                <FiMapPin size={14} />
-                {n.address}
-              </span>
-            )}
+
+          <div className="np-hero__stats" aria-label="Profile summary">
+            <div className="np-stat">
+              <strong>{currentPatients.length}</strong>
+              <span>Patients</span>
+            </div>
+            <div className="np-stat">
+              <strong>{docCount}</strong>
+              <span>Documents</span>
+            </div>
+            <div className="np-stat">
+              <strong>{qualCount}</strong>
+              <span>Qualifications</span>
+            </div>
+            <div className={`np-stat${isFullyComplete ? ' np-stat--complete' : ''}`}>
+              <strong>{isFullyComplete ? 'Done' : `${stepsComplete}/4`}</strong>
+              <span>Registration</span>
+            </div>
           </div>
         </header>
 
-        <div className="np-stats">
-          <div className="np-stat">
-            <strong>{currentPatients.length}</strong>
-            <span>Patients</span>
-          </div>
-          <div className="np-stat">
-            <strong>{docCount}</strong>
-            <span>Documents</span>
-          </div>
-          <div className="np-stat">
-            <strong>{qualCount}</strong>
-            <span>Qualifications</span>
-          </div>
-          <div className={`np-stat${isFullyComplete ? ' np-stat--complete' : ''}`}>
-            <strong>{isFullyComplete ? 'Completed' : `${stepsComplete}/4`}</strong>
-            <span>{isFullyComplete ? 'Registration completed' : 'Registration'}</span>
-          </div>
-        </div>
-
-        <dl className="np-details">
-          {profileDetails.map((item) => (
-            <div key={item.label} className="np-detail">
-              <dt>{item.label}</dt>
-              <dd>{item.value}</dd>
-            </div>
-          ))}
-        </dl>
-
         <div className="np-board">
-          <div className="np-tabs">
+          <div className="np-tabs" role="tablist" aria-label="Nurse profile sections">
             {TABS.map((t) => {
               const tabHasData = t.key === 'overview'
                 ? true
@@ -1292,6 +1449,8 @@ export default function NurseProfile() {
                 <button
                   key={t.key}
                   type="button"
+                  role="tab"
+                  aria-selected={tab === t.key}
                   onClick={() => setTab(t.key)}
                   className={`np-tab${tab === t.key ? ' active' : ''}`}
                 >
@@ -1314,7 +1473,7 @@ export default function NurseProfile() {
               icon={<FiUser size={14} />}
               accent="#45B6FE"
               action={(
-                <button type="button" onClick={openPersonalEdit} style={panelEditBtnStyle}>
+                <button type="button" onClick={openPersonalEdit} className="np-edit-btn">
                   <FiEdit2 size={12} /> Edit
                 </button>
               )}
@@ -1374,16 +1533,16 @@ export default function NurseProfile() {
               ) : (
                 <>
                   <div className="col-md-6">
-                    <Panel title="Diversity Information" icon={<FiUser size={14} />} accent="#8b5cf6"
-                      action={<button type="button" onClick={openDiversityEdit} style={{ ...panelEditBtnStyle, color: '#8b5cf6' }}><FiEdit2 size={11} /> Edit</button>}
+                    <Panel title="Diversity Information" icon={<FiUser size={14} />} accent="#45B6FE"
+                      action={<button type="button" onClick={openDiversityEdit} className="np-edit-btn"><FiEdit2 size={11} /> Edit</button>}
                     >
                       <DataRow label="Race / Ethnicity" missing={!diversity.race}>{diversity.race}</DataRow>
                       <DataRow label="Religion" missing={!diversity.religion}>{diversity.religion}</DataRow>
                     </Panel>
                   </div>
                   <div className="col-md-6">
-                    <Panel title="Health Disclosures" icon={<FiShield size={14} />} accent="#ef4444"
-                      action={<button type="button" onClick={openDiversityEdit} style={{ ...panelEditBtnStyle, color: '#ef4444' }}><FiEdit2 size={11} /> Edit</button>}
+                    <Panel title="Health Disclosures" icon={<FiShield size={14} />} accent="#2E7DB8"
+                      action={<button type="button" onClick={openDiversityEdit} className="np-edit-btn"><FiEdit2 size={11} /> Edit</button>}
                     >
                       <DataRow label="Disability">{diversity.disability || 'No'}</DataRow>
                       {diversity.disability === 'Yes' && (
@@ -1416,11 +1575,11 @@ export default function NurseProfile() {
                   <>
                   {/* ── Qualifications ── */}
                   <div className="col-12">
-                    <Panel title="Qualifications" icon={<FiAward size={14} />} accent="#3b82f6"
+                    <Panel title="Qualifications" icon={<FiAward size={14} />} accent="#45B6FE"
                       action={(
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <span style={{ fontSize: 11, fontWeight: 700, color: '#3b82f6' }}>{(education.qualifications || []).length} records</span>
-                          <button type="button" onClick={() => startEditing('qualifications', { qualifications: (education.qualifications || []).map((q) => ({ name: q.name || '', institution: q.institution || '', result: q.result || '', year: q.year || '' })) })} style={{ ...panelEditBtnStyle, color: '#3b82f6' }}><FiEdit2 size={11} /> Edit</button>
+                          <button type="button" onClick={() => startEditing('qualifications', { qualifications: (education.qualifications || []).map((q) => ({ name: q.name || '', institution: q.institution || '', result: q.result || '', year: q.year || '' })) })} className="np-edit-btn"><FiEdit2 size={11} /> Edit</button>
                         </div>
                       )}
                     >
@@ -1454,9 +1613,9 @@ export default function NurseProfile() {
 
                   {/* ── Training Courses ── */}
                   <div className="col-md-5">
-                    <Panel title="Training Courses" icon={<FiCheckCircle size={14} />} accent="#10b981"
+                    <Panel title="Training Courses" icon={<FiCheckCircle size={14} />} accent="#2E7DB8"
                       action={(
-                        <button type="button" onClick={() => startEditing('training', { trainingCourses: (education.trainingCourses || []).filter((t) => t).length > 0 ? [...education.trainingCourses.filter((t) => t)] : [''] })} style={{ ...panelEditBtnStyle, color: '#10b981' }}><FiEdit2 size={11} /> Edit</button>
+                        <button type="button" onClick={() => startEditing('training', { trainingCourses: (education.trainingCourses || []).filter((t) => t).length > 0 ? [...education.trainingCourses.filter((t) => t)] : [''] })} className="np-edit-btn"><FiEdit2 size={11} /> Edit</button>
                       )}
                     >
                         {(education.trainingCourses || []).filter((t) => t).length === 0 ? (
@@ -1474,11 +1633,11 @@ export default function NurseProfile() {
 
                   {/* ── Employment History ── */}
                   <div className="col-12">
-                    <Panel title="Employment History" icon={<FiClipboard size={14} />} accent="#f59e0b"
+                    <Panel title="Employment History" icon={<FiClipboard size={14} />} accent="#45B6FE"
                       action={(
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <span style={{ fontSize: 11, fontWeight: 700, color: '#f59e0b', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '2px 10px' }}>{(education.employmentHistory || []).length} {(education.employmentHistory || []).length === 1 ? 'record' : 'records'}</span>
-                          <button type="button" onClick={() => startEditing('employment', { employmentHistory: (education.employmentHistory || []).map((emp) => ({ jobTitle: emp.jobTitle || '', employerName: emp.employerName || '', businessType: emp.businessType || '', startDate: emp.startDate ? emp.startDate.split('T')[0] : '', grade: emp.grade || '', reportingOfficer: emp.reportingOfficer || '', contactPerson: emp.contactPerson || '', address: emp.address || '', descriptionOfDuties: emp.descriptionOfDuties || '', reasonForLeaving: emp.reasonForLeaving || '' })) })} style={{ ...panelEditBtnStyle, color: '#f59e0b' }}><FiEdit2 size={11} /> Edit</button>
+                          <button type="button" onClick={() => startEditing('employment', { employmentHistory: (education.employmentHistory || []).map((emp) => ({ jobTitle: emp.jobTitle || '', employerName: emp.employerName || '', businessType: emp.businessType || '', startDate: emp.startDate ? emp.startDate.split('T')[0] : '', grade: emp.grade || '', reportingOfficer: emp.reportingOfficer || '', contactPerson: emp.contactPerson || '', address: emp.address || '', descriptionOfDuties: emp.descriptionOfDuties || '', reasonForLeaving: emp.reasonForLeaving || '' })) })} className="np-edit-btn"><FiEdit2 size={11} /> Edit</button>
                         </div>
                       )}
                     >
@@ -1588,15 +1747,15 @@ export default function NurseProfile() {
               ) : (
                 <>
                   <div className="col-md-6">
-                    <Panel title="Staff Relationship" icon={<FiUser size={14} />} accent="#8b5cf6"
-                      action={<button type="button" onClick={() => startEditing('supporting-staff', { staffRelation: supporting.staffRelation || 'No', staffRelationDetail: supporting.staffRelationDetail || '', vacancyAdvertised: supporting.vacancyAdvertised || '' })} style={{ ...panelEditBtnStyle, color: '#8b5cf6' }}><FiEdit2 size={11} /> Edit</button>}
+                    <Panel title="Staff Relationship" icon={<FiUser size={14} />} accent="#45B6FE"
+                      action={<button type="button" onClick={() => startEditing('supporting-staff', { staffRelation: supporting.staffRelation || 'No', staffRelationDetail: supporting.staffRelationDetail || '', vacancyAdvertised: supporting.vacancyAdvertised || '' })} className="np-edit-btn"><FiEdit2 size={11} /> Edit</button>}
                     >
                       <DataRow label="Has Staff Relation">{supporting.staffRelation || 'No'}</DataRow>
                       {supporting.staffRelation === 'Yes' && (
                         <DataRow label="Relation Detail">{supporting.staffRelationDetail}</DataRow>
                       )}
                     </Panel>
-                    <Panel title="Vacancy Source" icon={<FiFileText size={14} />} accent="#3b82f6">
+                    <Panel title="Vacancy Source" icon={<FiFileText size={14} />} accent="#45B6FE">
                       <DataRow label="How Applied">{supporting.vacancyAdvertised || '—'}</DataRow>
                       {supporting.vacancyDetail && Object.entries(supporting.vacancyDetail).map(([k, v]) => (
                         <DataRow key={k} label={k.charAt(0).toUpperCase() + k.slice(1).replace(/([A-Z])/g, ' $1')}>{v}</DataRow>
@@ -1604,11 +1763,11 @@ export default function NurseProfile() {
                     </Panel>
                   </div>
                   <div className="col-md-6">
-                    <Panel title="Referees" icon={<FiUser size={14} />} accent="#10b981"
+                    <Panel title="Referees" icon={<FiUser size={14} />} accent="#2E7DB8"
                       action={(
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <span style={{ fontSize: 11, fontWeight: 700, color: '#10b981' }}>{(supporting.referees || []).filter((r) => r.name).length} provided</span>
-                          <button type="button" onClick={() => { const refs = (supporting.referees || []).map((r) => ({ name: r.name || '', address: r.address || '', telephone: r.telephone || '' })); while (refs.length < 2) refs.push({ name: '', address: '', telephone: '' }); startEditing('supporting-referees', { referees: refs }); }} style={{ ...panelEditBtnStyle, color: '#10b981' }}><FiEdit2 size={11} /> Edit</button>
+                          <button type="button" onClick={() => { const refs = (supporting.referees || []).map((r) => ({ name: r.name || '', address: r.address || '', telephone: r.telephone || '' })); while (refs.length < 2) refs.push({ name: '', address: '', telephone: '' }); startEditing('supporting-referees', { referees: refs }); }} className="np-edit-btn"><FiEdit2 size={11} /> Edit</button>
                         </div>
                       )}
                     >
@@ -1883,6 +2042,97 @@ export default function NurseProfile() {
                   <div style={{ fontSize: 13, color: '#6b7280' }}>No preview available for this document.</div>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {nurseStatusConfirm && (
+        <div
+          className="destructive-confirm-overlay"
+          role="presentation"
+          onClick={closeNurseStatusConfirm}
+        >
+          <div
+            className="destructive-confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="nurse-status-confirm-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="destructive-confirm-dialog__header">
+              <h2 id="nurse-status-confirm-title" className="destructive-confirm-dialog__title">
+                {nurseStatusConfirm.action === 'deactivate' ? 'Deactivate nurse' : 'Reactivate nurse'}
+              </h2>
+              <button
+                type="button"
+                className="destructive-confirm-dialog__close"
+                aria-label="Close"
+                disabled={deactivatingNurse}
+                onClick={closeNurseStatusConfirm}
+              >
+                <FiX size={20} strokeWidth={1.75} />
+              </button>
+            </div>
+
+            <div className="destructive-confirm-dialog__body">
+              <p className="destructive-confirm-dialog__lead">
+                {nurseStatusConfirm.action === 'deactivate'
+                  ? 'Are you sure you want to deactivate this nurse? They will be moved out of the active workforce list.'
+                  : 'Are you sure you want to reactivate this nurse? They will return to the active workforce list.'}
+              </p>
+              <div className="destructive-confirm-dialog__warning">
+                <div className="destructive-confirm-dialog__warning-bar" aria-hidden />
+                <div className="destructive-confirm-dialog__warning-text">
+                  {nurseStatusConfirm.action === 'deactivate' ? (
+                    <>
+                      <strong>Warning:</strong> Deactivated nurses cannot receive new patient assignments until reactivated.
+                    </>
+                  ) : (
+                    <>
+                      <strong>Note:</strong> Reactivating restores this nurse to active status for care and scheduling.
+                    </>
+                  )}
+                </div>
+              </div>
+              {nurseStatusConfirmError && (
+                <div className="destructive-confirm-dialog__banner-error">{nurseStatusConfirmError}</div>
+              )}
+              <div className="destructive-confirm-dialog__card">
+                <div className="destructive-confirm-dialog__card-icon destructive-confirm-dialog__card-icon--brand" aria-hidden>
+                  <FiUser size={18} />
+                </div>
+                <div className="destructive-confirm-dialog__card-body">
+                  <div className="destructive-confirm-dialog__card-title">{fullName}</div>
+                  <div className="destructive-confirm-dialog__card-meta">
+                    {roleLabel}
+                    {nurseId ? ` · ${nurseId}` : ''}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="destructive-confirm-dialog__footer">
+              <button
+                type="button"
+                className="destructive-confirm-dialog__btn-cancel"
+                disabled={deactivatingNurse}
+                onClick={closeNurseStatusConfirm}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className={nurseStatusConfirm.action === 'deactivate'
+                  ? 'destructive-confirm-dialog__btn-danger'
+                  : 'btn btn-kh-primary'}
+                disabled={deactivatingNurse}
+                onClick={confirmNurseStatusAction}
+              >
+                {deactivatingNurse
+                  ? (nurseStatusConfirm.action === 'deactivate' ? 'Deactivating…' : 'Reactivating…')
+                  : (nurseStatusConfirm.action === 'deactivate' ? 'Deactivate Nurse' : 'Reactivate Nurse')}
+              </button>
             </div>
           </div>
         </div>

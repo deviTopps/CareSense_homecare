@@ -927,11 +927,9 @@ export default function Reports() {
                 {loading && (
                   <TablePageLoader
                     progress={loadProgress}
-                    title="Loading reports"
-                    subtitle="Fetching medical reports from your patient records…"
                     colSpan={7}
-                    skeletonColumns={7}
-                    icon={FiFileText}
+                    simple
+                    ariaLabel="Loading reports"
                   />
                 )}
                 {!loading && loadError && (

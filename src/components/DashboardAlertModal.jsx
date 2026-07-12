@@ -2,15 +2,20 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   FiX,
-  FiMapPin,
-  FiPhone,
   FiUser,
-  FiClock,
   FiActivity,
-  FiShield,
   FiCheckCircle,
   FiSend,
   FiArrowRight,
+  FiClipboard,
+  FiGlobe,
+  FiBell,
+  FiMoreHorizontal,
+  FiList,
+  FiChevronRight,
+  FiCalendar,
+  FiGrid,
+  FiAlertCircle,
 } from '../icons/hugeicons-feather';
 import { resolveAlertViaApi } from '../utils/alerts';
 import {
@@ -33,50 +38,28 @@ const RESOLUTION_SOLUTIONS = [
   'Other (specify in notes)',
 ];
 
-const SEVERITY_STYLE = {
-  critical: { bg: '#fef2f2', color: '#dc2626', border: '#fecaca' },
-  high: { bg: '#fff7ed', color: '#ea580c', border: '#fed7aa' },
-  medium: { bg: '#fefce8', color: '#ca8a04', border: '#fef08a' },
+const SEVERITY_PILL = {
+  critical: { bg: '#FCA5A5', color: '#7F1D1D' },
+  high: { bg: '#FCA5A5', color: '#7F1D1D' },
+  medium: { bg: '#FEF3C7', color: '#92400E' },
 };
 
-const STATUS_STYLE = {
-  open: { bg: '#fef2f2', color: '#dc2626', border: '#fecaca' },
-  'in-progress': { bg: '#eff6ff', color: '#2563eb', border: '#bfdbfe' },
-  resolved: { bg: '#f0f7fe', color: '#1565a0', border: '#bae0fd' },
+const STATUS_PILL = {
+  open: { bg: '#FEF3C7', color: '#92400E', dot: '#EAB308' },
+  'in-progress': { bg: '#FEF3C7', color: '#92400E', dot: '#EAB308' },
+  resolved: { bg: '#DCFCE7', color: '#166534', dot: '#22C55E' },
 };
-
-function MetaChip({ icon, children }) {
-  const text = String(children ?? '').trim();
-  if (!text || text === '—') return null;
-  return (
-    <span className="db2-alert-modal__chip">
-      {icon}
-      <span title={text}>{text}</span>
-    </span>
-  );
-}
-
-function DetailCell({ label, value }) {
-  const v = String(value ?? '').trim();
-  if (!v || v === '—') return null;
-  return (
-    <div className="db2-alert-modal__cell">
-      <span className="db2-alert-modal__cell-label">{label}</span>
-      <span className="db2-alert-modal__cell-value" title={v}>{v}</span>
-    </div>
-  );
-}
 
 export default function DashboardAlertModal({ alert, onClose, onResolved, onUnauthorized }) {
   const navigate = useNavigate();
-  const [showResolve, setShowResolve] = useState(false);
+  const [activeTab, setActiveTab] = useState('details');
   const [solution, setSolution] = useState('');
   const [notes, setNotes] = useState('');
   const [resolveError, setResolveError] = useState('');
   const [resolving, setResolving] = useState(false);
 
   useEffect(() => {
-    setShowResolve(false);
+    setActiveTab('details');
     setSolution('');
     setNotes('');
     setResolveError('');
@@ -92,8 +75,8 @@ export default function DashboardAlertModal({ alert, onClose, onResolved, onUnau
 
   if (!alert) return null;
 
-  const sev = SEVERITY_STYLE[alert.severity] || SEVERITY_STYLE.medium;
-  const st = STATUS_STYLE[alert.caseStatus] || STATUS_STYLE.open;
+  const sev = SEVERITY_PILL[alert.severity] || SEVERITY_PILL.medium;
+  const st = STATUS_PILL[alert.caseStatus] || STATUS_PILL.open;
   const vitalsEntries = Object.entries(alert.vitals || {}).filter(
     ([, v]) => v != null && String(v).trim() !== '' && String(v) !== '—',
   );
@@ -101,11 +84,25 @@ export default function DashboardAlertModal({ alert, onClose, onResolved, onUnau
   const patientProfileTo = alert.patientId
     ? `/patients/${encodeURIComponent(alert.patientId)}`
     : null;
+  const checklistItems = [
+    ...(alert.medications || []).map((m) => ({ id: `med-${m}`, label: m, done: false, kind: 'Medication' })),
+    ...(alert.activities || []).map((a, i) => ({
+      id: `act-${i}`,
+      label: a.action || a.note || 'Activity',
+      done: String(a.status || '').toLowerCase() === 'resolved' || String(a.status || '').toLowerCase() === 'done',
+      kind: a.time || 'Activity',
+    })),
+  ];
+  const doneCount = checklistItems.filter((item) => item.done).length;
+  const progressPct = checklistItems.length
+    ? Math.round((doneCount / checklistItems.length) * 100)
+    : 0;
 
   const handleResolve = async () => {
     setResolveError('');
     if (!solution.trim()) {
       setResolveError('Select a solution before resolving.');
+      setActiveTab('resolve');
       return;
     }
     const resolution = notes.trim()
@@ -122,6 +119,7 @@ export default function DashboardAlertModal({ alert, onClose, onResolved, onUnau
       onClose();
     } catch (e) {
       setResolveError(e.message || 'Could not resolve alert.');
+      setActiveTab('resolve');
     } finally {
       setResolving(false);
     }
@@ -136,208 +134,340 @@ export default function DashboardAlertModal({ alert, onClose, onResolved, onUnau
         aria-modal="true"
         aria-labelledby="db2-alert-modal-title"
       >
-        <header className="db2-alert-modal__head">
-          <div className="db2-alert-modal__head-top">
-            <div className="db2-alert-modal__patient">
-              <div className="db2-alert-modal__avatar" aria-hidden>
-                {patientInitials(alert.patient)}
-              </div>
-              <div className="db2-alert-modal__patient-text">
-                <p className="db2-alert-modal__type">{alert.type}</p>
-                <h2 id="db2-alert-modal-title" className="db2-alert-modal__title" title={alert.patient}>
-                  {alert.patient}
-                </h2>
-                {(alert.age != null || alert.gender) && (
-                  <p className="db2-alert-modal__sub">
-                    {[alert.age != null ? `${alert.age} yrs` : null, alert.gender || null].filter(Boolean).join(' · ')}
-                  </p>
-                )}
-              </div>
-            </div>
-            <button type="button" className="db2-alert-modal__close" onClick={onClose} aria-label="Close">
-              <FiX size={18} />
-            </button>
-          </div>
-          <div className="db2-alert-modal__badges">
-            <span className="db2-alert-modal__badge" style={{ background: sev.bg, color: sev.color, borderColor: sev.border }}>
-              {formatSeverityLabel(alert.severity)}
-            </span>
-            <span className="db2-alert-modal__badge" style={{ background: st.bg, color: st.color, borderColor: st.border }}>
-              {formatCaseStatusLabel(alert.caseStatus)}
-            </span>
-            {alert.code && <span className="db2-alert-modal__badge db2-alert-modal__badge--muted">{alert.code}</span>}
-          </div>
-        </header>
-
-        <div className="db2-alert-modal__scroll">
-          <section className="db2-alert-modal__reason">
-            <span className="db2-alert-modal__label">What happened</span>
-            <p>{alert.reason}</p>
-          </section>
-
-          <div className="db2-alert-modal__chips">
-            <MetaChip icon={<FiMapPin size={12} aria-hidden />}>{alert.region}</MetaChip>
-            <MetaChip icon={<FiUser size={12} aria-hidden />}>{alert.nurse}</MetaChip>
-            <MetaChip icon={<FiPhone size={12} aria-hidden />}>{alert.phone}</MetaChip>
-            <MetaChip icon={<FiClock size={12} aria-hidden />}>{alert.flaggedDate}</MetaChip>
-          </div>
-
-          <div className="db2-alert-modal__grid">
-            <DetailCell label="Flagged by" value={alert.flaggedBy} />
-            <DetailCell label="Assigned nurse" value={alert.nurse} />
-          </div>
-
-          {alert.diagnosis?.trim() && (
-            <section className="db2-alert-modal__section">
-              <h3 className="db2-alert-modal__section-title">Diagnosis</h3>
-              <p>{alert.diagnosis}</p>
-            </section>
-          )}
-
-          <CaseAttachedImageSection attachment={alert.attachedImage} />
-
-          {vitalsEntries.length > 0 && (
-            <section className="db2-alert-modal__section">
-              <h3 className="db2-alert-modal__section-title">
-                <FiActivity size={13} aria-hidden />
-                Vitals
-              </h3>
-              <div className="db2-alert-modal__vitals">
-                {vitalsEntries.map(([k, v]) => (
-                  <div key={k} className="db2-alert-modal__vital">
-                    <span className="db2-alert-modal__vital-label">{k}</span>
-                    <span className="db2-alert-modal__vital-value">{v}</span>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
-
-          {alert.medications?.length > 0 && (
-            <section className="db2-alert-modal__section">
-              <h3 className="db2-alert-modal__section-title">
-                <FiShield size={13} aria-hidden />
-                Medications
-              </h3>
-              <ul className="db2-alert-modal__list">
-                {alert.medications.map((m) => (
-                  <li key={m}>{m}</li>
-                ))}
-              </ul>
-            </section>
-          )}
-
-          {alert.activities?.length > 0 && (
-            <section className="db2-alert-modal__section">
-              <h3 className="db2-alert-modal__section-title">
-                <FiClock size={13} aria-hidden />
-                Activity
-              </h3>
-              <ul className="db2-alert-modal__timeline">
-                {alert.activities.map((a, i) => (
-                  <li key={`${a.action}-${i}`} data-status={a.status}>
-                    <div className="db2-alert-modal__timeline-meta">
-                      {a.time && <span>{a.time}</span>}
-                      <strong>{a.action}</strong>
-                      {a.note && <p className="db2-alert-modal__timeline-note">{a.note}</p>}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-
-          {showResolve && canResolve && (
-            <section className="db2-alert-modal__resolve">
-              <span className="db2-alert-modal__label">Resolve alert</span>
-              <label className="db2-alert-modal__field">
-                <span className="db2-alert-modal__label">Solution</span>
-                <select value={solution} onChange={(e) => setSolution(e.target.value)}>
-                  <option value="">Select a solution</option>
-                  {RESOLUTION_SOLUTIONS.map((s) => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="db2-alert-modal__field">
-                <span className="db2-alert-modal__label">Notes (optional)</span>
-                <textarea
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  rows={3}
-                  placeholder="Additional context…"
-                />
-              </label>
-              {resolveError && <p className="db2-alert-modal__error">{resolveError}</p>}
-            </section>
-          )}
-
-          {isFallbackAlertId(alert.id) && (
-            <p className="db2-alert-modal__warn">
-              This alert has no server ID — resolving is unavailable until the API returns a valid id.
+        <div className="db2-alert-modal__main">
+          <div className="db2-alert-modal__topbar">
+            <p className="db2-alert-modal__crumb">
+              Watchlist <span aria-hidden>/</span> Alert detail
             </p>
-          )}
-        </div>
-
-        <footer className="db2-alert-modal__foot">
-          <div className="db2-alert-modal__foot-nav">
-            {patientProfileTo && (
-              <Link to={patientProfileTo} className="db2-alert-modal__nav-btn" onClick={onClose}>
-                <FiUser size={14} aria-hidden />
-                Patient
-              </Link>
-            )}
-            <button
-              type="button"
-              className="db2-alert-modal__nav-btn"
-              onClick={() => { onClose(); navigate('/clinical'); }}
-            >
-              <FiArrowRight size={14} aria-hidden />
-              Emergency cases
-            </button>
-          </div>
-          <div className="db2-alert-modal__foot-actions">
-            <button type="button" className="db2-btn db2-btn--outline" onClick={onClose}>
-              Close
-            </button>
-            {canResolve && !showResolve && (
+            <div className="db2-alert-modal__topbar-actions">
+              <span className={`db2-alert-modal__live${alert.caseStatus === 'resolved' ? ' is-off' : ''}`}>
+                <span className="db2-alert-modal__live-toggle" aria-hidden />
+                {alert.caseStatus === 'resolved' ? 'Resolved' : 'Active'}
+              </span>
+              {patientProfileTo ? (
+                <Link
+                  to={patientProfileTo}
+                  className="db2-alert-modal__icon-btn"
+                  onClick={onClose}
+                  aria-label="Open patient profile"
+                  title="Open patient profile"
+                >
+                  <FiGlobe size={18} />
+                </Link>
+              ) : null}
               <button
                 type="button"
-                className="db2-btn db2-btn--primary"
-                onClick={() => { setResolveError(''); setShowResolve(true); }}
+                className="db2-alert-modal__icon-btn"
+                onClick={onClose}
+                aria-label="Close"
               >
-                <FiCheckCircle size={14} aria-hidden />
-                Resolve
+                <FiX size={18} />
               </button>
-            )}
-            {canResolve && showResolve && (
+            </div>
+          </div>
+
+          <h2 id="db2-alert-modal-title" className="db2-alert-modal__title">
+            {alert.type || 'Clinical alert'}
+            {alert.patient ? `: ${alert.patient}` : ''}
+          </h2>
+
+          <div className="db2-alert-modal__tabs" role="tablist" aria-label="Alert sections">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'details'}
+              className={`db2-alert-modal__tab${activeTab === 'details' ? ' is-active' : ''}`}
+              onClick={() => setActiveTab('details')}
+            >
+              Description
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'resolve'}
+              className={`db2-alert-modal__tab${activeTab === 'resolve' ? ' is-active' : ''}`}
+              onClick={() => setActiveTab('resolve')}
+              disabled={!canResolve && alert.caseStatus !== 'resolved'}
+            >
+              {alert.caseStatus === 'resolved' ? 'Resolution' : 'Resolve'}
+            </button>
+          </div>
+
+          <div className="db2-alert-modal__scroll">
+            {activeTab === 'details' ? (
               <>
-                <button
-                  type="button"
-                  className="db2-btn db2-btn--outline"
-                  onClick={() => {
-                    setShowResolve(false);
-                    setSolution('');
-                    setNotes('');
-                    setResolveError('');
-                  }}
-                  disabled={resolving}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  className="db2-btn db2-btn--primary"
-                  onClick={handleResolve}
-                  disabled={resolving || !solution.trim()}
-                >
-                  <FiSend size={14} aria-hidden />
-                  {resolving ? 'Saving…' : 'Confirm'}
-                </button>
+                <section className="db2-alert-modal__desc-box">
+                  <p className="db2-alert-modal__desc-text">
+                    {alert.reason || 'No description provided for this alert.'}
+                  </p>
+                  {alert.diagnosis?.trim() ? (
+                    <p className="db2-alert-modal__desc-extra">
+                      <strong>Diagnosis:</strong> {alert.diagnosis}
+                    </p>
+                  ) : null}
+                  <div className="db2-alert-modal__desc-toolbar">
+                    <div className="db2-alert-modal__desc-tools">
+                      <FiClipboard size={16} aria-hidden />
+                      <FiActivity size={16} aria-hidden />
+                      <FiBell size={16} aria-hidden />
+                    </div>
+                    <span>Alert details</span>
+                  </div>
+                </section>
+
+                <CaseAttachedImageSection attachment={alert.attachedImage} />
+
+                {vitalsEntries.length > 0 ? (
+                  <section className="db2-alert-modal__vitals-grid">
+                    {vitalsEntries.map(([k, v]) => (
+                      <div key={k} className="db2-alert-modal__vital-card">
+                        <span>{k}</span>
+                        <strong>{v}</strong>
+                      </div>
+                    ))}
+                  </section>
+                ) : null}
+
+                <section className="db2-alert-modal__checklist">
+                  <div className="db2-alert-modal__checklist-head">
+                    <span className="db2-alert-modal__section-label">Follow-ups</span>
+                    <span
+                      className="db2-alert-modal__progress"
+                      aria-label={`${progressPct}% complete`}
+                    >
+                      <span style={{ width: `${progressPct}%` }} />
+                    </span>
+                  </div>
+
+                  {checklistItems.length > 0 ? (
+                    <ul className="db2-alert-modal__check-list">
+                      {checklistItems.map((item) => (
+                        <li
+                          key={item.id}
+                          className={`db2-alert-modal__check-item${item.done ? ' is-done' : ''}`}
+                        >
+                          <span className="db2-alert-modal__check-box" aria-hidden>
+                            {item.done ? <FiCheckCircle size={16} /> : null}
+                          </span>
+                          <div className="db2-alert-modal__check-copy">
+                            <span className="db2-alert-modal__check-kind">{item.kind}</span>
+                            <p>{item.label}</p>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="db2-alert-modal__empty-check">
+                      No medications or activity entries attached yet.
+                    </p>
+                  )}
+                </section>
               </>
+            ) : (
+              <section className="db2-alert-modal__resolve-panel">
+                {canResolve ? (
+                  <>
+                    <label className="db2-alert-modal__field">
+                      <span className="db2-alert-modal__section-label">Solution</span>
+                      <select value={solution} onChange={(e) => setSolution(e.target.value)}>
+                        <option value="">Select a solution</option>
+                        {RESOLUTION_SOLUTIONS.map((s) => (
+                          <option key={s} value={s}>{s}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="db2-alert-modal__field">
+                      <span className="db2-alert-modal__section-label">Notes</span>
+                      <textarea
+                        value={notes}
+                        onChange={(e) => setNotes(e.target.value)}
+                        rows={5}
+                        placeholder="Enter resolution notes"
+                      />
+                    </label>
+                    {resolveError ? <p className="db2-alert-modal__error">{resolveError}</p> : null}
+                    <div className="db2-alert-modal__resolve-links">
+                      <button
+                        type="button"
+                        className="db2-alert-modal__text-btn"
+                        onClick={() => {
+                          setSolution('');
+                          setNotes('');
+                          setResolveError('');
+                          setActiveTab('details');
+                        }}
+                      >
+                        Discard
+                      </button>
+                      <button
+                        type="button"
+                        className="db2-alert-modal__text-btn db2-alert-modal__text-btn--accent"
+                        onClick={handleResolve}
+                        disabled={resolving || !solution.trim()}
+                      >
+                        {resolving ? 'Saving…' : 'Save resolution'}
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <p className="db2-alert-modal__empty-check">
+                    {isFallbackAlertId(alert.id)
+                      ? 'This alert has no server ID — resolving is unavailable until the API returns a valid id.'
+                      : 'This alert is already resolved.'}
+                  </p>
+                )}
+              </section>
             )}
           </div>
-        </footer>
+
+          <div className="db2-alert-modal__left-actions">
+            {patientProfileTo ? (
+              <Link to={patientProfileTo} className="db2-alert-modal__pill-btn" onClick={onClose}>
+                <FiUser size={16} aria-hidden />
+                Patient
+              </Link>
+            ) : null}
+            <button
+              type="button"
+              className="db2-alert-modal__pill-btn"
+              onClick={() => { onClose(); navigate('/clinical'); }}
+            >
+              <FiList size={16} aria-hidden />
+              Cases
+            </button>
+            <button
+              type="button"
+              className="db2-alert-modal__pill-btn"
+              onClick={() => setActiveTab('resolve')}
+              disabled={!canResolve}
+            >
+              <FiBell size={16} aria-hidden />
+              Alert
+            </button>
+            <button type="button" className="db2-alert-modal__pill-btn" onClick={onClose}>
+              <FiMoreHorizontal size={16} aria-hidden />
+              More
+            </button>
+          </div>
+        </div>
+
+        <aside className="db2-alert-modal__side">
+          {patientProfileTo ? (
+            <Link to={patientProfileTo} className="db2-alert-modal__project" onClick={onClose}>
+              <span className="db2-alert-modal__project-icon" aria-hidden>
+                <FiGrid size={18} />
+              </span>
+              <span className="db2-alert-modal__project-label">
+                {alert.patient || 'Open patient'}
+              </span>
+              <FiChevronRight size={18} aria-hidden />
+            </Link>
+          ) : (
+            <div className="db2-alert-modal__project is-static">
+              <span className="db2-alert-modal__project-icon" aria-hidden>
+                <FiGrid size={18} />
+              </span>
+              <span className="db2-alert-modal__project-label">
+                {alert.patient || 'Unknown patient'}
+              </span>
+            </div>
+          )}
+
+          <div className="db2-alert-modal__attrs-head">
+            <span className="db2-alert-modal__section-label">Attributes</span>
+            <FiList size={16} aria-hidden />
+          </div>
+
+          <div className="db2-alert-modal__attrs">
+            <div className="db2-alert-modal__attr">
+              <span className="db2-alert-modal__attr-label">Status</span>
+              <span
+                className="db2-alert-modal__pill"
+                style={{ background: st.bg, color: st.color }}
+              >
+                <span className="db2-alert-modal__pill-dot" style={{ background: st.dot }} />
+                {formatCaseStatusLabel(alert.caseStatus)}
+              </span>
+            </div>
+
+            <div className="db2-alert-modal__attr">
+              <span className="db2-alert-modal__attr-label">Priority</span>
+              <span
+                className="db2-alert-modal__pill db2-alert-modal__pill--priority"
+                style={{ background: sev.bg, color: sev.color }}
+              >
+                <FiAlertCircle size={14} aria-hidden />
+                {formatSeverityLabel(alert.severity)}
+              </span>
+            </div>
+
+            <div className="db2-alert-modal__attr">
+              <span className="db2-alert-modal__attr-label">Assignee</span>
+              <span className="db2-alert-modal__chip" title={alert.nurse || 'Unassigned'}>
+                <span className="db2-alert-modal__chip-avatar" aria-hidden>
+                  {patientInitials(alert.nurse || 'N')}
+                </span>
+                {alert.nurse || 'Unassigned'}
+              </span>
+            </div>
+
+            <div className="db2-alert-modal__attr is-highlight">
+              <span className="db2-alert-modal__attr-label">Flagged</span>
+              <span className="db2-alert-modal__chip">
+                <FiCalendar size={15} className="db2-alert-modal__chip-cal" aria-hidden />
+                {alert.flaggedDate || '—'}
+              </span>
+            </div>
+
+            {alert.code ? (
+              <div className="db2-alert-modal__attr">
+                <span className="db2-alert-modal__attr-label">Code</span>
+                <span className="db2-alert-modal__chip">{alert.code}</span>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="db2-alert-modal__side-foot">
+            <button type="button" className="db2-alert-modal__btn db2-alert-modal__btn--ghost" onClick={onClose}>
+              Cancel
+            </button>
+            {canResolve ? (
+              <button
+                type="button"
+                className="db2-alert-modal__btn db2-alert-modal__btn--primary"
+                onClick={() => {
+                  if (activeTab !== 'resolve') {
+                    setActiveTab('resolve');
+                    return;
+                  }
+                  handleResolve();
+                }}
+                disabled={resolving}
+              >
+                {activeTab === 'resolve' ? (
+                  <>
+                    <FiSend size={16} aria-hidden />
+                    {resolving ? 'Saving…' : 'Resolve'}
+                  </>
+                ) : (
+                  <>
+                    <FiCheckCircle size={16} aria-hidden />
+                    Resolve
+                  </>
+                )}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="db2-alert-modal__btn db2-alert-modal__btn--primary"
+                onClick={() => { onClose(); navigate('/clinical'); }}
+              >
+                <FiArrowRight size={16} aria-hidden />
+                Open cases
+              </button>
+            )}
+          </div>
+        </aside>
       </div>
     </div>
   );

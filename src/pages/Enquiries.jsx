@@ -13,6 +13,7 @@ import {
 import DataTableHeader, { HospitalStatus } from '../components/DataTableHeader';
 import HospitalBoardToolbar from '../components/HospitalBoardToolbar';
 import TablePageLoader from '../components/TablePageLoader';
+import { useLoadProgress } from '../hooks/useLoadProgress';
 import {
   FiUser,
   FiMapPin,
@@ -164,6 +165,7 @@ export default function Enquiries() {
   const [deleteError, setDeleteError] = useState(null);
   /** Row pending delete confirmation (modal). */
   const [deleteConfirmTarget, setDeleteConfirmTarget] = useState(null);
+  const { progress: loadProgress, finishProgress } = useLoadProgress(loading);
 
   const loadEnquiries = useCallback(async () => {
     setError(null);
@@ -178,9 +180,9 @@ export default function Enquiries() {
       setRows([]);
       setError(e.message || 'Could not load enquiries');
     } finally {
-      setLoading(false);
+      finishProgress(() => setLoading(false));
     }
-  }, [navigate]);
+  }, [navigate, finishProgress]);
 
   useEffect(() => {
     loadEnquiries();
@@ -475,12 +477,9 @@ export default function Enquiries() {
               <table className="table hospital-table" style={{ marginBottom: 0 }}>
                 <tbody>
                   <TablePageLoader
-                    progress={loading ? 45 : 0}
-                    title="Loading enquiries"
-                    subtitle="Fetching intake records…"
+                    progress={loadProgress}
                     colSpan={9}
-                    skeletonColumns={9}
-                    icon={FiClipboard}
+                    ariaLabel="Loading enquiries"
                   />
                 </tbody>
               </table>

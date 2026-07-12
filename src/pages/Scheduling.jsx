@@ -6,6 +6,7 @@ import Overlay from 'react-bootstrap/Overlay';
 import { FiPlus, FiCalendar, FiUser, FiXCircle, FiCheckCircle, FiTrash2 } from '../icons/hugeicons-feather';
 import DataTableHeader, { HospitalStatus } from '../components/DataTableHeader';
 import TablePageLoader from '../components/TablePageLoader';
+import { useLoadProgress } from '../hooks/useLoadProgress';
 import { fetchAllPatients } from '../utils/patients';
 import {
   apiFetch,
@@ -1824,6 +1825,7 @@ export default function Scheduling() {
     filter === 'All Visits'
       ? visitsOtherLoading || visitsUpcomingLoading
       : visitsUpcomingLoading;
+  const { progress: visitsLoadProgress } = useLoadProgress(visitsListLoading);
   const visitsSourceLabel =
     filter === 'All Visits'
       ? 'GET /care-visits (+ upcoming/other)'
@@ -2229,11 +2231,9 @@ export default function Scheduling() {
             <tbody>
               {visitsListLoading && (
                 <TablePageLoader
-                  title="Loading care visits"
-                  subtitle="Fetching scheduled, completed, and upcoming visits…"
+                  progress={visitsLoadProgress}
                   colSpan={8}
-                  skeletonColumns={8}
-                  icon={FiCalendar}
+                  ariaLabel="Loading care visits"
                 />
               )}
               {!visitsListLoading && filtered.map((v, i) => (

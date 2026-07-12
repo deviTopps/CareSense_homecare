@@ -25,19 +25,28 @@ import {
 } from '../icons/hugeicons-feather';
 
 const FINANCE_NAV_ID = 'finance';
+const CARE_SERVICES_NAV_ID = 'care-services';
 
 const sidebarGroups = [
   {
     title: 'Menu',
     items: [
       { to: '/dashboard', icon: FiGrid, label: 'Dashboard', guideTarget: 'nav-dashboard' },
-      { to: '/patients', icon: FiActivity, label: 'Patients', guideTarget: 'nav-patients' },
+      {
+        id: CARE_SERVICES_NAV_ID,
+        icon: FiActivity,
+        label: 'Care Services',
+        guideTarget: 'nav-care-services',
+        children: [
+          { to: '/patients', icon: FiActivity, label: 'Patients', guideTarget: 'nav-patients' },
+          { to: '/scheduling', icon: FiCalendar, label: 'Care Visits', guideTarget: 'nav-scheduling' },
+          { to: '/clinical', icon: FiAlertCircle, label: 'Emergency Cases', guideTarget: 'nav-clinical' },
+          { to: '/reports', icon: FiFolder, label: 'Reports', guideTarget: 'nav-reports' },
+        ],
+      },
       { to: '/workforce', icon: FiUsers, label: 'Nurses', guideTarget: 'nav-workforce' },
-      { to: '/scheduling', icon: FiCalendar, label: 'Care Visits', guideTarget: 'nav-scheduling' },
       { to: '/enquiries', icon: FiMessageCircle, label: 'Enquiries', guideTarget: 'nav-enquiries' },
-      { to: '/clinical', icon: FiAlertCircle, label: 'Emergency Cases', guideTarget: 'nav-clinical' },
       { to: '/attendance', icon: FiClock, label: 'Attendance', guideTarget: 'nav-attendance' },
-      { to: '/reports', icon: FiFolder, label: 'Reports', guideTarget: 'nav-reports' },
       {
         id: FINANCE_NAV_ID,
         icon: FiBarChart2,
@@ -85,16 +94,8 @@ export default function Sidebar({
   const resizeActive = useRef(false);
   const startXRef = useRef(0);
   const startWidthRef = useRef(sidebarWidth);
-  const [openGroups, setOpenGroups] = useState({ [FINANCE_NAV_ID]: true });
+  const [openGroups, setOpenGroups] = useState({});
   const [collapsedFlyout, setCollapsedFlyout] = useState('');
-
-  const isFinanceRoute = pathname === '/finance' || pathname.startsWith('/invoices-payments');
-
-  useEffect(() => {
-    if (isFinanceRoute) {
-      setOpenGroups((prev) => ({ ...prev, [FINANCE_NAV_ID]: true }));
-    }
-  }, [isFinanceRoute]);
 
   useEffect(() => {
     setCollapsedFlyout('');
@@ -125,10 +126,10 @@ export default function Sidebar({
             aria-expanded={isOpen}
             {...(item.guideTarget ? { 'data-guide': item.guideTarget } : {})}
           >
-            <span className="icon"><Icon size={18} /></span>
+            <span className="icon"><Icon size={20} /></span>
             <span className="sidebar-link-label">{item.label}</span>
             {!isCollapsed && (
-              <FiChevronDown size={16} className="sidebar-nav-group__chevron" aria-hidden />
+              <FiChevronDown size={18} className="sidebar-nav-group__chevron" aria-hidden />
             )}
           </button>
 
@@ -145,7 +146,7 @@ export default function Sidebar({
                     title={child.label}
                     {...(child.guideTarget ? { 'data-guide': child.guideTarget } : {})}
                   >
-                    <span className="icon"><ChildIcon size={16} /></span>
+                    <span className="icon"><ChildIcon size={18} /></span>
                     <span className="sidebar-link-label">{child.label}</span>
                   </NavLink>
                 );
@@ -169,7 +170,7 @@ export default function Sidebar({
                     }}
                     role="menuitem"
                   >
-                    <ChildIcon size={16} aria-hidden />
+                    <ChildIcon size={18} aria-hidden />
                     <span>{child.label}</span>
                   </NavLink>
                 );
@@ -190,7 +191,7 @@ export default function Sidebar({
         title={item.label}
         {...(item.guideTarget ? { 'data-guide': item.guideTarget } : {})}
       >
-        <span className="icon"><Icon size={18} /></span>
+        <span className="icon"><Icon size={20} /></span>
         <span className="sidebar-link-label">{item.label}</span>
       </NavLink>
     );
@@ -316,12 +317,12 @@ export default function Sidebar({
                   onClick={onToggleTheme}
                   title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
                 >
-                  <span className="icon">{isDark ? <FiSun size={18} /> : <FiMoon size={18} />}</span>
+                  <span className="icon">{isDark ? <FiSun size={20} /> : <FiMoon size={20} />}</span>
                   <span className="sidebar-link-label">{isDark ? 'Light Mode' : 'Dark Mode'}</span>
                 </button>
               )}
               <button type="button" className="sidebar-link sidebar-link--button" onClick={onLogout} title="Log out">
-                <span className="icon"><FiLogOut size={18} /></span>
+                <span className="icon"><FiLogOut size={20} /></span>
                 <span className="sidebar-link-label">Log out</span>
               </button>
             </div>

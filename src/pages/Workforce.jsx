@@ -22,6 +22,7 @@ import {
   FiUserPlus,
   FiMoreHorizontal,
   FiLock,
+  FiRefreshCw,
 } from '../icons/hugeicons-feather';
 import { apiFetch, isTokenValid, createPlatformUser, fetchAuthUsers, updatePlatformUser, deletePlatformUser, changePlatformUserPassword, getUser } from '../api';
 import { hasPermission } from '../hipaa/permissions';
@@ -51,6 +52,7 @@ const ROWS_OPTIONS = [5, 10, 15];
 
 const NURSE_ENDPOINTS = {
   list: '/nurses',
+  deactivated: '/nurses/deactivated',
   deleteById: '/nurses',
   createPersonal: '/nurses/create/personal-info',
   createDiversity: '/nurses/create/diversity-info',
@@ -93,7 +95,147 @@ const PLATFORM_USER_ROLE_OPTIONS = [
   { value: 'hr', label: 'HR' },
 ];
 
-const WORKFORCE_FILTER_TABS = ['All', 'Complete', 'Staff'];
+const WORKFORCE_FILTER_TABS = ['All', 'Deactivated', 'Staff'];
+
+function unwrapNurseRecord(raw) {
+  if (!raw || typeof raw !== 'object') return raw;
+  const nested = raw.personal || raw.nurse || raw.profile || null;
+  if (!nested || typeof nested !== 'object') return raw;
+  return {
+    ...nested,
+    ...raw,
+    firstName: raw.firstName || nested.firstName,
+    lastName: raw.lastName || nested.lastName,
+    name: raw.name || nested.name,
+    email: raw.email || nested.email,
+    phone: raw.phone || nested.phone,
+    gender: raw.gender || nested.gender,
+    address: raw.address || nested.address,
+    role: raw.role || nested.role,
+    jobTitle: raw.jobTitle || nested.jobTitle,
+    mmcPinNo: raw.mmcPinNo || nested.mmcPinNo,
+    createdAt: raw.createdAt || nested.createdAt,
+    uuid: raw.uuid || nested.uuid,
+    nurseId: raw.nurseId || nested.nurseId || nested.uuid,
+    _id: raw._id || nested._id,
+    id: raw.id || nested.id,
+    status: raw.status ?? nested.status,
+    accountStatus: raw.accountStatus ?? nested.accountStatus,
+    isActive: raw.isActive ?? nested.isActive,
+    active: raw.active ?? nested.active,
+    isDeactivated: raw.isDeactivated ?? nested.isDeactivated,
+    deactivated: raw.deactivated ?? nested.deactivated,
+    registrationComplete: raw.registrationComplete ?? nested.registrationComplete,
+    isComplete: raw.isComplete ?? nested.isComplete,
+    registrationStep: raw.registrationStep ?? nested.registrationStep,
+    documents: raw.documents || nested.documents,
+    profilePhoto: raw.profilePhoto || nested.profilePhoto,
+  };
+}
+
+function extractNurseArray(payload) {
+  const candidates = [
+    payload,
+    payload?.nurses,
+    payload?.deactivatedNurses,
+    payload?.deactivated,
+    payload?.data,
+    payload?.results,
+    payload?.items,
+    payload?.data?.nurses,
+    payload?.data?.deactivatedNurses,
+    payload?.data?.deactivated,
+    payload?.data?.data,
+    payload?.data?.results,
+    payload?.data?.items,
+    payload?.result?.nurses,
+    payload?.result?.data,
+  ];
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) {
+      return candidate.map(unwrapNurseRecord).filter(Boolean);
+    }
+  }
+
+  // Some endpoints return a single nurse object when only one match exists.
+  if (payload && typeof payload === 'object' && !payload.error) {
+    const unwrapped = unwrapNurseRecord(payload);
+    if (resolveNurseRowId(unwrapped) || unwrapped?.firstName || unwrapped?.email) {
+      return [unwrapped];
+    }
+  }
+  if (payload?.data && typeof payload.data === 'object' && !Array.isArray(payload.data)) {
+    const unwrapped = unwrapNurseRecord(payload.data);
+    if (resolveNurseRowId(unwrapped) || unwrapped?.firstName || unwrapped?.email) {
+      return [unwrapped];
+    }
+  }
+  return [];
+}
+
+function normalizeNurseAccountStatus(raw, fallback = 'active') {
+  const s = String(raw || '').toLowerCase();
+  if (s.includes('deactiv') || s.includes('inactive')) return 'deactivated';
+  if (s.includes('active')) return 'active';
+  return fallback;
+}
+
+function resolveNurseAccountStatus(nurse, forcedStatus) {
+  if (forcedStatus === 'deactivated') return 'deactivated';
+
+  if (
+    nurse?.isDeactivated === true
+    || nurse?.deactivated === true
+    || nurse?.isActive === false
+    || nurse?.active === false
+    || nurse?.is_active === false
+  ) {
+    return 'deactivated';
+  }
+
+  return normalizeNurseAccountStatus(
+    nurse?.status || nurse?.accountStatus || nurse?.nurseStatus || nurse?.account_status,
+    'active',
+  );
+}
+
+function resolveNurseRowId(n) {
+  const candidates = [n?.uuid, n?.nurseId, n?.id, n?._id]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean);
+  const uuid = candidates.find((id) => (
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)
+  ));
+  return uuid || candidates[0] || '';
+}
+
+function nurseIdentityKey(entry) {
+  const id = String(entry?.id || '').trim().toLowerCase();
+  if (id) return `id:${id}`;
+  const email = String(entry?.email || '').trim().toLowerCase();
+  if (email && email !== '—') return `email:${email}`;
+  const name = String(entry?.name || '').trim().toLowerCase();
+  const license = String(entry?.license || '').trim().toLowerCase();
+  if (name && name !== '—') return `name:${name}|${license}`;
+  return '';
+}
+
+function dedupeNursesByIdentity(list) {
+  const byKey = new Map();
+  const orphans = [];
+  (Array.isArray(list) ? list : []).forEach((entry, index) => {
+    const key = nurseIdentityKey(entry) || `orphan:${index}`;
+    if (key.startsWith('orphan:')) {
+      orphans.push(entry);
+      return;
+    }
+    const existing = byKey.get(key);
+    if (!existing || entry.status === 'deactivated') {
+      byKey.set(key, entry);
+    }
+  });
+  return [...byKey.values(), ...orphans];
+}
 
 function StaffRowActions({ row, onEditInfo, onResetPassword }) {
   const [open, setOpen] = useState(false);
@@ -345,6 +487,11 @@ export default function Workforce() {
   const [page, setPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(5);
   const [nurses, setNurses] = useState([]);
+  const [deactivatedNurses, setDeactivatedNurses] = useState([]);
+  const [deactivatedLoadError, setDeactivatedLoadError] = useState('');
+  const [activatingNurseId, setActivatingNurseId] = useState('');
+  const [activateActionError, setActivateActionError] = useState('');
+  const [activateActionSuccess, setActivateActionSuccess] = useState('');
   const [loading, setLoading] = useState(true);
   const { progress: loadProgress, setProgressTarget, finishProgress } = useLoadProgress(loading);
   const [avatarLoadErrors, setAvatarLoadErrors] = useState({});
@@ -390,52 +537,99 @@ export default function Workforce() {
   const fetchNurses = useCallback(async () => {
     if (!NURSE_ENDPOINTS.list) {
       setNurses([]);
+      setDeactivatedNurses([]);
+      setDeactivatedLoadError('');
       finishProgress(() => setLoading(false));
       return;
     }
     try {
       setLoading(true);
+      setDeactivatedLoadError('');
       setProgressTarget(8);
-      const [nursesRes, usersRes] = await Promise.all([
+      const [nursesRes, deactivatedRes, usersRes] = await Promise.all([
         apiFetch(NURSE_ENDPOINTS.list),
+        apiFetch(NURSE_ENDPOINTS.deactivated, { method: 'GET', quiet: true }).catch(() => null),
         fetchAuthUsers({ limit: 500 }).catch(() => null),
       ]);
       setProgressTarget(32);
-      const data = await nursesRes.json();
-      const list = Array.isArray(data) ? data : data.nurses || data.data || [];
+      const data = await nursesRes.json().catch(() => ({}));
+      const list = extractNurseArray(data);
+      let deactivatedList = [];
+      if (!deactivatedRes) {
+        setDeactivatedLoadError('Unable to reach deactivated nurses endpoint.');
+      } else {
+        const deactivatedPayload = await deactivatedRes.json().catch(() => ({}));
+        if (deactivatedRes.ok) {
+          deactivatedList = extractNurseArray(deactivatedPayload);
+          if (deactivatedList.length === 0 && import.meta.env.DEV) {
+            console.warn('[Workforce] /nurses/deactivated returned no parseable nurses', deactivatedPayload);
+          }
+        } else {
+          setDeactivatedLoadError(
+            deactivatedPayload?.message
+            || deactivatedPayload?.error
+            || `Unable to load deactivated nurses (HTTP ${deactivatedRes.status}).`,
+          );
+          if (import.meta.env.DEV) {
+            console.warn('[Workforce] /nurses/deactivated failed', deactivatedRes.status, deactivatedPayload);
+          }
+        }
+      }
       setProgressTarget(48);
       const completedIds = getCompletedNurseIds();
-      const mappedNurses = await Promise.all(list.map(async (n, index) => {
-        const id = n._id || n.id;
-        const profilePhotoUrl = await resolveNurseProfilePhotoUrl(n);
-        const roleRaw = String(n.role || '').trim().toLowerCase();
+
+      const mapNurseEntry = async (n, index, total, forcedStatus) => {
+        const unwrapped = unwrapNurseRecord(n);
+        const id = resolveNurseRowId(unwrapped);
+        const profilePhotoUrl = await resolveNurseProfilePhotoUrl(unwrapped);
+        const roleRaw = String(unwrapped.role || '').trim().toLowerCase();
         const staffMember = isStaffRole(roleRaw);
-        const isComplete = staffMember || n.registrationComplete === true || n.isComplete === true || completedIds.has(id);
-        const completedStep = isComplete ? 4 : (n.registrationStep ?? 1);
-        if (list.length > 0) {
-          setProgressTarget(48 + Math.round(((index + 1) / list.length) * 28));
+        const accountStatus = resolveNurseAccountStatus(unwrapped, forcedStatus);
+        const isComplete = staffMember
+          || unwrapped.registrationComplete === true
+          || unwrapped.isComplete === true
+          || completedIds.has(id);
+        const completedStep = isComplete ? 4 : (unwrapped.registrationStep ?? 1);
+        if (total > 0) {
+          setProgressTarget(48 + Math.round(((index + 1) / total) * 28));
         }
         return {
           id,
-          name: [n.firstName, n.lastName].filter(Boolean).join(' ') || n.name || '—',
-          initials: ([n.firstName, n.lastName].filter(Boolean).join(' ') || n.name || '—') !== '—'
-            ? ([n.firstName, n.lastName].filter(Boolean).join(' ') || n.name || '—').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
+          name: [unwrapped.firstName, unwrapped.lastName].filter(Boolean).join(' ') || unwrapped.name || '—',
+          initials: ([unwrapped.firstName, unwrapped.lastName].filter(Boolean).join(' ') || unwrapped.name || '—') !== '—'
+            ? ([unwrapped.firstName, unwrapped.lastName].filter(Boolean).join(' ') || unwrapped.name || '—').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
             : '?',
           profilePhotoUrl,
-          license: n.mmcPinNo || '—',
-          role: staffMember ? 'Staff' : (ROLE_LABELS[n.role] || n.role || n.jobTitle || '—'),
+          license: unwrapped.mmcPinNo || '—',
+          role: staffMember ? 'Staff' : (ROLE_LABELS[unwrapped.role] || unwrapped.role || unwrapped.jobTitle || '—'),
           roleRaw,
           isStaff: staffMember,
           isPlatformUser: false,
-          phone: n.phone || '—',
-          email: n.email || '—',
-          gender: n.gender || '—',
-          joined: n.createdAt ? new Date(n.createdAt).toISOString().split('T')[0] : '—',
-          address: n.address || '—',
+          phone: unwrapped.phone || '—',
+          email: unwrapped.email || '—',
+          gender: unwrapped.gender || '—',
+          joined: unwrapped.createdAt ? new Date(unwrapped.createdAt).toISOString().split('T')[0] : '—',
+          address: unwrapped.address || '—',
           completedStep,
           isComplete,
+          status: accountStatus,
         };
-      }));
+      };
+
+      const activeTotal = list.length + deactivatedList.length;
+      const mappedFromList = await Promise.all(
+        list.map((n, index) => mapNurseEntry(n, index, activeTotal, null)),
+      );
+      const mappedFromDeactivatedEndpoint = await Promise.all(
+        deactivatedList.map((n, index) => mapNurseEntry(n, list.length + index, activeTotal, 'deactivated')),
+      );
+
+      const deactivatedFromMain = mappedFromList.filter((entry) => entry.status === 'deactivated');
+      const activeMapped = mappedFromList.filter((entry) => entry.status !== 'deactivated');
+      const mergedDeactivated = dedupeNursesByIdentity([
+        ...mappedFromDeactivatedEndpoint,
+        ...deactivatedFromMain,
+      ]);
 
       let platformStaff = [];
       if (usersRes?.ok) {
@@ -447,7 +641,7 @@ export default function Workforce() {
           const authId = String(user?._id || user?.id || user?.userId || '').trim();
           if (email && authId) emailToAuthUserId.set(email, authId);
         });
-        const nursesWithAuthIds = mappedNurses.map((entry) => {
+        const nursesWithAuthIds = activeMapped.map((entry) => {
           if (!entry.isStaff) return entry;
           const email = String(entry.email || '').trim().toLowerCase();
           const authUserId = email ? emailToAuthUserId.get(email) : null;
@@ -475,15 +669,19 @@ export default function Workforce() {
             return true;
           })
           .map(mapPlatformUserToRow)
-          .filter((entry) => entry.id);
+          .filter((entry) => entry.id)
+          .map((entry) => ({ ...entry, status: 'active' }));
         setNurses([...nursesWithAuthIds, ...platformStaff]);
       } else {
-        setNurses(mappedNurses);
+        setNurses(activeMapped);
       }
+      setDeactivatedNurses(mergedDeactivated.filter((entry) => !entry.isStaff));
+      if (mergedDeactivated.length > 0) setDeactivatedLoadError('');
       setAvatarLoadErrors({});
       setProgressTarget(100);
     } catch (err) {
       console.error('Failed to fetch nurses:', err);
+      setDeactivatedNurses([]);
     } finally {
       finishProgress(() => setLoading(false));
     }
@@ -493,15 +691,18 @@ export default function Workforce() {
 
   const filterCounts = useMemo(() => ({
     All: nurses.filter((n) => !n.isStaff).length,
-    Complete: nurses.filter((n) => !n.isStaff && n.isComplete).length,
+    Deactivated: deactivatedNurses.length,
     Staff: nurses.filter((n) => n.isStaff).length,
-  }), [nurses]);
+  }), [nurses, deactivatedNurses]);
 
   // ── Table logic ──
-  const filtered = nurses.filter((n) => {
+  const filtered = (filter === 'Deactivated' ? deactivatedNurses : nurses).filter((n) => {
     if (filter === 'Staff') return n.isStaff;
-    if (n.isStaff) return false;
-    if (filter === 'Complete' && !n.isComplete) return false;
+    if (filter === 'Deactivated') {
+      // deactivatedNurses already excludes staff
+    } else if (n.isStaff) {
+      return false;
+    }
     if (!search) return true;
     const q = search.toLowerCase();
     return (
@@ -538,6 +739,7 @@ export default function Workforce() {
   const endRow = Math.min(page * rowsPerPage, sorted.length);
   const paged = sorted.slice(startRow - 1, endRow);
   const isStaffTable = filter === 'Staff';
+  const isDeactivatedTable = filter === 'Deactivated';
 
   const handleExportNurses = () => {
     const headers = ['Name', 'Email', 'Role', 'License', 'Joined', 'Phone', 'Registration'];
@@ -548,7 +750,9 @@ export default function Workforce() {
       n.license,
       n.joined,
       n.phone,
-      n.isComplete ? 'Complete' : 'In progress',
+      n.status === 'deactivated'
+        ? 'Deactivated'
+        : (n.isStaff ? 'Staff' : (n.isComplete ? 'Complete' : 'Active')),
     ]);
     const csv = [headers, ...rows]
       .map((row) => row.map((value) => `"${String(value ?? '').replace(/"/g, '""')}"`).join(','))
@@ -557,7 +761,7 @@ export default function Workforce() {
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `nurses-${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute('download', `nurses-${filter === 'Deactivated' ? 'deactivated-' : ''}${new Date().toISOString().slice(0, 10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -653,6 +857,42 @@ export default function Workforce() {
     e.stopPropagation();
     setDeleteError('');
     setDeleteTarget(nurse);
+  };
+
+  const handleActivateNurse = async (nurse, e) => {
+    e?.stopPropagation?.();
+    const id = String(nurse?.id || '').trim();
+    if (!id) {
+      setActivateActionError('Unable to activate this nurse because a valid nurse ID was not found.');
+      return;
+    }
+
+    setActivatingNurseId(id);
+    setActivateActionError('');
+    setActivateActionSuccess('');
+
+    try {
+      const response = await apiFetch(`/nurses/${encodeURIComponent(id)}/activate`, {
+        method: 'PATCH',
+        quiet: true,
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.message || payload?.error || 'Unable to activate nurse.');
+      }
+
+      const activatedNurse = { ...nurse, status: 'active' };
+      setDeactivatedNurses((prev) => prev.filter((entry) => String(entry.id) !== id));
+      setNurses((prev) => {
+        const without = prev.filter((entry) => String(entry.id) !== id);
+        return [...without, activatedNurse];
+      });
+      setActivateActionSuccess(payload?.message || `${nurse.name || 'Nurse'} has been activated.`);
+    } catch (err) {
+      setActivateActionError(err?.message || 'Unable to activate nurse.');
+    } finally {
+      setActivatingNurseId('');
+    }
   };
 
   const closeDeleteModal = () => {
@@ -1676,13 +1916,29 @@ export default function Workforce() {
           </div>
 
           <DataTableHeader
-            title={isStaffTable ? 'Staff list' : 'Nurses list'}
+            title={isStaffTable ? 'Staff list' : (isDeactivatedTable ? 'Deactivated nurses' : 'Nurses list')}
             legend={[
               { label: 'Registration complete', tone: 'success' },
-              { label: 'In progress', tone: 'warning' },
+              { label: 'Active', tone: 'active' },
+              { label: 'Deactivated', tone: 'neutral' },
               { label: 'Staff', tone: 'info' },
             ]}
           />
+
+          {isDeactivatedTable && activateActionSuccess ? (
+            <div className="workforce-activate-banner workforce-activate-banner--success" role="status">
+              <FiCheck size={15} aria-hidden />
+              <span>{activateActionSuccess}</span>
+              <button type="button" onClick={() => setActivateActionSuccess('')}>Dismiss</button>
+            </div>
+          ) : null}
+          {isDeactivatedTable && activateActionError ? (
+            <div className="workforce-activate-banner workforce-activate-banner--error" role="alert">
+              <FiAlertCircle size={15} aria-hidden />
+              <span>{activateActionError}</span>
+              <button type="button" onClick={() => setActivateActionError('')}>Dismiss</button>
+            </div>
+          ) : null}
 
           <div className="table-responsive patients-table-wrap hospital-table-wrap">
             <table className="table kh-table patients-table hospital-table" style={{ marginBottom: 0 }}>
@@ -1704,11 +1960,9 @@ export default function Workforce() {
                 {loading && (
                   <TablePageLoader
                     progress={loadProgress}
-                    title="Loading nurses"
-                    subtitle="Fetching nurse and staff records from your workforce…"
                     colSpan={8}
-                    skeletonColumns={8}
-                    icon={FiUser}
+                    simple
+                    ariaLabel="Loading nurses"
                   />
                 )}
                 {!loading && paged.length === 0 && (
@@ -1718,18 +1972,24 @@ export default function Workforce() {
                         ? (filterCounts.Staff === 0
                           ? 'No staff users yet. Use Add New User with the Staff role.'
                           : 'No staff users match your search.')
-                        : (nurses.length === 0
-                          ? 'No nurses registered yet. Use Register Nurse to add one.'
-                          : 'No nurses match your filters or search.')}
+                        : filter === 'Deactivated'
+                          ? (deactivatedLoadError
+                            ? deactivatedLoadError
+                            : (filterCounts.Deactivated === 0
+                              ? 'No deactivated nurses.'
+                              : 'No deactivated nurses match your search.'))
+                          : (filterCounts.All === 0
+                            ? 'No nurses registered yet. Use Register Nurse to add one.'
+                            : 'No nurses match your filters or search.')}
                     </td>
                   </tr>
                 )}
                 {!loading && paged.map((n, i) => (
                   <tr
-                    key={n.id}
+                    key={n.id || n.email || `${n.name}-${startRow + i}`}
                     className="patients-row-card"
-                    onClick={n.isStaff ? undefined : () => navigate(`/workforce/${n.id}`)}
-                    style={{ cursor: n.isStaff ? 'default' : 'pointer' }}
+                    onClick={n.isStaff || !n.id ? undefined : () => navigate(`/workforce/${n.id}`)}
+                    style={{ cursor: n.isStaff || !n.id ? 'default' : 'pointer' }}
                   >
                     <td className="col-num" data-label="#">{startRow + i}</td>
                     <td data-label="Nurse">
@@ -1775,34 +2035,61 @@ export default function Workforce() {
                     <td data-label="Status">
                       {n.isStaff ? (
                         <HospitalStatus label="Staff" tone="info" />
+                      ) : n.status === 'deactivated' ? (
+                        <HospitalStatus label="Deactivated" tone="neutral" />
                       ) : (
                         <HospitalStatus
-                          label={n.isComplete ? 'Complete' : 'In progress'}
-                          tone={n.isComplete ? 'success' : 'warning'}
+                          label={n.isComplete ? 'Complete' : 'Active'}
+                          tone={n.isComplete ? 'success' : 'active'}
                         />
                       )}
                     </td>
                     <td data-label="Actions" className="workforce-actions-cell hospital-table-actions-cell" onClick={(e) => e.stopPropagation()}>
-                      <HospitalTableActions
-                        onEdit={n.isStaff ? undefined : (e) => {
-                          e.stopPropagation();
-                          navigate(`/workforce/${n.id}`);
-                        }}
-                        onDelete={(e) => handleDeleteNurse(n, e)}
-                        editLabel={`View ${n.name}`}
-                        deleteLabel={`Delete ${n.name}`}
-                      >
-                        {n.isStaff ? (
-                          <StaffRowActions
-                            row={n}
-                            onEditInfo={(row, e) => {
+                      {isDeactivatedTable ? (
+                        <div className="hospital-table-actions workforce-activate-actions">
+                          <button
+                            type="button"
+                            className="workforce-activate-btn"
+                            disabled={!n.id || activatingNurseId === n.id}
+                            onClick={(e) => handleActivateNurse(n, e)}
+                            aria-label={`Activate ${n.name}`}
+                            title={`Activate ${n.name}`}
+                          >
+                            <FiRefreshCw size={14} aria-hidden />
+                            <span>{activatingNurseId === n.id ? 'Activating…' : 'Activate'}</span>
+                          </button>
+                          <HospitalTableActions
+                            onEdit={n.id ? (e) => {
                               e.stopPropagation();
-                              openPlatformUserEdit(row);
-                            }}
-                            onResetPassword={openStaffResetPassword}
+                              navigate(`/workforce/${n.id}`);
+                            } : undefined}
+                            onDelete={(e) => handleDeleteNurse(n, e)}
+                            editLabel={`View ${n.name}`}
+                            deleteLabel={`Delete ${n.name}`}
                           />
-                        ) : null}
-                      </HospitalTableActions>
+                        </div>
+                      ) : (
+                        <HospitalTableActions
+                          onEdit={n.isStaff ? undefined : (e) => {
+                            e.stopPropagation();
+                            navigate(`/workforce/${n.id}`);
+                          }}
+                          onDelete={(e) => handleDeleteNurse(n, e)}
+                          editLabel={`View ${n.name}`}
+                          deleteLabel={`Delete ${n.name}`}
+                        >
+                          {n.isStaff ? (
+                            <StaffRowActions
+                              row={n}
+                              onEditInfo={(row, e) => {
+                                e.stopPropagation();
+                                openPlatformUserEdit(row);
+                              }}
+                              onResetPassword={openStaffResetPassword}
+                            />
+                          ) : null}
+                        </HospitalTableActions>
+                      )}
                     </td>
                   </tr>
                 ))}

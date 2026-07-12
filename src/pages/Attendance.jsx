@@ -1145,12 +1145,6 @@ export default function Attendance() {
           {listLoading && attendanceRecords.length === 0 ? (
             <TablePageLoaderPanel
               progress={loadProgress}
-              title="Loading attendance"
-              subtitle={loadStatus || `Fetching visits, clock times, and open sessions for ${periodLabel}…`}
-              icon={FiClock}
-              skeletonRows={6}
-              skeletonColumns={9}
-              showSkeleton
               ariaLabel="Loading attendance records"
             />
           ) : filtered.length === 0 ? (

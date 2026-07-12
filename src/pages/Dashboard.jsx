@@ -24,6 +24,8 @@ import {
 import { extractAlertsFromPayload, mapAlertToCase, formatCaseStatusLabel, patientInitials } from '../utils/alertMapping';
 import { listAdmissionDrafts } from '../utils/admissionDrafts';
 import DashboardAlertModal from '../components/DashboardAlertModal';
+import TablePageLoader from '../components/TablePageLoader';
+import { useLoadProgress } from '../hooks/useLoadProgress';
 
 async function parseJsonResponse(res) {
   const text = await res.text();
@@ -95,6 +97,7 @@ export default function Dashboard() {
   const [watchlistFlags, setWatchlistFlags] = useState([]);
   const [watchlistLoading, setWatchlistLoading] = useState(true);
   const [watchlistError, setWatchlistError] = useState('');
+  const { progress: watchlistProgress, finishProgress: finishWatchlistProgress } = useLoadProgress(watchlistLoading);
   const [selectedFlag, setSelectedFlag] = useState(null);
   const [flagTab, setFlagTab] = useState('all');
   const [incompleteAdmissions, setIncompleteAdmissions] = useState([]);
@@ -185,9 +188,9 @@ export default function Dashboard() {
       }
       setWatchlistFlags([]);
     } finally {
-      setWatchlistLoading(false);
+      finishWatchlistProgress(() => setWatchlistLoading(false));
     }
-  }, [on401]);
+  }, [on401, finishWatchlistProgress]);
 
   useEffect(() => {
     loadAlerts();
@@ -413,9 +416,11 @@ export default function Dashboard() {
               </thead>
               <tbody>
                 {watchlistLoading ? (
-                  <tr>
-                    <td colSpan={8} className="db2-watchlist-table__empty">Loading pending alerts…</td>
-                  </tr>
+                  <TablePageLoader
+                    progress={watchlistProgress}
+                    colSpan={8}
+                    ariaLabel="Loading pending alerts"
+                  />
                 ) : watchlistError ? (
                   <tr>
                     <td colSpan={8} className="db2-watchlist-table__empty">Watchlist unavailable. Check connection and refresh.</td>

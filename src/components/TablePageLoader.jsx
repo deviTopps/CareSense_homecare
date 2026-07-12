@@ -9,19 +9,29 @@ function LoaderPanel({
   icon: Icon = FiFileText,
   ariaLabel,
   showSkeleton = true,
+  simple = true,
 }) {
   const pct = Math.round(Math.min(100, Math.max(0, progress)));
   const label = ariaLabel || `Loading ${title} ${pct} percent`;
 
   return (
-    <div className="reports-table-loader" role="status" aria-live="polite" aria-label={label}>
-      <div className="reports-table-loader__panel">
+    <div
+      className={`reports-table-loader${simple ? ' reports-table-loader--simple' : ''}`}
+      role="status"
+      aria-live="polite"
+      aria-label={label}
+    >
+      <div className={`reports-table-loader__panel${simple ? ' reports-table-loader__panel--simple' : ''}`}>
         <div className="reports-table-loader__spinner" aria-hidden>
           <span className="reports-table-loader__spinner-ring" />
-          <Icon size={22} className="reports-table-loader__icon" />
+          {!simple && <Icon size={22} className="reports-table-loader__icon" />}
         </div>
-        <p className="reports-table-loader__title">{title}</p>
-        <p className="reports-table-loader__subtitle">{subtitle}</p>
+        {!simple && (
+          <>
+            <p className="reports-table-loader__title">{title}</p>
+            <p className="reports-table-loader__subtitle">{subtitle}</p>
+          </>
+        )}
         <div
           className="reports-table-loader__progress"
           role="progressbar"
@@ -36,10 +46,12 @@ function LoaderPanel({
               style={{ width: `${pct}%` }}
             />
           </div>
-          <span className="reports-table-loader__progress-label">{pct}%</span>
+          {!simple && (
+            <span className="reports-table-loader__progress-label">{pct}%</span>
+          )}
         </div>
       </div>
-      {showSkeleton && (
+      {!simple && showSkeleton && (
         <div className="reports-table-loader__skeleton" aria-hidden>
           {Array.from({ length: skeletonRows }, (_, rowIndex) => (
             <div
@@ -69,6 +81,7 @@ export default function TablePageLoader({
   icon,
   ariaLabel,
   showSkeleton = true,
+  simple = true,
 }) {
   return (
     <tr className="reports-table-loader-row">
@@ -82,6 +95,7 @@ export default function TablePageLoader({
           icon={icon}
           ariaLabel={ariaLabel}
           showSkeleton={showSkeleton}
+          simple={simple}
         />
       </td>
     </tr>

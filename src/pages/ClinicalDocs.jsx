@@ -9,12 +9,15 @@ import {
   fetchAllResolvedAlerts,
   fetchAlertsOptionalPath,
 } from '../utils/alerts';
-import { extractCaseImageAttachment } from '../utils/alertMapping';
+import { extractCaseImageAttachment, patientInitials } from '../utils/alertMapping';
 import CaseAttachedImageSection from '../components/CaseAttachedImageSection';
+import { TablePageLoaderPanel } from '../components/TablePageLoader';
+import { useLoadProgress } from '../hooks/useLoadProgress';
 import {
   FiAlertCircle, FiAlertTriangle, FiCheckCircle, FiClock, FiX, FiSearch,
-  FiChevronLeft, FiChevronRight, FiChevronsLeft, FiChevronsRight,
+  FiChevronLeft, FiChevronRight, FiChevronsLeft, FiChevronsRight, FiChevronDown,
   FiUser, FiMapPin, FiPhone, FiActivity, FiFileText, FiSend, FiShield, FiRefreshCw,
+  FiEye, FiMoreHorizontal,
 } from '../icons/hugeicons-feather';
 
 function pickFirst(obj, keys) {
@@ -590,15 +593,33 @@ const SOLUTIONS = [
 ];
 
 const severityStyle = {
-  critical: { bg: '#fef2f2', color: '#dc2626', border: '#fecaca' },
-  high: { bg: '#fff7ed', color: '#ea580c', border: '#fed7aa' },
-  medium: { bg: '#fefce8', color: '#ca8a04', border: '#fef08a' },
+  critical: { bg: '#FDECEC', color: '#DC2626', border: 'transparent' },
+  high: { bg: '#FEF3C7', color: '#B45309', border: 'transparent' },
+  medium: { bg: '#E0EAFF', color: '#2563EB', border: 'transparent' },
 };
 
 const caseStatusStyle = {
-  open: { bg: '#fef2f2', color: '#dc2626', border: '#fecaca', icon: <FiAlertCircle size={12} /> },
-  'in-progress': { bg: '#eff6ff', color: '#2563eb', border: '#bfdbfe', icon: <FiRefreshCw size={12} /> },
-  resolved: { bg: '#F0F7FE', color: '#1565A0', border: '#BAE0FD', icon: <FiCheckCircle size={12} /> },
+  open: {
+    bg: '#FDECEC',
+    color: '#DC2626',
+    border: 'transparent',
+    icon: <FiAlertTriangle size={14} />,
+    variant: 'overdue',
+  },
+  'in-progress': {
+    bg: '#E0EAFF',
+    color: '#2563EB',
+    border: 'transparent',
+    icon: <FiEye size={14} />,
+    variant: 'review',
+  },
+  resolved: {
+    bg: '#DCFCE7',
+    color: '#16A34A',
+    border: 'transparent',
+    icon: <FiCheckCircle size={14} />,
+    variant: 'compliant',
+  },
 };
 
 const activityStatusDot = {
@@ -632,6 +653,7 @@ export default function ClinicalDocs() {
   const [searchParams] = useSearchParams();
   const [cases, setCases] = useState([]);
   const [alertsLoading, setAlertsLoading] = useState(true);
+  const { progress: loadProgress, finishProgress } = useLoadProgress(alertsLoading);
   const [alertsError, setAlertsError] = useState(null);
   const [selected, setSelected] = useState(null);
   const [caseQueue, setCaseQueue] = useState('pending');
@@ -696,9 +718,9 @@ export default function ClinicalDocs() {
       setSelected(null);
       setAlertsError(e.message || 'Failed to load pending alerts');
     } finally {
-      setAlertsLoading(false);
+      finishProgress(() => setAlertsLoading(false));
     }
-  }, [navigate]);
+  }, [navigate, finishProgress]);
 
   const mapRowsToCasesDeduped = (rows) => {
     const byId = new Map();
@@ -732,9 +754,9 @@ export default function ClinicalDocs() {
       setSelected(null);
       setAlertsError(e.message || 'Failed to load resolved alerts');
     } finally {
-      setAlertsLoading(false);
+      finishProgress(() => setAlertsLoading(false));
     }
-  }, [navigate]);
+  }, [navigate, finishProgress]);
 
   const loadResolvedForPatient = useCallback(async (patientId) => {
     const pid = String(patientId ?? '').trim();
@@ -764,9 +786,9 @@ export default function ClinicalDocs() {
       setSelected(null);
       setAlertsError(e.message || 'Failed to load resolved alerts');
     } finally {
-      setAlertsLoading(false);
+      finishProgress(() => setAlertsLoading(false));
     }
-  }, [navigate]);
+  }, [navigate, finishProgress]);
 
   const loadAllResolvedAcrossPendingPatients = useCallback(async () => {
     await loadGlobalResolvedAlerts();
@@ -1000,15 +1022,15 @@ export default function ClinicalDocs() {
   }, []);
 
   return (
-    <div className="page-wrapper emergency-cases-page" style={{ background: '#f1f5f9' }}>
+    <div className="page-wrapper emergency-cases-page">
 
       <div className="emergency-stats-row">
         {[
-          { label: 'Total Cases', value: stats.total, color: '#2E7DB8', bg: '#e8f4fc', icon: <FiFileText size={20} /> },
-          { label: 'Open', value: stats.open, color: '#dc2626', bg: '#fef2f2', icon: <FiAlertCircle size={20} /> },
-          { label: 'In Progress', value: stats.inProgress, color: '#2563eb', bg: '#eff6ff', icon: <FiRefreshCw size={20} /> },
-          { label: 'Resolved', value: stats.resolved, color: '#15803d', bg: '#ecfdf5', icon: <FiCheckCircle size={20} /> },
-          { label: 'Critical Active', value: stats.critical, color: '#dc2626', bg: '#fef2f2', icon: <FiAlertTriangle size={20} /> },
+          { label: 'Total Cases', value: stats.total, color: '#111111', bg: '#F3F4F6', icon: <FiFileText size={20} /> },
+          { label: 'Open', value: stats.open, color: '#DC2626', bg: '#FDECEC', icon: <FiAlertCircle size={20} /> },
+          { label: 'In Progress', value: stats.inProgress, color: '#2563EB', bg: '#E0EAFF', icon: <FiEye size={20} /> },
+          { label: 'Resolved', value: stats.resolved, color: '#16A34A', bg: '#DCFCE7', icon: <FiCheckCircle size={20} /> },
+          { label: 'Critical Active', value: stats.critical, color: '#DC2626', bg: '#FDECEC', icon: <FiAlertTriangle size={20} /> },
         ].map((s, i) => (
           <div key={i} className="emergency-stat-card">
             <div className="emergency-stat-card__icon" style={{ background: s.bg, color: s.color }}>
@@ -1022,148 +1044,148 @@ export default function ClinicalDocs() {
         ))}
       </div>
 
-      <div className="emergency-cases-toolbar">
-        <div className="emergency-cases-toolbar__banner">
-          <div className="emergency-cases-toolbar__title">
-            <FiAlertTriangle size={18} aria-hidden />
-            Emergency case management
-          </div>
-          <div className="d-flex align-items-center flex-wrap gap-2" style={{ justifyContent: 'flex-end' }}>
-            <span className="emergency-cases-toolbar__count">{filtered.length} matching</span>
-            <button
-              type="button"
-              className="emergency-clear-filters"
-              style={{ borderColor: 'rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.12)', color: '#fff' }}
-              onClick={handleRefreshAlerts}
-              disabled={alertsLoading}
-              aria-busy={alertsLoading}
-            >
-              <FiRefreshCw size={14} aria-hidden /> Refresh
-            </button>
-          </div>
+      <div className="emergency-cases-top">
+        <div className="emergency-cases-top__copy">
+          <h2 className="emergency-cases-top__title">Emergency Cases</h2>
+          <p className="emergency-cases-top__subtitle">Triage open alerts, track ownership, and resolve cases from one board.</p>
+        </div>
+        <button
+          type="button"
+          className="emergency-cases-add-btn"
+          onClick={handleRefreshAlerts}
+          disabled={alertsLoading}
+          aria-busy={alertsLoading}
+        >
+          <FiRefreshCw size={16} aria-hidden />
+          Refresh cases
+        </button>
+      </div>
+
+      <div className="emergency-filter-bar">
+        <div className="emergency-filter-bar__chips">
+          <label className="emergency-filter-chip">
+            <span className="emergency-filter-chip__icon" aria-hidden>
+              <FiShield size={16} />
+            </span>
+            <span className="emergency-filter-chip__text">
+              <span className="emergency-filter-chip__label">Queue</span>
+              <select
+                className="emergency-filter-chip__select"
+                value={caseQueue}
+                onChange={(e) => {
+                  if (e.target.value === 'resolved') selectResolvedQueue();
+                  else selectPendingQueue();
+                }}
+                aria-label="Filter by queue"
+              >
+                <option value="pending">Pending</option>
+                <option value="resolved">Resolved</option>
+              </select>
+            </span>
+            <FiChevronDown size={16} className="emergency-filter-chip__chevron" aria-hidden />
+          </label>
+
+          <label className="emergency-filter-chip">
+            <span className="emergency-filter-chip__icon" aria-hidden>
+              <FiActivity size={16} />
+            </span>
+            <span className="emergency-filter-chip__text">
+              <span className="emergency-filter-chip__label">Type</span>
+              <select
+                className="emergency-filter-chip__select"
+                value={typeFilter}
+                onChange={(e) => { setTypeFilter(e.target.value); setPage(1); }}
+                aria-label="Filter by case type"
+              >
+                {TYPE_TABS.map((t) => (
+                  <option key={t.key} value={t.key}>{t.label}</option>
+                ))}
+              </select>
+            </span>
+            <FiChevronDown size={16} className="emergency-filter-chip__chevron" aria-hidden />
+          </label>
+
+          <label className="emergency-filter-chip">
+            <span className="emergency-filter-chip__icon" aria-hidden>
+              <FiCheckCircle size={16} />
+            </span>
+            <span className="emergency-filter-chip__text">
+              <span className="emergency-filter-chip__label">Status</span>
+              <select
+                className="emergency-filter-chip__select"
+                value={statusFilter}
+                onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+                aria-label="Filter by case status"
+              >
+                {STATUS_OPTIONS.map((s) => (
+                  <option key={s} value={s}>{s === 'In-Progress' ? 'In progress' : s}</option>
+                ))}
+              </select>
+            </span>
+            <FiChevronDown size={16} className="emergency-filter-chip__chevron" aria-hidden />
+          </label>
+
+          <label className="emergency-filter-chip emergency-filter-chip--search">
+            <span className="emergency-filter-chip__icon" aria-hidden>
+              <FiSearch size={16} />
+            </span>
+            <input
+              type="search"
+              className="emergency-filter-chip__input"
+              value={searchTerm}
+              onChange={(e) => { setSearchTerm(e.target.value); setPage(1); }}
+              placeholder="Search patient, code, nurse…"
+              aria-label="Search cases"
+            />
+          </label>
         </div>
 
-        <div className="emergency-cases-toolbar__body">
-          <div className="emergency-case-queue-row mb-3">
-            <span className="emergency-field-label d-block mb-2" style={{ color: '#64748b' }}>Alert queue</span>
-            <div className="d-flex flex-wrap align-items-center gap-2">
-              <button
-                type="button"
-                className={`emergency-status-chip${caseQueue === 'pending' ? ' is-active' : ''}`}
-                onClick={selectPendingQueue}
-              >
-                Pending
-              </button>
-              <button
-                type="button"
-                className={`emergency-status-chip${caseQueue === 'resolved' ? ' is-active' : ''}`}
-                onClick={selectResolvedQueue}
-              >
-                Resolved
-              </button>
-              {caseQueue === 'resolved' && (
-                <>
-                  <label className="visually-hidden" htmlFor="resolved-patient-uuid">Patient UUID</label>
-                  <input
-                    id="resolved-patient-uuid"
-                    type="text"
-                    className="emergency-search-input"
-                    style={{ flex: '1 1 220px', minWidth: 200, maxWidth: 420, paddingLeft: 10 }}
-                    value={resolvedPatientId}
-                    onChange={(e) => setResolvedPatientId(e.target.value)}
-                    placeholder="Patient UUID…"
-                    title="Paste the patient id, then choose Load resolved. You can also open this page with ?patientId= in the URL to load automatically."
-                  />
-                  <button
-                    type="button"
-                    className="emergency-clear-filters"
-                    disabled={alertsLoading}
-                    onClick={() => loadResolvedForPatient(resolvedPatientId)}
-                  >
-                    Load resolved
-                  </button>
-                  <button
-                    type="button"
-                    className="emergency-clear-filters"
-                    disabled={alertsLoading}
-                    onClick={loadAllResolvedAcrossPendingPatients}
-                    title="Reload the full resolved list from the server"
-                  >
-                    Reload all resolved
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-
-          <div className="emergency-type-chips" role="tablist" aria-label="Case type">
-            {TYPE_TABS.map(t => (
-              <button
-                key={t.key}
-                type="button"
-                role="tab"
-                aria-selected={typeFilter === t.key}
-                className={`emergency-type-chip${typeFilter === t.key ? ' is-active' : ''}`}
-                onClick={() => { setTypeFilter(t.key); setPage(1); }}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-
-          <div className="emergency-filter-row">
-            <div className="emergency-search-wrap">
-              <label className="emergency-field-label" htmlFor="emergency-case-search">Search</label>
-              <div className="emergency-search-input-wrap">
-                <FiSearch className="emergency-search-icon" size={14} aria-hidden />
-                <input
-                  id="emergency-case-search"
-                  className="emergency-search-input"
-                  value={searchTerm}
-                  onChange={e => { setSearchTerm(e.target.value); setPage(1); }}
-                  placeholder="Patient, code, nurse, region…"
-                />
-              </div>
-            </div>
-
-            <div>
-              <span className="emergency-field-label">Case status</span>
-              <div className="emergency-status-chips">
-                {STATUS_OPTIONS.map(s => (
-                  <button
-                    key={s}
-                    type="button"
-                    className={`emergency-status-chip${statusFilter === s ? ' is-active' : ''}`}
-                    onClick={() => { setStatusFilter(s); setPage(1); }}
-                  >
-                    {s}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {hasFilters && (
-              <button type="button" className="emergency-clear-filters" onClick={resetFilters}>
-                <FiX size={14} aria-hidden /> Clear filters
-              </button>
-            )}
-          </div>
+        <div className="emergency-filter-bar__meta">
+          <span>{[typeFilter !== 'all', statusFilter !== 'All', Boolean(searchTerm)].filter(Boolean).length} filters applied</span>
+          <span aria-hidden>·</span>
+          <button type="button" className="emergency-filter-bar__clear" onClick={resetFilters} disabled={!hasFilters}>
+            Clear all
+          </button>
         </div>
       </div>
 
-      <div className="emergency-cases-shell">
+      {caseQueue === 'resolved' && (
+        <div className="emergency-resolved-tools">
+          <input
+            id="resolved-patient-uuid"
+            type="text"
+            className="emergency-resolved-tools__input"
+            value={resolvedPatientId}
+            onChange={(e) => setResolvedPatientId(e.target.value)}
+            placeholder="Patient UUID…"
+            title="Paste the patient id, then choose Load resolved."
+          />
+          <button
+            type="button"
+            className="emergency-resolved-tools__btn"
+            disabled={alertsLoading}
+            onClick={() => loadResolvedForPatient(resolvedPatientId)}
+          >
+            Load resolved
+          </button>
+          <button
+            type="button"
+            className="emergency-resolved-tools__btn"
+            disabled={alertsLoading}
+            onClick={loadAllResolvedAcrossPendingPatients}
+          >
+            Reload all resolved
+          </button>
+        </div>
+      )}
 
+      <div className="emergency-cases-shell">
         <div className="emergency-cases-main">
           {alertsLoading && cases.length === 0 ? (
-            <div className="emergency-cases-empty">
-              <div className="emergency-cases-empty__graphic">
-                <FiRefreshCw size={36} style={{ opacity: 0.45 }} className="emergency-cases-loading-icon" aria-hidden />
-              </div>
-              <p className="emergency-cases-empty__title">
-                {caseQueue === 'resolved' ? 'Loading resolved alerts…' : 'Loading pending alerts…'}
-              </p>
-              <p className="emergency-cases-empty__hint">Fetching from the server.</p>
-            </div>
+            <TablePageLoaderPanel
+              progress={loadProgress}
+              ariaLabel="Loading alerts"
+            />
           ) : alertsError ? (
             <div className="emergency-cases-empty">
               <div className="emergency-cases-empty__graphic">
@@ -1171,7 +1193,7 @@ export default function ClinicalDocs() {
               </div>
               <p className="emergency-cases-empty__title">Could not load alerts</p>
               <p className="emergency-cases-empty__hint">{alertsError}</p>
-              <button type="button" className="emergency-clear-filters" style={{ marginTop: 12 }} onClick={handleRefreshAlerts}>
+              <button type="button" className="emergency-resolved-tools__btn" style={{ marginTop: 12 }} onClick={handleRefreshAlerts}>
                 <FiRefreshCw size={14} aria-hidden /> Try again
               </button>
             </div>
@@ -1189,7 +1211,7 @@ export default function ClinicalDocs() {
                 {cases.length === 0
                   ? (
                     caseQueue === 'resolved'
-                      ? 'Enter a patient id and tap Load resolved, or use Reload all resolved / Refresh. You can also open Emergency Cases with ?patientId= in the address bar to filter by patient.'
+                      ? 'Enter a patient id and tap Load resolved, or use Reload all resolved / Refresh.'
                       : 'There are no items in the pending queue right now.'
                   )
                   : 'Try widening your filters or search terms.'}
@@ -1199,37 +1221,39 @@ export default function ClinicalDocs() {
             <>
               <div className="table-responsive emergency-cases-table-wrap">
                 <table className="emergency-cases-table">
-                  <colgroup>
-                    <col className="emergency-cases-table__col emergency-cases-table__col--code" />
-                    <col className="emergency-cases-table__col emergency-cases-table__col--patient" />
-                    <col className="emergency-cases-table__col emergency-cases-table__col--type" />
-                    <col className="emergency-cases-table__col emergency-cases-table__col--severity" />
-                    <col className="emergency-cases-table__col emergency-cases-table__col--status" />
-                    <col className="emergency-cases-table__col emergency-cases-table__col--people" />
-                    <col className="emergency-cases-table__col emergency-cases-table__col--date" />
-                    <col className="emergency-cases-table__col emergency-cases-table__col--summary" />
-                  </colgroup>
                   <thead>
                     <tr>
-                      {['Code', 'Patient', 'Type', 'Severity', 'Status', 'Assigned / Flagged', 'Flagged date', 'Summary'].map((h) => (
-                        <th key={h}>{h}</th>
-                      ))}
+                      <th scope="col">Patient</th>
+                      <th scope="col">Overall status</th>
+                      <th scope="col">Next risk</th>
+                      <th scope="col">Case</th>
+                      <th scope="col">Activity</th>
+                      <th scope="col">Owner</th>
+                      <th scope="col" className="emergency-cases-table__col-open">
+                        <span className="visually-hidden">Open</span>
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
                     {paged.map((c) => {
-                      const sev = severityStyle[c.severity] || severityStyle.medium;
                       const cs = caseStatusStyle[c.caseStatus] || caseStatusStyle.open;
-                      const sevKey = c.severity === 'critical' ? 'critical' : c.severity === 'high' ? 'high' : 'medium';
                       const reasonFull = String(c.reason ?? '').trim() || '—';
-                      const reasonShort = shortenTableText(reasonFull, 160);
-                      const typeDisplay = shortenTableText(c.type, 80);
+                      const reasonShort = shortenTableText(reasonFull, 72);
+                      const typeDisplay = shortenTableText(c.type, 40);
+                      const regionDisplay = c.region && c.region !== '—' ? c.region : '';
+                      const subLine = [typeDisplay, regionDisplay].filter(Boolean).join(' · ') || 'Emergency alert';
+                      const nextRisk = c.caseStatus === 'resolved'
+                        ? (reasonShort !== '—' ? reasonShort : 'Case resolved')
+                        : `${formatSeverityLabel(c.severity)} · ${reasonShort}`;
+                      const initials = patientInitials(c.patient);
+                      const owner = String(c.nurse || 'Unassigned');
+                      const ownerShort = owner.length > 18 ? `${owner.slice(0, 15)}…` : owner;
                       return (
                         <tr
                           key={c.id}
                           tabIndex={0}
                           role="button"
-                          className={`emergency-cases-table__row emergency-cases-table__row--${sevKey}${selected?.id === c.id ? ' is-selected' : ''}`}
+                          className={`emergency-cases-table__row${selected?.id === c.id ? ' is-selected' : ''}`}
                           onClick={() => { setSelected(c); setShowResolveForm(false); }}
                           onKeyDown={(e) => {
                             if (e.key === 'Enter' || e.key === ' ') {
@@ -1240,51 +1264,47 @@ export default function ClinicalDocs() {
                           }}
                           aria-current={selected?.id === c.id ? 'true' : undefined}
                         >
-                          <td className="emergency-cases-table__mono">{c.code ?? c.id}</td>
-                          <td className="emergency-cases-table__break">
-                            <div className="emergency-cases-table__patient">{c.patient}</div>
-                            {c.phone?.trim() ? (
-                              <div className="emergency-cases-table__sub">{c.phone.trim()}</div>
-                            ) : null}
-                          </td>
-                          <td className="emergency-cases-table__break"><span className="emergency-cases-table__type-chip" title={c.type}>{typeDisplay}</span></td>
-                          <td className="emergency-cases-table__pill-cell">
-                            <span
-                              className="emergency-cases-table__pill"
-                              style={{
-                                background: sev.bg,
-                                color: sev.color,
-                                border: `1px solid ${sev.border}`,
-                              }}
-                            >
-                              {formatSeverityLabel(c.severity)}
-                            </span>
-                          </td>
-                          <td className="emergency-cases-table__pill-cell">
-                            <span
-                              className="emergency-cases-table__pill emergency-cases-table__pill--status"
-                              style={{
-                                background: cs.bg,
-                                color: cs.color,
-                                border: `1px solid ${cs.border}`,
-                              }}
-                            >
-                              <span className="emergency-cases-table__pill-icon" aria-hidden>{cs.icon}</span>
-                              <span>{formatCaseStatusLabel(c.caseStatus)}</span>
-                            </span>
-                          </td>
-                          <td className="emergency-cases-table__break">
-                            <div className="emergency-cases-table__stack-row">
-                              <span className="emergency-cases-table__inline-label">Assigned</span>
-                              <span className="emergency-cases-table__muted-strong">{c.nurse || '—'}</span>
-                            </div>
-                            <div className="emergency-cases-table__stack-row">
-                              <span className="emergency-cases-table__inline-label">Flagged by</span>
-                              <span className="emergency-cases-table__sub emergency-cases-table__inline-value">{c.flaggedBy}</span>
+                          <td data-label="Patient">
+                            <div className="emergency-cases-table__patient-cell">
+                              <span className="emergency-cases-table__avatar" aria-hidden>{initials}</span>
+                              <div className="emergency-cases-table__patient-copy">
+                                <div className="emergency-cases-table__patient">{c.patient}</div>
+                                <div className="emergency-cases-table__sub">{subLine}</div>
+                              </div>
                             </div>
                           </td>
-                          <td className="emergency-cases-table__muted-strong emergency-cases-table__break emergency-cases-table__nowrap-ish">{c.flaggedDate}</td>
-                          <td className="emergency-cases-table__summary-cell"><span className="emergency-cases-table__reason" title={reasonFull}>{reasonShort}</span></td>
+                          <td data-label="Overall status">
+                            <span
+                              className={`emergency-cases-table__status-pill emergency-cases-table__status-pill--${cs.variant || 'overdue'}`}
+                              style={{ background: cs.bg, color: cs.color }}
+                            >
+                              <span className="emergency-cases-table__status-icon" aria-hidden>{cs.icon}</span>
+                              {formatCaseStatusLabel(c.caseStatus)}
+                            </span>
+                          </td>
+                          <td data-label="Next risk">
+                            <span className="emergency-cases-table__risk" title={reasonFull}>{nextRisk}</span>
+                          </td>
+                          <td data-label="Case">
+                            <div className="emergency-cases-table__case-meta">
+                              <span className="emergency-cases-table__case-code">{c.code ?? c.id}</span>
+                              <span className="emergency-cases-table__case-hint">{formatSeverityLabel(c.severity)} severity</span>
+                            </div>
+                          </td>
+                          <td data-label="Activity">
+                            <span className="emergency-cases-table__activity">
+                              <FiClock size={14} aria-hidden />
+                              Flagged {c.flaggedDate || '—'}
+                            </span>
+                          </td>
+                          <td data-label="Owner">
+                            <span className="emergency-cases-table__owner" title={owner}>{ownerShort}</span>
+                          </td>
+                          <td className="emergency-cases-table__open-cell">
+                            <span className="emergency-cases-table__more" aria-hidden>
+                              <FiMoreHorizontal size={18} />
+                            </span>
+                          </td>
                         </tr>
                       );
                     })}
@@ -1304,7 +1324,7 @@ export default function ClinicalDocs() {
                     .flatMap((pn, idx, arr) => {
                       const out = [];
                       if (idx > 0 && pn - arr[idx - 1] > 1) {
-                        out.push(<span key={`ellipsis-${pn}`} style={{ padding: '5px 4px', fontSize: 12, color: '#94a3b8' }}>…</span>);
+                        out.push(<span key={`ellipsis-${pn}`} className="emergency-pagination__ellipsis">…</span>);
                       }
                       out.push(
                         <button

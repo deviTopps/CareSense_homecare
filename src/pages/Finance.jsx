@@ -26,6 +26,8 @@ import {
   loadFinancePaymentsWithApi,
   summarizeFinance,
 } from '../utils/finance';
+import { TablePageLoaderPanel } from '../components/TablePageLoader';
+import { useLoadProgress } from '../hooks/useLoadProgress';
 import './Finance.css';
 
 export default function Finance() {
@@ -44,6 +46,7 @@ export default function Finance() {
   const [createInvoiceTarget, setCreateInvoiceTarget] = useState(null);
   const [invoiceForm, setInvoiceForm] = useState(EMPTY_INVOICE_FORM);
   const [saving, setSaving] = useState(false);
+  const { progress: loadProgress, finishProgress } = useLoadProgress(loading);
 
   const reloadFinanceData = useCallback(async () => {
     setLoading(true);
@@ -60,9 +63,9 @@ export default function Finance() {
     } catch (err) {
       setError(err?.message || 'Unable to load billing data.');
     } finally {
-      setLoading(false);
+      finishProgress(() => setLoading(false));
     }
-  }, [billingMonth]);
+  }, [billingMonth, finishProgress]);
 
   useEffect(() => {
     reloadFinanceData();
@@ -271,10 +274,10 @@ export default function Finance() {
             </div>
 
             {loading ? (
-              <div className="finance-loading">
-                <span className="finance-loading__spinner" aria-hidden />
-                Loading billing data…
-              </div>
+              <TablePageLoaderPanel
+                progress={loadProgress}
+                ariaLabel="Loading billing data"
+              />
             ) : filteredBilling.length === 0 ? (
               <div className="finance-empty">
                 <div className="finance-empty__icon"><FiCreditCard size={26} /></div>

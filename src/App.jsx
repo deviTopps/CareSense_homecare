@@ -12,6 +12,29 @@ import useTheme from './hooks/useTheme';
 import Footer from './components/Footer';
 import { TargetedGuideProvider } from './context/TargetedGuideContext';
 import TargetedGuide from './components/TargetedGuide';
+import { TablePageLoaderPanel } from './components/TablePageLoader';
+import { useLoadProgress } from './hooks/useLoadProgress';
+
+function PageFallback() {
+  const { progress } = useLoadProgress(true);
+  return (
+    <div
+      style={{
+        minHeight: '40vh',
+        display: 'grid',
+        placeItems: 'center',
+        padding: '24px',
+      }}
+      role="status"
+      aria-live="polite"
+    >
+      <TablePageLoaderPanel
+        progress={progress}
+        ariaLabel="Loading page"
+      />
+    </div>
+  );
+}
 
 const LandingPage = lazy(() => import('./pages/LandingPage'));
 const Auth = lazy(() => import('./pages/Auth'));
@@ -33,24 +56,6 @@ const Finance = lazy(() => import('./pages/Finance'));
 const InvoicesPayments = lazy(() => import('./pages/InvoicesPayments'));
 const Reports = lazy(() => import('./pages/Reports'));
 const WalletSuccess = lazy(() => import('./pages/WalletSuccess'));
-
-function RouteFallback() {
-  return (
-    <div
-      style={{
-        minHeight: '40vh',
-        display: 'grid',
-        placeItems: 'center',
-        color: '#64748b',
-        fontFamily: 'Figtree, system-ui, sans-serif',
-      }}
-      role="status"
-      aria-live="polite"
-    >
-      Loading…
-    </div>
-  );
-}
 
 function ProtectedRoute({ isAuthenticated, children }) {
   const location = useLocation();
@@ -171,7 +176,7 @@ function App() {
         onStaySignedIn={handleStaySignedIn}
         onLogout={handleLogout}
       />
-      <Suspense fallback={<RouteFallback />}>
+      <Suspense fallback={<PageFallback />}>
         <Routes>
           <Route
             path="/login"

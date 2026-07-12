@@ -56,6 +56,8 @@ import {
   recordPatientPaymentViaApi,
   summarizeFinance,
 } from '../utils/finance';
+import { TablePageLoaderPanel } from '../components/TablePageLoader';
+import { useLoadProgress } from '../hooks/useLoadProgress';
 import './Finance.css';
 
 const TABS = [
@@ -108,6 +110,7 @@ export default function InvoicesPayments() {
   const [deleteInvoiceTarget, setDeleteInvoiceTarget] = useState(null);
   const [deleteInvoiceError, setDeleteInvoiceError] = useState('');
   const [invoiceLogoFailed, setInvoiceLogoFailed] = useState(false);
+  const { progress: loadProgress, finishProgress } = useLoadProgress(loading);
 
   const reloadFinanceData = useCallback(async () => {
     setLoading(true);
@@ -124,9 +127,9 @@ export default function InvoicesPayments() {
     } catch (err) {
       setError(err?.message || 'Unable to load finance data.');
     } finally {
-      setLoading(false);
+      finishProgress(() => setLoading(false));
     }
-  }, [billingMonth]);
+  }, [billingMonth, finishProgress]);
 
   useEffect(() => {
     reloadFinanceData();
@@ -653,10 +656,10 @@ export default function InvoicesPayments() {
             </div>
 
             {loading ? (
-              <div className="finance-loading">
-                <span className="finance-loading__spinner" aria-hidden />
-                Loading invoices & payments…
-              </div>
+              <TablePageLoaderPanel
+                progress={loadProgress}
+                ariaLabel="Loading invoices and payments"
+              />
             ) : (
               <>
                 {activeTab === 'invoices' && (
