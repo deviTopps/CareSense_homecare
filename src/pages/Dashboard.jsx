@@ -1,17 +1,18 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import {
-  FiAlertTriangle,
-  FiUser,
-  FiUsers,
-  FiMessageCircle,
-  FiChevronRight,
   FiCalendar,
-  FiClock,
+  FiDownload,
   FiActivity,
-  FiTrendingUp,
+  FiUsers,
+  FiUser,
+  FiPhone,
+  FiCheck,
+  FiX,
   FiArrowRight,
+  FiAlertTriangle,
+  FiEye,
 } from '../icons/hugeicons-feather';
 import { fetchAllPatients } from '../utils/patients';
 import { fetchEnquiries, extractEnquiriesList } from '../utils/enquiries';
@@ -19,13 +20,18 @@ import {
   getUser,
   fetchDashboardSummary,
   normalizeDashboardSummary,
+  fetchUpcomingCareVisits,
   fetchPendingAlerts,
 } from '../api';
-import { extractAlertsFromPayload, mapAlertToCase, formatCaseStatusLabel, patientInitials } from '../utils/alertMapping';
+import {
+  extractAlertsFromPayload,
+  mapAlertToCase,
+  patientInitials,
+  formatCaseStatusLabel,
+} from '../utils/alertMapping';
 import { listAdmissionDrafts } from '../utils/admissionDrafts';
 import DashboardAlertModal from '../components/DashboardAlertModal';
-import TablePageLoader from '../components/TablePageLoader';
-import { useLoadProgress } from '../hooks/useLoadProgress';
+import './Dashboard.css';
 
 async function parseJsonResponse(res) {
   const text = await res.text();
@@ -37,51 +43,107 @@ async function parseJsonResponse(res) {
   }
 }
 
-const FALLBACK_URGENT_COUNT = 0;
-
-const SEVERITY_CONFIG = {
-  critical: { bg: '#fef2f2', color: '#dc2626', border: '#fecaca', dot: '#ef4444' },
-  high: { bg: '#fff7ed', color: '#ea580c', border: '#fed7aa', dot: '#f97316' },
-  medium: { bg: '#fefce8', color: '#ca8a04', border: '#fef08a', dot: '#eab308' },
-};
-
-function getGreeting() {
-  const h = new Date().getHours();
-  if (h < 12) return 'Good morning';
-  if (h < 17) return 'Good afternoon';
-  return 'Good evening';
+function pickFirst(...values) {
+  for (const value of values) {
+    if (value == null) continue;
+    if (typeof value === 'object') continue;
+    const text = String(value).trim();
+    if (text) return text;
+  }
+  return '';
 }
 
-function formatTodayDate() {
-  return new Date().toLocaleDateString('en-US', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
+function extractListPayload(payload) {
+  const candidates = [
+    payload,
+    payload?.data,
+    payload?.results,
+    payload?.items,
+    payload?.docs,
+    payload?.rows,
+    payload?.visits,
+    payload?.careVisits,
+    payload?.data?.results,
+    payload?.data?.items,
+    payload?.data?.visits,
+  ];
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) return candidate.filter(Boolean);
+  }
+  return [];
+}
+
+function formatVisitDay(raw) {
+  const value = pickFirst(
+    raw?.nextVisit,
+    raw?.next_visit,
+    raw?.scheduledDate,
+    raw?.scheduled_date,
+    raw?.appointmentDate,
+    raw?.appointment_date,
+    raw?.visitDate,
+    raw?.visit_date,
+    raw?.date,
+  );
+  if (!value) return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return d;
+}
+
+function visitPatientName(raw) {
+  return pickFirst(
+    raw?.patientName,
+    raw?.patient_name,
+    typeof raw?.patient === 'string' ? raw.patient : '',
+    raw?.patient?.name,
+    [raw?.patient?.firstName, raw?.patient?.lastName].filter(Boolean).join(' '),
+    raw?.clientName,
+    raw?.name,
+  ) || 'Patient';
+}
+
+function enquiryName(raw) {
+  return pickFirst(
+    raw?.nameOfClient,
+    raw?.clientName,
+    raw?.name,
+    raw?.fullName,
+    [raw?.firstName, raw?.lastName].filter(Boolean).join(' '),
+  ) || 'New enquiry';
+}
+
+function enquiryWhen(raw) {
+  const value = pickFirst(
+    raw?.dateOfContact,
+    raw?.preferredDate,
+    raw?.appointmentDate,
+    raw?.createdAt,
+    raw?.created_at,
+  );
+  if (!value) return 'Schedule pending';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  return d.toLocaleString('en-US', {
+    day: '2-digit',
+    month: 'short',
+    hour: 'numeric',
+    minute: '2-digit',
   });
 }
 
-function CaseStatusBadge({ status }) {
-  const normalized = String(status || 'open').toLowerCase();
-  const tone = normalized === 'resolved' ? 'resolved' : normalized === 'in-progress' ? 'progress' : 'open';
-  return (
-    <span className={`db2-case-badge db2-case-badge--${tone}`}>
-      {formatCaseStatusLabel(status)}
-    </span>
-  );
+function statusTone(status) {
+  const s = String(status || '').toLowerCase();
+  if (s.includes('cancel') || s.includes('resolved') || s.includes('closed')) return 'canceled';
+  if (s.includes('progress') || s.includes('open') || s.includes('pending')) return 'open';
+  return 'confirmed';
 }
 
-function SeverityBadge({ severity }) {
-  const cfg = SEVERITY_CONFIG[severity] || SEVERITY_CONFIG.medium;
-  return (
-    <span
-      className="db2-severity-badge"
-      style={{ background: cfg.bg, color: cfg.color, borderColor: cfg.border }}
-    >
-      <span className="db2-severity-dot" style={{ background: cfg.dot }} />
-      {severity}
-    </span>
-  );
+function severityTone(severity) {
+  const s = String(severity || '').toLowerCase();
+  if (s === 'critical') return 'critical';
+  if (s === 'high') return 'high';
+  return 'medium';
 }
 
 export default function Dashboard() {
@@ -94,12 +156,12 @@ export default function Dashboard() {
   const [emergencyCount, setEmergencyCount] = useState(0);
   const [cardsLoading, setCardsLoading] = useState(true);
 
-  const [watchlistFlags, setWatchlistFlags] = useState([]);
-  const [watchlistLoading, setWatchlistLoading] = useState(true);
-  const [watchlistError, setWatchlistError] = useState('');
-  const { progress: watchlistProgress, finishProgress: finishWatchlistProgress } = useLoadProgress(watchlistLoading);
-  const [selectedFlag, setSelectedFlag] = useState(null);
-  const [flagTab, setFlagTab] = useState('all');
+  const [appointments, setAppointments] = useState([]);
+  const [emergencies, setEmergencies] = useState([]);
+  const [emergenciesLoading, setEmergenciesLoading] = useState(true);
+  const [emergenciesError, setEmergenciesError] = useState('');
+  const [selectedEmergency, setSelectedEmergency] = useState(null);
+  const [requests, setRequests] = useState([]);
   const [incompleteAdmissions, setIncompleteAdmissions] = useState([]);
 
   const on401 = useCallback(() => navigate('/login', { replace: true }), [navigate]);
@@ -110,9 +172,6 @@ export default function Dashboard() {
 
   useEffect(() => {
     refreshIncompleteAdmissions();
-  }, [refreshIncompleteAdmissions]);
-
-  useEffect(() => {
     const refresh = () => refreshIncompleteAdmissions();
     window.addEventListener('focus', refresh);
     window.addEventListener('admission-drafts-changed', refresh);
@@ -150,21 +209,17 @@ export default function Dashboard() {
           ]);
           if (patientsRes.status === 'fulfilled') {
             setPatientCount(Array.isArray(patientsRes.value) ? patientsRes.value.length : 0);
-          } else {
-            setPatientCount(0);
           }
           if (enquiriesRes.status === 'fulfilled') {
             const list = extractEnquiriesList(enquiriesRes.value);
-            setEnquiryCount(Array.isArray(list) ? list.length : list && typeof list === 'object' ? 1 : 0);
-          } else {
-            setEnquiryCount(0);
+            setEnquiryCount(Array.isArray(list) ? list.length : 0);
           }
         } catch {
           setPatientCount(0);
           setEnquiryCount(0);
         }
-        setNurseCount(36);
-        setEmergencyCount(FALLBACK_URGENT_COUNT);
+        setNurseCount(0);
+        setEmergencyCount(0);
       } finally {
         if (!cancelled) setCardsLoading(false);
       }
@@ -173,325 +228,490 @@ export default function Dashboard() {
     return () => { cancelled = true; };
   }, [on401]);
 
-  const loadAlerts = useCallback(async () => {
-    setWatchlistLoading(true);
-    setWatchlistError('');
+  const loadEmergencies = useCallback(async () => {
+    setEmergenciesLoading(true);
+    setEmergenciesError('');
     try {
       const res = await fetchPendingAlerts({ page: 1, limit: 100 }, on401);
       const json = await parseJsonResponse(res);
-      if (!res.ok) throw new Error(json?.message || json?.error || `Could not load alerts (${res.status})`);
+      if (!res.ok) throw new Error(json?.message || json?.error || `Could not load emergencies (${res.status})`);
       const rawList = extractAlertsFromPayload(json);
-      setWatchlistFlags(rawList.map((row, i) => mapAlertToCase(row, i)));
+      setEmergencies(rawList.map((row, i) => mapAlertToCase(row, i)));
+      if (Number.isFinite(rawList.length)) {
+        setEmergencyCount((prev) => (prev > 0 ? prev : rawList.length));
+      }
     } catch (e) {
       if (e.message !== 'Session expired. Please log in again.') {
-        setWatchlistError(e.message || 'Could not load pending alerts.');
+        setEmergenciesError(e.message || 'Could not load incoming emergency cases.');
       }
-      setWatchlistFlags([]);
+      setEmergencies([]);
     } finally {
-      finishWatchlistProgress(() => setWatchlistLoading(false));
+      setEmergenciesLoading(false);
     }
-  }, [on401, finishWatchlistProgress]);
+  }, [on401]);
 
   useEffect(() => {
-    loadAlerts();
-  }, [loadAlerts]);
+    let cancelled = false;
+    const loadPanels = async () => {
+      try {
+        const [visitsRes, enquiriesRes] = await Promise.allSettled([
+          fetchUpcomingCareVisits({ page: 1, limit: 100 }, on401),
+          fetchEnquiries({ page: 1, limit: 20 }, on401),
+        ]);
 
-  const watchlistTypeTabs = useMemo(() => {
-    const types = [...new Set(watchlistFlags.map((f) => f.type).filter(Boolean))].sort();
-    return [{ key: 'all', label: 'All' }, ...types.map((t) => ({ key: t, label: t }))];
-  }, [watchlistFlags]);
+        if (cancelled) return;
 
-  const filtered = useMemo(() => {
-    if (flagTab === 'all') return watchlistFlags;
-    return watchlistFlags.filter((f) => f.type === flagTab);
-  }, [watchlistFlags, flagTab]);
+        if (visitsRes.status === 'fulfilled' && visitsRes.value.ok) {
+          const json = await parseJsonResponse(visitsRes.value);
+          const list = extractListPayload(json);
+          setAppointments(list.map((row, index) => {
+            const date = formatVisitDay(row);
+            return {
+              id: pickFirst(row?.id, row?._id, row?.uuid, `visit-${index}`),
+              patient: visitPatientName(row),
+              date,
+            };
+          }));
+        } else {
+          setAppointments([]);
+        }
+
+        if (enquiriesRes.status === 'fulfilled') {
+          const list = extractEnquiriesList(enquiriesRes.value);
+          setRequests((Array.isArray(list) ? list : []).slice(0, 6).map((row, index) => ({
+            id: pickFirst(row?.id, row?._id, row?.uuid, `enq-${index}`),
+            name: enquiryName(row),
+            when: enquiryWhen(row),
+            raw: row,
+          })));
+        }
+      } finally {
+        // no-op
+      }
+    };
+    loadPanels();
+    loadEmergencies();
+    return () => { cancelled = true; };
+  }, [on401, loadEmergencies]);
 
   const displayName =
-    [accountUser?.firstName, accountUser?.lastName].filter(Boolean).join(' ') ||
-    accountUser?.email?.split('@')[0] ||
-    'there';
+    [accountUser?.firstName, accountUser?.lastName].filter(Boolean).join(' ')
+    || accountUser?.email?.split('@')[0]
+    || 'there';
 
-  const statCards = [
-    { key: 'patients', label: 'Total Patients', value: patientCount, icon: FiUsers, color: '#2e8fd4', bg: '#eff6ff', to: '/patients' },
-    { key: 'enquiries', label: 'Enquiries', value: enquiryCount, icon: FiMessageCircle, color: '#7c3aed', bg: '#f5f3ff', to: '/enquiries' },
-    { key: 'nurses', label: 'Active Nurses', value: nurseCount, icon: FiUser, color: '#059669', bg: '#ecfdf5', to: '/workforce' },
-    { key: 'emergency', label: 'Emergency Cases', value: emergencyCount, icon: FiAlertTriangle, color: '#dc2626', bg: '#fef2f2', to: '/clinical' },
-  ];
+  const careActivityTotal = patientCount + nurseCount + enquiryCount + emergencyCount;
+  const bubbles = useMemo(() => {
+    const items = [
+      { label: 'Patients', value: patientCount, color: '#4A6CF7', textColor: '#FFFFFF' },
+      { label: 'Nurses', value: nurseCount, color: '#AEC0F0', textColor: '#FFFFFF' },
+      { label: 'Enquiries', value: enquiryCount, color: '#D6DEEF', textColor: '#374151' },
+      { label: 'Emergency', value: emergencyCount, color: '#E9EEF9', textColor: '#374151' },
+    ].sort((a, b) => b.value - a.value);
+    const max = Math.max(...items.map((i) => i.value), 1);
+    return items.map((item, index) => {
+      const size = 54 + Math.round((item.value / max) * 70);
+      const left = 6 + index * 22;
+      const top = 18 + (index % 2) * 28;
+      return { ...item, size, left, top, delay: 0.05 * index };
+    });
+  }, [patientCount, nurseCount, enquiryCount, emergencyCount]);
 
-  const quickLinks = [
-    { label: 'Patients', to: '/patients', icon: FiActivity },
-    { label: 'Care Visits', to: '/scheduling', icon: FiCalendar },
-    { label: 'Attendance', to: '/attendance', icon: FiClock },
-    { label: 'Reports', to: '/reports', icon: FiTrendingUp },
-  ];
+  const patientBreakdown = useMemo(() => {
+    const active = Math.max(patientCount - incompleteAdmissions.length, 0);
+    const drafts = incompleteAdmissions.length;
+    const rest = Math.max(patientCount - active - drafts, 0);
+    const max = Math.max(active, drafts, rest, 1);
+    return [
+      { label: 'Active', value: active, color: '#4A6CF7', width: Math.round((active / max) * 100) },
+      { label: 'In progress', value: drafts, color: '#C3D0F4', width: Math.round((drafts / max) * 100) || 18 },
+      { label: 'Other', value: rest, color: '#E9EEF9', width: Math.round((rest / max) * 100) || 12 },
+    ];
+  }, [patientCount, incompleteAdmissions.length]);
+
+  const appointmentBars = useMemo(() => {
+    const labels = ['03-07', '10-14', '17-21', '24-28'];
+    const counts = [0, 0, 0, 0];
+    appointments.forEach((row) => {
+      if (!row.date) return;
+      const day = row.date.getDate();
+      const bucket = Math.min(3, Math.floor((day - 1) / 8));
+      counts[bucket] += 1;
+    });
+    const max = Math.max(...counts, 1);
+    const avg = counts.reduce((a, b) => a + b, 0) / counts.length;
+    const hotIndex = counts.indexOf(Math.max(...counts));
+    return {
+      labels,
+      bars: counts.map((value, i) => ({
+        value,
+        height: Math.max(18, Math.round((value / max) * 100)),
+        hot: i === hotIndex && value > 0,
+        label: labels[i],
+      })),
+      avgPct: Math.round((avg / max) * 100),
+    };
+  }, [appointments]);
+
+  const emergencyStats = useMemo(() => {
+    const critical = emergencies.filter((c) => String(c.severity).toLowerCase() === 'critical').length;
+    const high = emergencies.filter((c) => String(c.severity).toLowerCase() === 'high').length;
+    const open = emergencies.filter((c) => {
+      const s = String(c.caseStatus || '').toLowerCase();
+      return !s.includes('resolved') && !s.includes('closed');
+    }).length;
+    return { critical, high, open };
+  }, [emergencies]);
+
+  const exportData = () => {
+    const lines = [
+      ['Patient', 'Alert', 'Severity', 'Status', 'Nurse', 'Date'].join(','),
+      ...emergencies.map((row) => (
+        [row.patient, row.type, row.severity, formatCaseStatusLabel(row.caseStatus), row.nurse, row.flaggedDate]
+          .map((cell) => `"${String(cell ?? '').replace(/"/g, '""')}"`)
+          .join(',')
+      )),
+    ];
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `caresense-emergencies-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <motion.div
-      className="page-wrapper db2-page"
+      className="page-wrapper dd-page"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      transition={{ duration: 0.25 }}
+      transition={{ duration: 0.28 }}
     >
-      {/* Header */}
-      <div className="db2-header">
-        <div className="db2-header__text">
-          <h1 className="db2-header__greeting">{getGreeting()}, {displayName}</h1>
-          <p className="db2-header__date">{formatTodayDate()}</p>
+      <header className="dd-topbar">
+        <div>
+          <h1 className="dd-topbar__greeting">
+            Welcome back, {displayName}!
+            <span aria-hidden>☀️</span>
+          </h1>
+          <p className="dd-topbar__sub">
+            {new Date().toLocaleDateString('en-US', {
+              weekday: 'long',
+              month: 'long',
+              day: 'numeric',
+              year: 'numeric',
+            })}
+          </p>
         </div>
-        <button
-          type="button"
-          className="db2-header__cta"
-          onClick={() => navigate('/patients?admit=1')}
-        >
-          + Admit New Patient
-        </button>
-      </div>
+        <div className="dd-topbar__actions">
+          <button type="button" className="dd-pill-btn" onClick={exportData}>
+            Export data
+            <span className="dd-pill-btn__circle" aria-hidden>
+              <FiDownload size={14} />
+            </span>
+          </button>
+        </div>
+      </header>
 
-      {/* Stat cards */}
-      <div className="db2-stats-row">
-        {statCards.map((card, i) => {
-          const Icon = card.icon;
-          return (
-            <motion.button
-              key={card.key}
-              type="button"
-              className="db2-stat-card"
-              initial={{ y: 12, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              transition={{ duration: 0.22, delay: 0.04 * i }}
-              onClick={() => navigate(card.to)}
-            >
-              <div className="db2-stat-card__icon" style={{ background: card.bg, color: card.color }}>
-                <Icon size={20} />
-              </div>
-              <div className="db2-stat-card__body">
-                <span className="db2-stat-card__label">{card.label}</span>
-                {cardsLoading ? (
-                  <span className="db2-skeleton db2-skeleton--number" />
-                ) : (
-                  <span className="db2-stat-card__value">{card.value}</span>
-                )}
-              </div>
-              <FiChevronRight size={16} className="db2-stat-card__arrow" />
-            </motion.button>
-          );
-        })}
-      </div>
-
-      {/* Incomplete admissions */}
-      {incompleteAdmissions.length > 0 && (
-        <motion.div
-          className="db2-incomplete-admissions"
-          initial={{ y: 12, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ duration: 0.22, delay: 0.08 }}
-        >
-          <div className="db2-incomplete-admissions__header">
-            <div>
-              <h3 className="db2-section-title">Incomplete Admissions</h3>
-              <p className="db2-incomplete-admissions__subtitle">
-                Continue client admission forms that were saved but not finished.
-              </p>
+      <section className="dd-kpi-row" aria-label="Dashboard metrics">
+        <article className="dd-kpi">
+          <div className="dd-kpi__head">
+            <div className="dd-kpi__title-wrap">
+              <span className="dd-icon-circle"><FiActivity size={18} /></span>
+              <h2 className="dd-kpi__title">Top treatment</h2>
             </div>
-            <span className="db2-incomplete-admissions__count">{incompleteAdmissions.length}</span>
+            <button type="button" className="dd-link-more" onClick={() => navigate('/clinical')}>
+              View more
+            </button>
           </div>
-          <div className="db2-incomplete-admissions__list">
-            {incompleteAdmissions.map((draft) => {
-              const completed = Array.isArray(draft.completedTabs) ? draft.completedTabs.length : 0;
-              const progressPct = Math.round((completed / 11) * 100);
-              const updatedLabel = draft.updatedAt
-                ? new Date(draft.updatedAt).toLocaleString(undefined, {
-                  month: 'short',
-                  day: 'numeric',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })
-                : 'Recently';
-              return (
-                <div key={draft.patientId} className="db2-incomplete-admissions__item">
-                  <div className="db2-incomplete-admissions__item-main">
-                    <strong>{draft.patientName || 'Incomplete admission'}</strong>
-                    <span>
-                      {draft.registrationNumber ? `Reg. ${draft.registrationNumber}` : 'No registration number'}
-                      {' · '}
-                      {progressPct}% complete ({completed} of 11 sections)
-                    </span>
-                    <small>Last saved {updatedLabel}</small>
-                  </div>
-                  <button
-                    type="button"
-                    className="db2-incomplete-admissions__cta"
-                    onClick={() => navigate(`/patients?resume=${encodeURIComponent(draft.patientId)}`)}
-                  >
-                    Continue form
-                    <FiArrowRight size={14} />
-                  </button>
-                </div>
-              );
-            })}
+          <div className="dd-kpi__value-row">
+            {cardsLoading ? <span className="dd-skeleton" /> : (
+              <span className="dd-kpi__value">{careActivityTotal}</span>
+            )}
+            <span className="dd-delta dd-delta--up">+{Math.max(enquiryCount, 4)}</span>
           </div>
-        </motion.div>
-      )}
-
-      {/* Quick links */}
-      <div className="db2-quick-links">
-        <h3 className="db2-section-title">Quick Actions</h3>
-        <div className="db2-quick-links__grid">
-          {quickLinks.map((link) => {
-            const Icon = link.icon;
-            return (
-              <button
-                key={link.to}
-                type="button"
-                className="db2-quick-link"
-                onClick={() => navigate(link.to)}
-              >
-                <span className="db2-quick-link__icon"><Icon size={18} /></span>
-                <span className="db2-quick-link__label">{link.label}</span>
-                <FiArrowRight size={14} className="db2-quick-link__arrow" />
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Watchlist */}
-      <motion.div
-        className="db2-watchlist"
-        initial={{ y: 12, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ duration: 0.22, delay: 0.12 }}
-      >
-        <div className="db2-watchlist__header">
-          <div>
-            <h3 className="db2-section-title">Critical Watchlist</h3>
-            <p className="db2-watchlist__subtitle">Pending alerts requiring attention</p>
+          <div className="dd-legend">
+            {bubbles.map((item) => (
+              <span key={item.label} className="dd-legend__item">
+                <span className="dd-legend__dot" style={{ background: item.color }} />
+                {item.label}
+              </span>
+            ))}
           </div>
-          <div className="db2-watchlist__tabs">
-            {watchlistTypeTabs.map((tab) => {
-              const count = tab.key === 'all'
-                ? watchlistFlags.length
-                : watchlistFlags.filter((f) => f.type === tab.key).length;
-              return (
-                <button
-                  key={tab.key}
-                  type="button"
-                  className={`db2-tab-pill${flagTab === tab.key ? ' db2-tab-pill--active' : ''}`}
-                  onClick={() => setFlagTab(tab.key)}
+          <div className="dd-kpi__viz">
+            <div className="dd-bubbles">
+              {bubbles.map((item) => (
+                <div
+                  key={item.label}
+                  className="dd-bubble"
+                  style={{
+                    width: item.size,
+                    height: item.size,
+                    left: `${item.left}%`,
+                    top: `${item.top}%`,
+                    background: item.color,
+                    color: item.textColor,
+                    animationDelay: `${item.delay}s`,
+                  }}
+                  title={`${item.label}: ${item.value}`}
                 >
-                  {tab.label}
-                  <span className="db2-tab-pill__count">{count}</span>
-                </button>
-              );
-            })}
+                  {item.value}
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
+        </article>
 
-        {watchlistError && !watchlistLoading && (
-          <div className="db2-watchlist__alert">{watchlistError}</div>
-        )}
-
-        <div className="db2-watchlist__table">
-          <div className="db2-watchlist__table-meta">
-            <span>
-              {watchlistLoading
-                ? 'Loading alerts…'
-                : `${filtered.length} pending alert${filtered.length === 1 ? '' : 's'}${flagTab !== 'all' ? ` · ${flagTab}` : ''}`}
+        <article className="dd-kpi">
+          <div className="dd-kpi__head">
+            <div className="dd-kpi__title-wrap">
+              <span className="dd-icon-circle"><FiUser size={18} /></span>
+              <h2 className="dd-kpi__title">Total Nurses</h2>
+            </div>
+            <button type="button" className="dd-link-more" onClick={() => navigate('/workforce')}>
+              View more
+            </button>
+          </div>
+          <div className="dd-kpi__value-row">
+            {cardsLoading ? <span className="dd-skeleton" /> : (
+              <span className="dd-kpi__value">{nurseCount}</span>
+            )}
+            <span className="dd-delta dd-delta--up">+{Math.max(Math.round(nurseCount * 0.05), 1)}</span>
+          </div>
+          <div className="dd-legend">
+            <span className="dd-legend__item">
+              <span className="dd-legend__dot" style={{ background: '#4A6CF7' }} />
+              Active workforce
+            </span>
+            <span className="dd-legend__item">
+              <span className="dd-legend__dot" style={{ background: '#AEC0F0' }} />
+              On roster
             </span>
           </div>
+          <div className="dd-kpi__viz">
+            <div className="dd-patient-bars">
+              <div className="dd-patient-bars__col">
+                <span className="dd-patient-bars__value">{nurseCount}</span>
+                <span className="dd-patient-bars__guide" aria-hidden />
+                <span className="dd-patient-bars__bar" style={{ background: '#4A6CF7', width: '100%' }} />
+              </div>
+              <div className="dd-patient-bars__col">
+                <span className="dd-patient-bars__value">{nurseCount}</span>
+                <span className="dd-patient-bars__guide" aria-hidden />
+                <span className="dd-patient-bars__bar" style={{ background: '#AEC0F0', width: '70%' }} />
+              </div>
+              <div className="dd-patient-bars__col">
+                <span className="dd-patient-bars__value">{Math.max(nurseCount, 0)}</span>
+                <span className="dd-patient-bars__guide" aria-hidden />
+                <span className="dd-patient-bars__bar" style={{ background: '#E9EEF9', width: '45%' }} />
+              </div>
+            </div>
+          </div>
+        </article>
 
-          <div className="db2-watchlist__scroll">
-            <table className="db2-watchlist-table">
+        <article className="dd-kpi">
+          <div className="dd-kpi__head">
+            <div className="dd-kpi__title-wrap">
+              <span className="dd-icon-circle"><FiUsers size={18} /></span>
+              <h2 className="dd-kpi__title">Total patients</h2>
+            </div>
+            <button type="button" className="dd-link-more" onClick={() => navigate('/patients')}>
+              View more
+            </button>
+          </div>
+          <div className="dd-kpi__value-row">
+            {cardsLoading ? <span className="dd-skeleton" /> : (
+              <span className="dd-kpi__value">{patientCount}</span>
+            )}
+            <span className="dd-delta dd-delta--up">+{Math.max(incompleteAdmissions.length, 2)}</span>
+          </div>
+          <div className="dd-legend">
+            {patientBreakdown.map((item) => (
+              <span key={item.label} className="dd-legend__item">
+                <span className="dd-legend__dot" style={{ background: item.color }} />
+                {item.label}
+              </span>
+            ))}
+          </div>
+          <div className="dd-kpi__viz">
+            <div className="dd-patient-bars">
+              {patientBreakdown.map((item) => (
+                <div key={item.label} className="dd-patient-bars__col">
+                  <span className="dd-patient-bars__value">{item.value}</span>
+                  <span className="dd-patient-bars__guide" aria-hidden />
+                  <span
+                    className="dd-patient-bars__bar"
+                    style={{ background: item.color, width: `${Math.max(item.width, 24)}%` }}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        </article>
+
+        <article className="dd-kpi">
+          <div className="dd-kpi__head">
+            <div className="dd-kpi__title-wrap">
+              <span className="dd-icon-circle"><FiCalendar size={18} /></span>
+              <h2 className="dd-kpi__title">Total appointment</h2>
+            </div>
+            <button type="button" className="dd-link-more" onClick={() => navigate('/scheduling')}>
+              View more
+            </button>
+          </div>
+          <div className="dd-kpi__value-row">
+            {cardsLoading ? <span className="dd-skeleton" /> : (
+              <span className="dd-kpi__value">{appointments.length}</span>
+            )}
+            <span className="dd-delta dd-delta--up">+{Math.max(Math.round(appointments.length * 0.1), 1)}</span>
+          </div>
+          <div className="dd-kpi__viz">
+            <div className="dd-appt-chart">
+              <div className="dd-appt-chart__avg" style={{ top: `${Math.max(8, 100 - appointmentBars.avgPct)}%` }}>
+                <span className="dd-appt-chart__avg-tag">Avg</span>
+                <span className="dd-appt-chart__avg-line" />
+              </div>
+              <div className="dd-appt-chart__bars">
+                {appointmentBars.bars.map((bar) => (
+                  <div key={bar.label} className="dd-appt-chart__col">
+                    <div className="dd-appt-chart__bar-wrap">
+                      {bar.hot ? <span className="dd-appt-chart__tip">{bar.value}</span> : null}
+                      <div
+                        className={`dd-appt-chart__bar${bar.hot ? ' is-hot' : ''}`}
+                        style={{ height: `${bar.height}%` }}
+                      />
+                    </div>
+                    <span className="dd-appt-chart__label">{bar.label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <section className="dd-lower">
+        <div className="dd-panel">
+          <div className="dd-panel__head">
+            <div className="dd-panel__title-wrap">
+              <span className="dd-icon-circle"><FiAlertTriangle size={18} /></span>
+              <h2 className="dd-panel__title">Incoming emergency cases</h2>
+            </div>
+            <div className="dd-panel__head-right">
+              <div className="dd-legend">
+                <span className="dd-legend__item">
+                  <span className="dd-legend__dot" style={{ background: '#DC2626' }} />
+                  Critical ({emergencyStats.critical})
+                </span>
+                <span className="dd-legend__item">
+                  <span className="dd-legend__dot" style={{ background: '#F97316' }} />
+                  High ({emergencyStats.high})
+                </span>
+                <span className="dd-legend__item">
+                  <span className="dd-legend__dot" style={{ background: '#4A6CF7' }} />
+                  Open ({emergencyStats.open})
+                </span>
+              </div>
+              <button type="button" className="dd-link-more" onClick={() => navigate('/clinical')}>
+                View more
+              </button>
+            </div>
+          </div>
+
+          <div className="dd-table-wrap">
+            <table className="dd-table">
               <thead>
                 <tr>
-                  <th className="db2-watchlist-table__col-patient">Patient</th>
-                  <th className="db2-watchlist-table__col-type">Alert</th>
-                  <th className="db2-watchlist-table__col-details">Details</th>
-                  <th className="db2-watchlist-table__col-severity">Severity</th>
-                  <th className="db2-watchlist-table__col-status">Status</th>
-                  <th className="db2-watchlist-table__col-nurse">Nurse</th>
-                  <th className="db2-watchlist-table__col-date">Date</th>
-                  <th className="db2-watchlist-table__col-action">Action</th>
+                  <th>Patient</th>
+                  <th>Alert</th>
+                  <th>Severity</th>
+                  <th>Status</th>
+                  <th>Nurse</th>
+                  <th>Date</th>
+                  <th>Action</th>
                 </tr>
               </thead>
               <tbody>
-                {watchlistLoading ? (
-                  <TablePageLoader
-                    progress={watchlistProgress}
-                    colSpan={8}
-                    ariaLabel="Loading pending alerts"
-                  />
-                ) : watchlistError ? (
+                {emergenciesLoading ? (
                   <tr>
-                    <td colSpan={8} className="db2-watchlist-table__empty">Watchlist unavailable. Check connection and refresh.</td>
+                    <td colSpan={7} className="dd-empty">Loading incoming emergency cases…</td>
                   </tr>
-                ) : filtered.length === 0 ? (
+                ) : emergenciesError ? (
                   <tr>
-                    <td colSpan={8} className="db2-watchlist-table__empty">No pending alerts.</td>
+                    <td colSpan={7} className="dd-empty">{emergenciesError}</td>
+                  </tr>
+                ) : emergencies.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="dd-empty">
+                      No incoming emergency cases right now.
+                    </td>
                   </tr>
                 ) : (
-                  filtered.map((flag) => (
+                  emergencies.slice(0, 8).map((row) => (
                     <tr
-                      key={flag.id}
-                      className={`db2-watchlist-table__row${selectedFlag?.id === flag.id ? ' db2-watchlist-table__row--active' : ''}`}
-                      onClick={() => setSelectedFlag(flag)}
+                      key={row.id}
+                      className="dd-table__click-row"
+                      onClick={() => setSelectedEmergency(row)}
                     >
-                      <td className="db2-watchlist-table__cell db2-watchlist-table__cell--patient">
-                        <div className="db2-watchlist-patient">
-                          <span className="db2-watchlist-patient__avatar" aria-hidden>
-                            <FiUser size={16} />
-                          </span>
-                          <div className="db2-watchlist-patient__body">
-                            <strong title={flag.patient}>{flag.patient}</strong>
-                            {(flag.region && flag.region !== '—') || flag.diagnosis ? (
-                              <span className="db2-watchlist-patient__meta">
-                                {[flag.region !== '—' ? flag.region : null, flag.diagnosis || null].filter(Boolean).join(' · ')}
-                              </span>
+                      <td>
+                        <div className="dd-patient-cell">
+                          <span className="dd-avatar" aria-hidden>{patientInitials(row.patient)}</span>
+                          <div>
+                            <strong>{row.patient}</strong>
+                            {row.region && row.region !== '—' ? (
+                              <span className="dd-patient-meta">{row.region}</span>
                             ) : null}
                           </div>
                         </div>
                       </td>
-                      <td className="db2-watchlist-table__cell">
-                        <span className="db2-watchlist-type" title={flag.type}>{flag.type}</span>
-                        {flag.code ? <span className="db2-watchlist-code">{flag.code}</span> : null}
-                      </td>
-                      <td className="db2-watchlist-table__cell db2-watchlist-table__cell--details">
-                        <p className="db2-watchlist-reason" title={flag.reason}>{flag.reason}</p>
-                        {flag.flaggedBy && flag.flaggedBy !== '—' ? (
-                          <span className="db2-watchlist-reason__by">Reported by {flag.flaggedBy}</span>
-                        ) : null}
-                      </td>
-                      <td className="db2-watchlist-table__cell">
-                        <SeverityBadge severity={flag.severity} />
-                      </td>
-                      <td className="db2-watchlist-table__cell">
-                        <CaseStatusBadge status={flag.caseStatus} />
-                      </td>
-                      <td className="db2-watchlist-table__cell db2-watchlist-table__cell--nurse">
-                        <div className="db2-watchlist-nurse">
-                          <span className="db2-watchlist-nurse__avatar" aria-hidden>
-                            {patientInitials(flag.nurse)}
-                          </span>
-                          <span className="db2-watchlist-nurse__name" title={flag.nurse}>
-                            {flag.nurse}
-                          </span>
+                      <td>
+                        <div className="dd-alert-cell">
+                          <strong>{row.type}</strong>
+                          {row.reason ? <span className="dd-patient-meta">{row.reason}</span> : null}
                         </div>
                       </td>
-                      <td className="db2-watchlist-table__cell db2-watchlist-table__cell--date">
-                        {flag.flaggedDate}
+                      <td>
+                        <span className={`dd-severity dd-severity--${severityTone(row.severity)}`}>
+                          <span className="dd-status__dot" />
+                          {row.severity}
+                        </span>
                       </td>
-                      <td className="db2-watchlist-table__cell db2-watchlist-table__cell--action">
-                        <button
-                          type="button"
-                          className="db2-watchlist-view-btn"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedFlag(flag);
-                          }}
-                        >
-                          View
-                          <FiChevronRight size={14} aria-hidden />
-                        </button>
+                      <td>
+                        <span className={`dd-status dd-status--${statusTone(row.caseStatus)}`}>
+                          <span className="dd-status__dot" />
+                          {formatCaseStatusLabel(row.caseStatus)}
+                        </span>
+                      </td>
+                      <td>{row.nurse || 'Unassigned'}</td>
+                      <td>{row.flaggedDate || '—'}</td>
+                      <td>
+                        <div className="dd-row-actions">
+                          <button
+                            type="button"
+                            className="dd-icon-btn dd-icon-btn--call"
+                            aria-label={`Call ${row.patient}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (row.phone && row.phone !== '—') {
+                                window.location.href = `tel:${String(row.phone).replace(/\s+/g, '')}`;
+                              } else {
+                                setSelectedEmergency(row);
+                              }
+                            }}
+                          >
+                            <FiPhone size={16} />
+                          </button>
+                          <button
+                            type="button"
+                            className="dd-icon-btn dd-icon-btn--more"
+                            aria-label={`View ${row.patient}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedEmergency(row);
+                            }}
+                          >
+                            <FiEye size={16} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -500,17 +720,101 @@ export default function Dashboard() {
             </table>
           </div>
         </div>
-      </motion.div>
 
-      {/* Flag detail modal */}
-      {selectedFlag && (
+        <aside className="dd-panel">
+          <div className="dd-panel__head">
+            <div className="dd-panel__title-wrap">
+              <span className="dd-icon-circle"><FiCalendar size={18} /></span>
+              <h2 className="dd-panel__title">Appoint request</h2>
+            </div>
+            <button type="button" className="dd-link-more" onClick={() => navigate('/enquiries')}>
+              View more
+            </button>
+          </div>
+
+          <div className="dd-requests">
+            {requests.length === 0 ? (
+              <div className="dd-empty">No appointment requests right now.</div>
+            ) : (
+              requests.map((req, index) => (
+                <div key={req.id} className="dd-request" style={{ animationDelay: `${0.05 * index}s` }}>
+                  <div className="dd-request__photo" aria-hidden>
+                    {patientInitials(req.name)}
+                  </div>
+                  <div>
+                    <h3 className="dd-request__name">{req.name}</h3>
+                    <p className="dd-request__sub">Individual consultations</p>
+                    {req.when ? (
+                      <span className="dd-request__chip">
+                        <FiCalendar size={13} aria-hidden />
+                        {req.when}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="dd-request__actions">
+                    <button
+                      type="button"
+                      className="dd-icon-btn dd-icon-btn--reject"
+                      aria-label={`Dismiss ${req.name}`}
+                      onClick={() => setRequests((prev) => prev.filter((r) => r.id !== req.id))}
+                    >
+                      <FiX size={18} />
+                    </button>
+                    <button
+                      type="button"
+                      className="dd-icon-btn dd-icon-btn--accept"
+                      aria-label={`Open ${req.name}`}
+                      onClick={() => navigate('/enquiries')}
+                    >
+                      <FiCheck size={18} />
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </aside>
+      </section>
+
+      {incompleteAdmissions.length > 0 ? (
+        <section className="dd-drafts" aria-label="Incomplete admissions">
+          <div className="dd-drafts__head">
+            <h3>Incomplete admissions</h3>
+            <span className="dd-delta dd-delta--up">{incompleteAdmissions.length}</span>
+          </div>
+          <div className="dd-drafts__list">
+            {incompleteAdmissions.slice(0, 4).map((draft) => {
+              const completed = Array.isArray(draft.completedTabs) ? draft.completedTabs.length : 0;
+              const progressPct = Math.round((completed / 11) * 100);
+              return (
+                <div key={draft.patientId} className="dd-drafts__item">
+                  <div>
+                    <strong>{draft.patientName || 'Incomplete admission'}</strong>
+                    <span>{progressPct}% complete · {completed} of 11 sections</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="dd-drafts__cta"
+                    onClick={() => navigate(`/patients?resume=${encodeURIComponent(draft.patientId)}`)}
+                  >
+                    Continue
+                    <FiArrowRight size={13} style={{ marginLeft: 6 }} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
+
+      {selectedEmergency ? (
         <DashboardAlertModal
-          alert={selectedFlag}
-          onClose={() => setSelectedFlag(null)}
-          onResolved={loadAlerts}
+          alert={selectedEmergency}
+          onClose={() => setSelectedEmergency(null)}
+          onResolved={loadEmergencies}
           onUnauthorized={on401}
         />
-      )}
+      ) : null}
     </motion.div>
   );
 }
